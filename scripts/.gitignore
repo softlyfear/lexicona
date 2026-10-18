@@ -1,0 +1,4 @@
+# The root Python template ignores lib/; track only this shell source.
+!/lib/
+/lib/*
+!/lib/common.sh
