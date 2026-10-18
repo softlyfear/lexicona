@@ -20,6 +20,22 @@ describe('readiness API', () => {
       headers: { Accept: 'application/json' },
     });
   });
+  it.each([201, 202, 203, 206])(
+    'rejects unexpected HTTP %i even with a ready payload',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ status: 'ready' }), { status }),
+          ),
+      );
+      await expect(checkReady(new AbortController().signal)).rejects.toThrow(
+        'Сервис недоступен. Повторите проверку.',
+      );
+    },
+  );
   it('aborts timed-out requests and clears its deadline', async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn<typeof fetch>().mockImplementation(

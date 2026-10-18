@@ -62,6 +62,27 @@ describe('foundation shell', () => {
     expect(client.getQueryCache().getAll()).toEqual([]);
   });
 
+  it('reports HTTP 202 as unavailable instead of ready', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ status: 'ready' }), { status: 202 }),
+        ),
+    );
+    renderApp('/connection');
+    expect(
+      await screen.findByText('Сервис недоступен. Повторите проверку.'),
+    ).not.toBeNull();
+    expect(screen.queryByText('Сервис готов')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Проверить снова' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
   it('returns from an unknown path using the dictionary link', async () => {
     vi.stubGlobal(
       'fetch',

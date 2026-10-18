@@ -16,7 +16,7 @@ export async function checkReady(signal: AbortSignal) {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new Error('Unavailable');
+    if (response.status !== 200) throw new Error('Unavailable');
     const data: unknown = await response.json();
     requestSignal.throwIfAborted();
     return readiness.parse(data);
