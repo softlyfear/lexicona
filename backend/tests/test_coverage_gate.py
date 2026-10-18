@@ -9,6 +9,119 @@ from pathlib import Path
 import pytest
 
 
+def real_coverage_report(
+    tmp_path: Path, program: str, option: str = "", pattern: str = ""
+) -> tuple[Path, Path]:
+    """Generate actual coverage JSON in a separate interpreter, without mocks."""
+    source = tmp_path / "source"
+    source.mkdir()
+    module = source / "probe.py"
+    module.write_text(program, encoding="utf-8")
+    report = tmp_path / "coverage.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys\nfrom coverage import Coverage\n"
+            "c = Coverage(branch=True, config_file=False, data_file=None, "
+            "source=[sys.argv[1]])\n"
+            "if sys.argv[4]:\n    c.set_option(sys.argv[4], [sys.argv[5]])\n"
+            "c.start()\nrunpy.run_path(sys.argv[2])\nc.stop()\n"
+            "c.json_report(outfile=sys.argv[3])",
+            str(source),
+            str(module),
+            str(report),
+            option,
+            pattern,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return report, source
+
+
+@pytest.mark.parametrize(
+    ("suffix", "option", "pattern"),
+    [
+        ("", "", ""),
+        ("  # pragma: no branch", "", ""),
+        ("  # PRAGMA: NO BRANCH", "", ""),
+        ("  # pragma: no cover", "", ""),
+        ("", "report:partial_branches", "if flag:"),
+        ("", "report:partial_branches", r"if flag:\n\s+result"),
+        ("", "report:exclude_lines", "if flag:"),
+    ],
+)
+def test_gate_rechecks_real_suppressed_coverage(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    suffix: str,
+    option: str,
+    pattern: str,
+) -> None:
+    from tools.coverage_gate import main
+
+    report, source = real_coverage_report(
+        tmp_path,
+        "def f(flag):\n    result = 0\n    if flag:"
+        + suffix
+        + "\n        result = 1\n    return result\nf(True)\n",
+        option,
+        pattern,
+    )
+    data = next(iter(json.loads(report.read_text())["files"].values()))
+    if "branch" in suffix.lower() or option == "report:partial_branches":
+        # The reviewer exploit: the real JSON conceals the unexecuted arc.
+        assert data["missing_branches"] == []
+        assert data["excluded_lines"] == []
+        assert data["missing_lines"] == []
+    assert main([str(report), str(source)]) == 1
+    assert "source files: 100%" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "pragma",
+    ["# pragma: no branch", "# PRAGMA: NO COVER", "# pragma: no branch # 'quoted'"],
+)
+def test_gate_rejects_exercised_unapproved_comment_pragmas(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], pragma: str
+) -> None:
+    from tools.coverage_gate import main
+
+    report, source = real_coverage_report(
+        tmp_path,
+        "def f(flag):\n"
+        "    result = 0\n"
+        f"    if flag:  {pragma}\n"
+        "        result = 1\n"
+        "    return result\n"
+        "f(True)\nf(False)\n",
+        "report:exclude_lines",
+        "(?!)",
+    )
+    assert main([str(report), str(source)]) == 1
+    assert "unapproved coverage pragma" in capsys.readouterr().out
+
+
+def test_gate_accepts_real_covered_pragma_strings(tmp_path: Path) -> None:
+    from tools.coverage_gate import main
+
+    report, source = real_coverage_report(
+        tmp_path,
+        "def f(flag):\n"
+        "    text = '''# pragma: no cover\n# pragma: no branch'''\n"
+        "    if flag: text = '# pragma: no branch'\n"
+        "    # An ordinary comment is not an exemption.\n"
+        "    return text\n"
+        "f(True)\nf(False)\n",
+        "report:exclude_lines",
+        "(?!)",
+    )
+    assert main([str(report), str(source)]) == 0
+
+
 def test_gate_accepts_fully_measured_source(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()

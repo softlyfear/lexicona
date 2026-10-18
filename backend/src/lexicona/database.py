@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import Connection, event, text
 from sqlalchemy.dialects.sqlite.aiosqlite import AsyncAdapt_aiosqlite_connection
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Dialect, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import ConnectionPoolEntry
@@ -44,13 +44,24 @@ class Database:
             or url.query
         ):
             raise ValueError("Only file-backed sqlite+aiosqlite URLs are supported")
-        Path(url.database).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._directory = Path(url.database).parent
         self.engine = create_async_engine(
             url, pool_size=5, max_overflow=0, hide_parameters=True
         )
+        event.listen(self.engine.sync_engine, "do_connect", self._prepare_directory)
         event.listen(self.engine.sync_engine, "connect", configure_connection)
         event.listen(self.engine.sync_engine, "begin", begin_transaction)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    def _prepare_directory(
+        self,
+        dialect: Dialect,
+        record: ConnectionPoolEntry,
+        args: list[object],
+        kwargs: dict[str, object],
+    ) -> None:
+        """Retry filesystem setup at connection time, never during app creation."""
+        self._directory.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     @asynccontextmanager
     async def unit_of_work(self) -> AsyncIterator[AsyncSession]:
@@ -72,7 +83,7 @@ class Database:
                     .all()
                 )
                 return revisions == [SCHEMA_REVISION]
-        except SQLAlchemyError:
+        except (OSError, SQLAlchemyError):
             return False
 
     async def dispose(self) -> None:
