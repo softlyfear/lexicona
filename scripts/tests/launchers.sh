@@ -113,12 +113,49 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 sleep 120 &
 unrelated_pid=$!
+# Explicit worker argv must win without deleting the caller's environment.
+expect_exit 37 timeout 10 env WEB_CONCURRENCY=4 UVICORN_WORKERS=3 \
+  FIXTURE_BACKEND_EXIT=37 bash "$sandbox/project/scripts/dev.sh"
+for role in backend frontend; do
+  [[ $(<"$sandbox/state/$role.workers-env") == $'4\n3' ]] || fail "$role inherited worker environment"
+done
+assert_stopped
+printf 'PASS: explicit single worker with inherited WEB_CONCURRENCY=4 and UVICORN_WORKERS=3\n'
 expect_exit 37 timeout 10 env FIXTURE_BACKEND_EXIT=37 bash "$sandbox/project/scripts/dev.sh"
 [[ $(<"$sandbox/state/backend.cwd") == "$sandbox/project/backend" ]] || fail 'backend cwd'
 [[ $(<"$sandbox/state/frontend.cwd") == "$sandbox/project/frontend" ]] || fail 'frontend cwd'
 [[ $(<"$sandbox/state/backend.tmp") == "$sandbox/tmp/lexicona-dev."* ]] || fail 'private TMPDIR'
 assert_stopped
 kill -0 "$unrelated_pid" || fail 'unrelated process was killed'
+
+# Relative TMPDIR is relative to the caller, not either service's cwd.
+relative_tmp='relative temp with spaces'
+mkdir -p "$sandbox/$relative_tmp/lexicona-dev.not-owned"
+printf '%s\n' keep >"$sandbox/$relative_tmp/lexicona-dev.not-owned/keep"
+for attempt in 1 2; do
+  rm -f -- "$sandbox/state/"*.tmp-resolved
+  (
+    cd -- "$sandbox"
+    expect_exit 37 timeout 10 env TMPDIR="$relative_tmp" FIXTURE_BACKEND_EXIT=37 \
+      bash "$sandbox/project/scripts/dev.sh"
+  )
+  for role in backend frontend; do
+    child_tmp=$(<"$sandbox/state/$role.tmp")
+    [[ $(<"$sandbox/state/$role.cwd") == "$sandbox/project/$role" ]] || fail "$role cwd with relative TMPDIR"
+    [[ $(<"$sandbox/state/$role.tmp-resolved") == "$child_tmp" ]] || fail "$role cannot access TMPDIR from child cwd"
+    [[ "$child_tmp" == "$sandbox/$relative_tmp/lexicona-dev."* ]] || fail "$role TMPDIR is not absolute/private"
+    [[ ! -e "$child_tmp" ]] || fail "$role private TMPDIR leaked"
+  done
+  [[ $(<"$sandbox/state/backend.tmp") == "$(<"$sandbox/state/frontend.tmp")" ]] || fail 'children have different TMPDIRs'
+  leftovers=("$sandbox/$relative_tmp/"*)
+  [[ ${#leftovers[@]} == 1 && "${leftovers[0]}" == "$sandbox/$relative_tmp/lexicona-dev.not-owned" ]] || fail 'cleanup touched unowned directory or leaked private directory'
+  [[ $(<"$sandbox/$relative_tmp/lexicona-dev.not-owned/keep") == keep ]] || fail 'cleanup touched unowned file'
+  [[ "$TMPDIR" == "$sandbox/tmp" ]] || fail 'launcher changed caller TMPDIR'
+  assert_stopped
+  kill -0 "$unrelated_pid" || fail 'unrelated process was killed'
+  printf 'PASS: relative TMPDIR with spaces accessible from both child cwds; own-only cleanup (run %s)\n' "$attempt"
+done
+
 expect_exit 23 timeout 10 env FIXTURE_FRONTEND_EXIT=23 bash "$sandbox/project/scripts/dev.sh"
 assert_stopped
 expect_exit 70 timeout 10 env FIXTURE_BACKEND_EXIT=0 bash "$sandbox/project/scripts/dev.sh"

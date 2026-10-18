@@ -18,6 +18,10 @@
   устанавливают системно и не требуют `sudo`.
 - Свободные TCP-порты 8000 и 5173; существующие процессы launcher не завершает.
   `TMPDIR`, если задан, должен быть существующим writable/searchable каталогом.
+  Допустимы абсолютные и относительные пути, в том числе с пробелами: перед
+  сменой cwd скрипты разрешают путь относительно cwd вызывающего shell в
+  абсолютный физический путь. Dev launcher создаёт внутри него отдельный
+  приватный каталог и удаляет только его, не родительский каталог/соседние файлы.
 
 ## Setup из lock-файлов
 
@@ -69,12 +73,14 @@ bash scripts/dev.sh
 Launcher запускает следующие реальные entrypoints:
 
 ```bash
-(cd backend && .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000)
+(cd backend && .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1)
 (cd frontend && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort)
 ```
 
 Это альтернативный ручной запуск в двух терминалах, не команды для запуска
-поверх работающего launcher. UI открывается на `http://127.0.0.1:5173`;
+поверх работающего launcher. `--workers 1` фиксирует один API worker независимо
+от унаследованных `WEB_CONCURRENCY`/`UVICORN_WORKERS`; launcher не очищает
+окружение вызывающего shell. UI открывается на `http://127.0.0.1:5173`;
 Vite проксирует `/api` в API на `127.0.0.1:8000` без отдельного browser origin.
 Контракт API: `GET /api/v1/health/live` → HTTP 200 `{"status":"alive"}`;
 `GET /api/v1/health/ready` → HTTP 200 `{"status":"ready"}` только при готовой
@@ -108,8 +114,10 @@ bash scripts/tests/launchers.sh
 скрипта. Synthetic suite проверяет missing prerequisites, ошибки preflight,
 коллизии обоих портов, передачу exit code, сигналы, cleanup потомков (включая
 игнорирующих TERM), сохранность постороннего PID, migration cwd/аргументы и
-явный аргумент project root у `require_backend`. Fixtures — не приложение;
-PASS этого набора **не является app smoke**.
+явный аргумент project root у `require_backend`, обязательный `--workers 1`
+при унаследованных worker-переменных и реальную доступность relative TMPDIR с
+пробелами из обоих child cwd с повторной проверкой own-only cleanup.
+Fixtures — не приложение; PASS этого набора **не является app smoke**.
 
 Backend (отдельный shell-блок из корня):
 
