@@ -1,0 +1,107 @@
+:local(.shell) {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+}
+.skipLink {
+  position: absolute;
+  left: 1rem;
+  top: -10rem;
+  z-index: 1;
+  background: var(--color-surface);
+  padding: 0.75rem;
+}
+.skipLink:focus {
+  top: 0.5rem;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+}
+.header p {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-text);
+  font-size: 1.5rem;
+  font-weight: 750;
+  text-decoration: none;
+  letter-spacing: -0.04em;
+}
+.navigation {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 1rem;
+}
+.navigation a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.navigation a[aria-current='page'] {
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+.main {
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem 0;
+}
+.main > section {
+  min-width: 0;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.main > section > p:first-child {
+  color: var(--color-muted);
+}
+.main > section > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.connection h2 {
+  margin-top: 0;
+}
+.status {
+  font-weight: 650;
+}
+.footer {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  padding-bottom: 1rem;
+}
+@media (min-width: 900px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+  }
+}
+@media (max-width: 480px) {
+  .shell {
+    padding: 1rem;
+  }
+  .main > section {
+    padding: 1rem;
+  }
+}
