@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lexicona"
+version = "0.1.0"
+description = "Lexicona API and SQLite foundation"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "pydantic>=2.10,<3",
+  "sqlalchemy[asyncio]>=2.0.38,<2.1",
+  "aiosqlite>=0.21,<1",
+  "alembic>=1.15,<2",
+  "uvicorn>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<10",
+  "pytest-asyncio>=1.0,<2",
+  "httpx>=0.28,<1",
+  "asgi-lifespan>=2.1,<3",
+  "coverage[toml]>=7.6,<8",
+  "ruff>=0.11,<1",
+  "mypy>=1.15,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["lexicona", "migrations", "tools"]
+relative_files = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_empty = false
