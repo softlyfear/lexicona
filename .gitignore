@@ -218,3 +218,29 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local AI workflow, requirements, mockups, and review artifacts
+/.lexicona/
+/wordstudy-spec.md
+/AGENTS.override.md
+/CLAUDE.md
+/.hermes.md
+/.claude/
+/.codex/
+/.mcp.json
+
+# Local dependencies, build outputs, databases, and test artifacts
+node_modules/
+coverage/
+.vite/
+playwright-report/
+test-results/
+*.sqlite
+*.sqlite3
+*.db
+*-wal
+*-shm
+.env.*
+!.env.example
+!.env.*.example
+.DS_Store
