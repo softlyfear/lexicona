@@ -1,0 +1,151 @@
+# Локальная разработка (Linux)
+
+Это инструкции для development foundation, не production deployment и не
+подтверждение готовности полного MVP. Нужен checkout, содержащий `backend/`,
+`frontend/` и `scripts/`; скрытая мастерская и Hermes для запуска не нужны.
+Все команды ниже выполняются из корня репозитория, кроме явно указанного `cd`.
+
+## Предварительные условия
+
+- Bash 5.1+, `uv`, Python 3.13 (ограничение `backend/pyproject.toml`).
+- Node/npm в диапазонах `frontend/package.json`: Node `>=22.23.3 <23`,
+  npm `>=10.9.9 <11`; установки фиксирует `package-lock.json`.
+- Для launcher: `setsid`, `ss`, `mktemp`, `rm`, `sleep`, `dirname`.
+  Для synthetic tests дополнительно нужны `timeout`, `ps`, `env` с
+  `--default-signal`, `cp`, `mv`, `mkdir`, `ln`, `chmod`, `touch`, `cat`.
+- Для статических shell-проверок — ShellCheck. Отсутствующий инструмент —
+  blocker, не успешная и не молча пропущенная проверка. Скрипты ничего не
+  устанавливают системно и не требуют `sudo`.
+- Свободные TCP-порты 8000 и 5173; существующие процессы launcher не завершает.
+  `TMPDIR`, если задан, должен быть существующим writable/searchable каталогом.
+
+## Setup из lock-файлов
+
+```bash
+(cd backend && uv sync --locked --python 3.13 --group dev)
+(cd frontend && npm ci)
+```
+
+Backend использует собственный `backend/.venv`, frontend — собственный
+`frontend/node_modules`. Не устанавливайте зависимости в Python Hermes или
+системный Python; не обновляйте lock-файлы для обхода ошибки установки.
+
+Необязательное явное окружение (локальный `.env` не коммитить):
+
+```bash
+cp .env.example .env
+set -a
+source .env
+set +a
+```
+
+Не перезаписывайте существующий `.env`: в таком случае сначала прочитайте его
+и вручную перенесите нужные настройки. Launcher и backend **не загружают `.env`
+автоматически**. Без экспорта используется тот же default SQLite URL.
+`LEXICONA_DATABASE_URL` — backend-only переменная; относительный SQLite path
+разрешается из `backend/`. Не добавляйте секреты в `VITE_*` или frontend assets.
+
+## Явная миграция
+
+```bash
+bash scripts/migrate.sh
+```
+
+Скрипт проверяет окружение, переходит в `backend/` и выполняет
+`.venv/bin/alembic upgrade head` в foreground. Он возвращает код Alembic.
+Миграции не выполняются при старте приложения. Команда изменяет выбранную БД:
+для новой локальной разработки используйте отдельную disposable БД; не
+направляйте её на единственную копию важных данных. Production backup/rollback
+и deployment здесь не реализованы и не считаются проверенными.
+
+## Dev: два процесса, только localhost
+
+После setup и миграции:
+
+```bash
+bash scripts/dev.sh
+```
+
+Launcher запускает следующие реальные entrypoints:
+
+```bash
+(cd backend && .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000)
+(cd frontend && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort)
+```
+
+Это альтернативный ручной запуск в двух терминалах, не команды для запуска
+поверх работающего launcher. UI открывается на `http://127.0.0.1:5173`;
+Vite проксирует `/api` в API на `127.0.0.1:8000` без отдельного browser origin.
+Контракт API: `GET /api/v1/health/live` → HTTP 200 `{"status":"alive"}`;
+`GET /api/v1/health/ready` → HTTP 200 `{"status":"ready"}` только при готовой
+БД/схеме, иначе HTTP 503. Само сообщение launcher о запуске процессов **не
+подтверждает readiness**: проверяйте реальный HTTP-ответ и UI отдельно.
+
+`Ctrl+C` завершает оба дерева дочерних процессов и убирает приватный временный
+каталог. `TERM`/`HUP` тоже обрабатываются; после ограниченного ожидания
+неответившие дочерние процессы завершаются принудительно. При завершении одного
+сервиса launcher останавливает второй и возвращает исходный ненулевой код;
+неожиданный успешный выход сервиса превращается в exit 70. Launcher не является
+watchdog/restart manager и не меняет firewall, DNS или внешние сетевые настройки.
+
+## Проверки
+
+Запускайте каждый блок с остановкой при первой ошибке; успешный build не
+заменяет тесты, coverage, реальный HTTP smoke или независимое review.
+
+Shell (из корня):
+
+```bash
+set -e
+for script in scripts/dev.sh scripts/migrate.sh scripts/lib/common.sh scripts/tests/launchers.sh scripts/tests/fixtures/tool.sh; do
+  bash -n "$script"
+done
+shellcheck -x -P SCRIPTDIR scripts/dev.sh scripts/migrate.sh scripts/lib/common.sh scripts/tests/launchers.sh scripts/tests/fixtures/tool.sh
+bash scripts/tests/launchers.sh
+```
+
+`-P SCRIPTDIR` разрешает существующий source annotation относительно самого
+скрипта. Synthetic suite проверяет missing prerequisites, ошибки preflight,
+коллизии обоих портов, передачу exit code, сигналы, cleanup потомков (включая
+игнорирующих TERM), сохранность постороннего PID, migration cwd/аргументы и
+явный аргумент project root у `require_backend`. Fixtures — не приложение;
+PASS этого набора **не является app smoke**.
+
+Backend (отдельный shell-блок из корня):
+
+```bash
+set -e
+cd backend
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+MYPYPATH=src uv run --locked mypy --strict --explicit-package-bases src migrations tools tests
+uv run --locked coverage run -m pytest
+uv run --locked coverage report
+```
+
+`MYPYPATH=src` явно задаёт src layout; `--explicit-package-bases` сохраняет
+однозначные имена namespace-модулей `tools`. Используется установленный
+Coverage.py, **не** отсутствующий pytest-cov (`pytest --cov` не используется).
+Порог и branch measurement задаются `pyproject.toml`; ошибки не пропускаются.
+Этот начальный набор команд сам по себе не доказывает полноту manifest-aware
+coverage gate или baseline regression — соответствующие проверки принимаются
+отдельно вместе с backend.
+
+Frontend (отдельный shell-блок из корня):
+
+```bash
+set -e
+cd frontend
+npm run typecheck
+npm run lint
+npm run format:check
+npm run test:coverage
+npm run build
+```
+
+Это существующие package scripts, не вымышленные targets. Успешная установка
+зависимостей и наличие команды не означают, что текущие исходники проходят её:
+при сдаче сохраняйте фактические exit codes. Реальный совместный UI/API/SQLite
+smoke выполняется после интеграции backend/frontend/launchers; synthetic tests,
+unit mocks и production build его не заменяют. Docker/deployment, backup/restore,
+нагрузочные проверки и физическое TTS не входят в этот launcher-срез.
