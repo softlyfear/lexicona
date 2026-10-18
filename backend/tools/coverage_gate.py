@@ -1,10 +1,13 @@
 """Require every production Python file to have complete line/branch coverage."""
 
 import argparse
+import re
+import tokenize
 from collections.abc import Sequence
 from pathlib import Path
 
-from pydantic import BaseModel
+from coverage import Coverage
+from pydantic import BaseModel, Field
 
 
 class Summary(BaseModel):
@@ -13,6 +16,7 @@ class Summary(BaseModel):
 
 class FileCoverage(BaseModel):
     executed_lines: list[int]
+    executed_branches: list[tuple[int, int]] = Field(default_factory=list)
     missing_lines: list[int]
     missing_branches: list[tuple[int, int]]
     excluded_lines: list[int]
@@ -50,19 +54,53 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not sources:
         issues.append("no production source")
     measured = {Path(name).resolve(): data for name, data in report.files.items()}
-    for source in sorted(sources):
-        data = measured.get(source)
-        if data is None:
-            issues.append(f"unimported source: {source}")
-            continue
-        if data.summary.num_statements and not data.executed_lines:
-            issues.append(f"unimported source: {source}")
-        if data.missing_lines:
-            issues.append(f"missing lines: {source}: {data.missing_lines}")
-        if data.missing_branches:
-            issues.append(f"missing branches: {source}: {data.missing_branches}")
-        if data.excluded_lines:
-            issues.append(f"excluded lines: {source}: {data.excluded_lines}")
+    # The approved exemption registry is empty. Reparse source without report
+    # regexes (including defaults); never trust suppressed JSON missing lists.
+    # Only real reported arcs are evidence: line hits cannot invent taken exits.
+    unsuppressed = Coverage(branch=True, config_file=False, data_file=None)
+    unsuppressed.clear_exclude()
+    unsuppressed.clear_exclude("partial")
+    execution = unsuppressed.get_data()
+    try:
+        for source in sorted(sources):
+            # Tokenization distinguishes real comments from quoted examples,
+            # including multiline strings and quote characters inside comments.
+            with tokenize.open(source) as source_file:
+                for token in tokenize.generate_tokens(source_file.readline):
+                    if token.type == tokenize.COMMENT and re.search(
+                        r"#\s*pragma[:\s]?\s*no\s*(?:cover|branch)",
+                        token.string,
+                        re.IGNORECASE,
+                    ):
+                        issues.append(
+                            f"unapproved coverage pragma: {source}:{token.start[0]}"
+                        )
+            data = measured.get(source)
+            if data is None:
+                issues.append(f"unimported source: {source}")
+                continue
+            if data.summary.num_statements and not data.executed_lines:
+                issues.append(f"unimported source: {source}")
+            if data.missing_lines:
+                issues.append(f"missing lines: {source}: {data.missing_lines}")
+            if data.missing_branches:
+                issues.append(f"missing branches: {source}: {data.missing_branches}")
+            if data.excluded_lines:
+                issues.append(f"excluded lines: {source}: {data.excluded_lines}")
+            execution.add_arcs({str(source): data.executed_branches})
+            _, statements, _, _, _ = unsuppressed.analysis2(str(source))
+            missing = sorted(set(statements) - set(data.executed_lines))
+            if missing:
+                issues.append(f"unsuppressed missing lines: {source}: {missing}")
+            incomplete = {
+                line: counts
+                for line, counts in unsuppressed.branch_stats(str(source)).items()
+                if counts[0] != counts[1]
+            }
+            if incomplete:
+                issues.append(f"unsuppressed missing branches: {source}: {incomplete}")
+    finally:
+        execution.close(force=True)
     if issues:
         print("\n".join(issues))
         return 1

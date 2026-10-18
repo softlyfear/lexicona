@@ -27,7 +27,10 @@ revision boundary `0001_foundation`, без фиктивных бизнес-та
   и единственной записи текущего revision в `alembic_version`.
 - Без миграции, при другом/нескольких revision или недоступной БД readiness
   возвращает `503 {"error":{"code":"not_ready","message":"Service is not ready"}}`.
-  SQL, filesystem paths и параметры не попадают в этот ответ.
+  SQL, filesystem paths и параметры не попадают в этот ответ. Filesystem setup
+  выполняется при подключении, а не в factory: недоступный parent (в том числе
+  обычный файл или permission denied) не мешает liveness/startup. Подключение
+  повторяет setup после восстановления пути; миграция по-прежнему только явная.
 - Оба endpoint возвращают `Cache-Control: no-store`.
 
 Один worker, bounded pool, отдельная `AsyncSession` на unit of work. На каждом
@@ -53,6 +56,14 @@ mkdir -p .local-reports
 неисполненный source, missing lines и missing branches. Он также запрещает
 excluded lines, отчёт без branch measurement, отсутствующие roots и пустой
 source inventory. Округлённый общий процент не является доказательством.
+Реестр согласованных исключений пуст: comment-токены Python проверяются на
+запрещённые coverage pragmas (не строки/многострочные литералы). Gate независимо
+пересчитывает statements/branch exits по текущему source без стандартных и
+пользовательских report exclusion regexes и сверяет их с `executed_lines` и
+`executed_branches` настоящего JSON. Поэтому подавленный `missing_branches`
+(включая custom partial-branch patterns) не доказывает полноту покрытия. Отсутствие
+arc evidence — отказ, не синтез из выполненных строк. Dev minimum coverage
+соответствует проверенной lock-версии с используемыми API анализа/cleanup.
 
 Тесты проверяют реальные online upgrade/re-upgrade/downgrade, offline SQL,
 health/error contract, file-backed WAL/FK/busy timeout, commit/rollback,
