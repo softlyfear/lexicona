@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared validation only: sourcing this file does not change shell options.
+# Shared environment checks/normalization; sourcing leaves options unchanged.
 
 fail() {
   local status="$1"
@@ -37,4 +37,7 @@ require_backend() {
 require_tmpdir() {
   [[ -d "${TMPDIR:-/tmp}" && -w "${TMPDIR:-/tmp}" && -x "${TMPDIR:-/tmp}" ]] ||
     fail 73 'TMPDIR must name an existing writable, searchable directory'
+  # Resolve in the caller's cwd before either launcher changes directory.
+  TMPDIR=$(CDPATH='' cd -- "${TMPDIR:-/tmp}" && pwd -P) || fail 73 'Cannot resolve TMPDIR'
+  export TMPDIR
 }

@@ -32,7 +32,7 @@ case "${0##*/}" in
     status="${FIXTURE_FRONTEND_EXIT:-hold}"
     ;;
   uvicorn)
-    [[ "$*" == 'lexicona.app:create_app --factory --host 127.0.0.1 --port 8000' ]] || exit 95
+    [[ "$*" == 'lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1' ]] || exit 95
     role=backend
     status="${FIXTURE_BACKEND_EXIT:-hold}"
     ;;
@@ -46,6 +46,14 @@ esac
 printf '%s\n' "$$" >"$FIXTURE_STATE/$role.pid"
 printf '%s\n' "$PWD" >"$FIXTURE_STATE/$role.cwd"
 printf '%s\n' "${TMPDIR:-missing}" >"$FIXTURE_STATE/$role.tmp"
+printf '%s\n' "${WEB_CONCURRENCY-unset}" "${UVICORN_WORKERS-unset}" >"$FIXTURE_STATE/$role.workers-env"
+# Check the real filesystem after the service's cd, not just its env string.
+if [[ -d "${TMPDIR:-}" && -w "$TMPDIR" && -x "$TMPDIR" ]]; then
+  printf '%s\n' "$PWD" >"$TMPDIR/$role.probe"
+  printf '%s\n' "$(CDPATH='' cd -- "$TMPDIR" && pwd -P)" >"$FIXTURE_STATE/$role.tmp-resolved"
+else
+  printf '%s\n' missing >"$FIXTURE_STATE/$role.tmp-resolved"
+fi
 if [[ "$status" != hold ]]; then
   sleep 0.2
   exit "$status"
