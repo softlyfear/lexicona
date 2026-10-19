@@ -6,12 +6,12 @@
 
 ## Окружение и запуск
 
-Команды выполняются из `backend/` относительно корня репозитория. Нужен `uv`;
-`.python-version` фиксирует независимый project runtime Python 3.13.14,
+Команды выполняются из `backend/` относительно корня репозитория. Нужен `uv>=0.13.1`;
+`.python-version` фиксирует независимый project runtime Python 3.13.16,
 `uv.lock` — версии зависимостей. Не устанавливайте их в Python окружения агента.
 
 ```sh
-uv sync --locked
+uv sync --locked --python 3.13.16 --group dev
 .venv/bin/alembic upgrade head
 .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
 ```
@@ -26,18 +26,79 @@ revision boundary `0001_foundation`, без фиктивных бизнес-та
 - `GET /api/v1/health/ready`: `200 {"status":"ready"}` только при доступной БД
   и единственной записи текущего revision в `alembic_version`.
 - Без миграции, при другом/нескольких revision или недоступной БД readiness
-  возвращает `503 {"error":{"code":"not_ready","message":"Service is not ready"}}`.
+  возвращает `503 {"error":{"code":"not_ready","message":"Service is not ready"}}`
+  с `Retry-After: 1` (совет о повторной read-only probe, не обещание срока recovery).
   SQL, filesystem paths и параметры не попадают в этот ответ. Filesystem setup
   выполняется при подключении, а не в factory: недоступный parent (в том числе
   обычный файл или permission denied) не мешает liveness/startup. Подключение
   повторяет setup после восстановления пути; миграция по-прежнему только явная.
 - Оба endpoint возвращают `Cache-Control: no-store`.
 
-Один worker, bounded pool, отдельная `AsyncSession` на unit of work. На каждом
-connection включены WAL, foreign keys и `busy_timeout=5000`; явный `BEGIN`
-обеспечивает rollback DDL и released savepoint вместе с внешней транзакцией.
+Один worker, pool size 3/max overflow 0/checkout timeout 5 секунд, отдельная
+`AsyncSession` на unit of work. На каждом новом physical connection явно
+устанавливаются WAL, foreign keys, `busy_timeout=5000`, `synchronous=FULL`.
+Последующие checkout сохраняют эти PRAGMA; приложение не меняет их в UoW.
+Выбрана только SQLAlchemy-managed BEGIN policy (`isolation_level=None` у драйвера),
+без смешивания с driver `autocommit=False`. Обычный UoW использует `BEGIN`,
+`unit_of_work(write=True)` резервирует writer через `BEGIN IMMEDIATE` **до** yield.
+Оба варианта откатывают DDL/released savepoint вместе с внешней транзакцией.
+
+При busy write UoW завершается rollback без выполнения application body и без
+автоматического retry. Подготовка/хеширование/разбор/сеть должны выполняться **до**
+входа в write UoW; финальные проверки состояния и SQL — внутри. Сейчас write API
+нет: replay-safe business retry/DB_BUSY receipt semantics будут проверяться при
+первом таком endpoint, а не подменяться универсальным retry framework заранее.
+Readiness безопасно отвечает 503 при DB lock/ошибке/исчерпании pool и восстанавливает
+200 после снятия причины. При обычном WAL writer reader/readiness не блокируются.
+Ожидание lock до 5 секунд, checkout до 5 секунд: суммарный DB wait budget до
+10 секунд без retry (меньше foundation лимита 12 секунд); это не end-to-end SLA.
 
 ## Проверки
+
+### База сравнения и provenance
+
+Gate намеренно строже changed-only: **все** runtime `.py` в `src`, `migrations`,
+`tools` должны пройти 100% statements и branch outcomes. Поэтому новые,
+untracked, перемещённые и baseline-неизменённые файлы не пропускаются. Отдельный
+алгоритм diff coverage не нужен: при отдельно проверенном B=100/100 любой новый
+missing в неизменённом файле H блокирует H, переименование не обнуляет долг.
+Это не разрешает пропускать тесты B или объявлять B прошедшим по отчёту H.
+
+Перед срезом координатор фиксирует immutable SHA B, запускает полный набор B
+в отдельном checkout/project environment из его lock, сохраняет команду/cwd/exit,
+coverage JSON и исходные config/source hashes. Затем в H выполняется весь набор
+ниже. При runtime/toolchain upgrade различия B/H явно описываются в handoff;
+прошлые failures не превращаются в pass. Не использовать изменяемый `main` как B.
+
+Дополнительные параметры того же gate сохраняют машинный manifest, в том числе
+при coverage failure:
+
+```sh
+.venv/bin/python -m tools.coverage_gate .local-reports/coverage.json src migrations tools \
+  --baseline 7ac0de323005ac778b378e712e8b0a9899b4274a \
+  --manifest .local-reports/source-manifest.json
+```
+
+SHA в примере — исторический foundation B; для нового среза подставляется его
+собственный согласованный B. Manifest содержит все source paths/SHA-256,
+branchless status, report hash/version, passed, точный resolved baseline SHA,
+`git diff -z -M --name-status` tokens (`R100`, old path, new path для rename)
+и отдельный `git ls-files --others` inventory untracked. Stage не требуется;
+Git diff относится к production roots, а не чужим параллельным изменениям.
+Inventory файловой системы остаётся определяющим даже для ignored/untracked.
+Пустой `.py` без executable statements и `.pyi` typing stub имеют явный
+`not_applicable` с причиной, а не фиктивный 100/0. Python type aliases/classes
+в runtime `.py` не получают type-only исключения. Удаления видны в Git mapping;
+review проверяет, что проверки не удалены ради зелёного.
+
+JSON принимается только с проверенными `meta.format=3`, `meta.version=7.16.2`
+и строгими типами всех используемых обязательных полей, включая
+`executed_branches`/`missing_branches`; отсутствие не заменяется `[]`.
+Upgrade coverage требует обновить lock, проверить schema/API и probes вместе.
+Manifest связывает отчёт с проверенным snapshot, но не является цифровой подписью:
+тесты и gate запускаются на одном неизменённом дереве до review/commit.
+
+### Команды
 
 ```sh
 mkdir -p .local-reports
