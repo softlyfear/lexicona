@@ -10,10 +10,10 @@
 ## Локальный запуск
 
 Подробные требования и команды: [docs/development.md](docs/development.md).
-После установки совместимых Python 3.13, uv и Node/npm:
+Нужны uv >=0.13.1, Python 3.13.16 и совместимые Node/npm:
 
 ```bash
-(cd backend && uv sync --locked --python 3.13 --group dev)
+(cd backend && uv sync --locked --python 3.13.16 --group dev)
 (cd frontend && npm ci)
 bash scripts/migrate.sh
 bash scripts/dev.sh

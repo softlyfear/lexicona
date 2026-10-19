@@ -7,7 +7,9 @@
 
 ## Предварительные условия
 
-- Bash 5.1+, `uv`, Python 3.13 (ограничение `backend/pyproject.toml`).
+- Bash 5.1+, `uv>=0.13.1`, Python 3.13.16 (`backend/.python-version` и
+  security minimum в `backend/pyproject.toml`). Системные установки не выполняются
+  скриптами; старый uv может не знать этот Python release.
 - Node/npm в диапазонах `frontend/package.json`: Node `>=22.23.3 <23`,
   npm `>=10.9.9 <11`; установки фиксирует `package-lock.json`.
 - Для launcher: `setsid`, `ss`, `mktemp`, `rm`, `sleep`, `dirname`.
@@ -26,7 +28,7 @@
 ## Setup из lock-файлов
 
 ```bash
-(cd backend && uv sync --locked --python 3.13 --group dev)
+(cd backend && uv sync --locked --python 3.13.16 --group dev)
 (cd frontend && npm ci)
 ```
 
@@ -124,20 +126,24 @@ Backend (отдельный shell-блок из корня):
 ```bash
 set -e
 cd backend
-uv run --locked ruff check .
-uv run --locked ruff format --check .
-MYPYPATH=src uv run --locked mypy --strict --explicit-package-bases src migrations tools tests
-uv run --locked coverage run -m pytest
-uv run --locked coverage report
+mkdir -p .local-reports
+.venv/bin/ruff check src tests migrations tools
+.venv/bin/ruff format --check src tests migrations tools
+.venv/bin/mypy --strict src tests migrations tools
+.venv/bin/coverage run -m pytest -q
+.venv/bin/coverage json -o .local-reports/coverage.json
+.venv/bin/coverage report
+.venv/bin/python -m tools.coverage_gate .local-reports/coverage.json src migrations tools
 ```
 
-`MYPYPATH=src` явно задаёт src layout; `--explicit-package-bases` сохраняет
-однозначные имена namespace-модулей `tools`. Используется установленный
-Coverage.py, **не** отсутствующий pytest-cov (`pytest --cov` не используется).
-Порог и branch measurement задаются `pyproject.toml`; ошибки не пропускаются.
-Этот начальный набор команд сам по себе не доказывает полноту manifest-aware
-coverage gate или baseline regression — соответствующие проверки принимаются
-отдельно вместе с backend.
+Используется собственное установленное окружение и Coverage.py, **не**
+отсутствующий pytest-cov (`pytest --cov` не используется). Порог и branch
+measurement задаются `pyproject.toml`; отдельный gate независимо проверяет
+исходники, реальные statements/arcs и отсутствие подавлений. Он требует
+100% всего production inventory, включая новый и untracked код. Baseline B
+нужно отдельно выполнить в неизменном checkout/окружении; порядок и параметры
+`--baseline`/`--manifest` описаны в `backend/README.md`. Отчёт H не доказывает,
+что тесты B запускались. Изменение runtime/toolchain явно фиксируется в review.
 
 Frontend (отдельный shell-блок из корня):
 

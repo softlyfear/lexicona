@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import { execFile, spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -63,6 +63,8 @@ export class E2EServer {
   private stopping = false;
   private cleanup: Promise<void> | undefined;
   private serverLog = '';
+  private databaseRepair:
+    { link: string; target: string; temporary: string } | undefined;
 
   private launch(
     command: string,
@@ -102,7 +104,7 @@ export class E2EServer {
     });
   }
 
-  async start(): Promise<void> {
+  async start(options: { databaseUnavailable?: boolean } = {}): Promise<void> {
     // Never attach to, migrate, or stop an existing development server/database.
     expect(
       await listeners(),
@@ -110,7 +112,10 @@ export class E2EServer {
     ).toBe('');
     try {
       this.directory = await mkdtemp(join(resolve(tmpdir()), 'lexicona-e2e-'));
-      this.databasePath = join(this.directory, 'test.sqlite3');
+      const databaseDirectory = options.databaseUnavailable
+        ? join(this.directory, 'database')
+        : this.directory;
+      this.databasePath = join(databaseDirectory, 'test.sqlite3');
       const env = {
         ...process.env,
         TMPDIR: this.directory,
@@ -121,6 +126,20 @@ export class E2EServer {
         env,
         timeout: 30_000,
       });
+      if (options.databaseUnavailable) {
+        const target = join(this.directory, 'available-database');
+        const blocker = join(this.directory, 'database-blocker');
+        await rename(databaseDirectory, target);
+        await writeFile(blocker, 'Owned E2E database blocker\n', {
+          flag: 'wx',
+        });
+        await symlink(blocker, databaseDirectory);
+        this.databaseRepair = {
+          link: databaseDirectory,
+          target,
+          temporary: join(this.directory, 'database-repair'),
+        };
+      }
       this.launch(
         join(root, 'backend/.venv/bin/uvicorn'),
         [
@@ -176,7 +195,7 @@ export class E2EServer {
             message: 'Real frontend proxy → API → SQLite readiness',
           },
         )
-        .toBe(200);
+        .toBe(options.databaseUnavailable ? 503 : 200);
     } catch (error) {
       try {
         await this.stop();
@@ -189,6 +208,17 @@ export class E2EServer {
       }
       throw error;
     }
+  }
+
+  async repairDatabase(): Promise<void> {
+    const repair = this.databaseRepair;
+    if (!repair)
+      throw new Error('No own unavailable database fixture to repair');
+    // Atomically swap only our symlink: a concurrent probe cannot create an
+    // empty database in a gap between removing the blocker and restoring data.
+    await symlink(repair.target, repair.temporary);
+    await rename(repair.temporary, repair.link);
+    this.databaseRepair = undefined;
   }
 
   stop(): Promise<void> {
