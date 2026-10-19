@@ -151,6 +151,8 @@ export class E2EServer {
           '8000',
           '--workers',
           '1',
+          '--no-proxy-headers',
+          '--no-access-log',
         ],
         join(root, 'backend'),
         env,
