@@ -75,14 +75,17 @@ bash scripts/dev.sh
 Launcher запускает следующие реальные entrypoints:
 
 ```bash
-(cd backend && .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1)
+(cd backend && .venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --no-access-log)
 (cd frontend && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort)
 ```
 
 Это альтернативный ручной запуск в двух терминалах, не команды для запуска
 поверх работающего launcher. `--workers 1` фиксирует один API worker независимо
-от унаследованных `WEB_CONCURRENCY`/`UVICORN_WORKERS`; launcher не очищает
-окружение вызывающего shell. UI открывается на `http://127.0.0.1:5173`;
+от worker-переменных. `--no-proxy-headers` не позволяет переписывать ASGI peer
+forwarded-заголовками до явного reviewed trusted ingress; `--no-access-log`
+отключает raw URL access logging, но не создаёт application audit logger.
+Launcher не очищает окружение вызывающего shell и не меняет системный proxy.
+UI открывается на `http://127.0.0.1:5173`;
 Vite проксирует `/api` в API на `127.0.0.1:8000` без отдельного browser origin.
 Контракт API: `GET /api/v1/health/live` → HTTP 200 `{"status":"alive"}`;
 `GET /api/v1/health/ready` → HTTP 200 `{"status":"ready"}` только при готовой
@@ -159,7 +162,14 @@ npm run build
 
 Это существующие package scripts, не вымышленные targets. Успешная установка
 зависимостей и наличие команды не означают, что текущие исходники проходят её:
-при сдаче сохраняйте фактические exit codes. Реальный совместный UI/API/SQLite
+при сдаче сохраняйте фактические exit codes. Полная frontend-проверка также
+требует baseline/source gate `npm run coverage:gate -- B ABS_BASELINE_FRONTEND coverage`:
+`B` — полный immutable SHA, `ABS_BASELINE_FRONTEND` — отдельный checkout/окружение
+своего B, а `coverage` — каталог его уже полученного original-source JSON.
+Подготовка B, допустимый toolchain и реальные sabotage probes описаны в
+`frontend/README.md`. Этот gate не устанавливает B и не переписывает его отчёты;
+один native процент не доказывает отсутствие suppression или baseline regression.
+Реальный совместный UI/API/SQLite
 smoke выполняется после интеграции backend/frontend/launchers; synthetic tests,
 unit mocks и production build его не заменяют. Docker/deployment, backup/restore,
 нагрузочные проверки и физическое TTS не входят в этот launcher-срез.

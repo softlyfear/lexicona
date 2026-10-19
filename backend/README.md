@@ -13,10 +13,13 @@
 ```sh
 uv sync --locked --python 3.13.16 --group dev
 .venv/bin/alembic upgrade head
-.venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+.venv/bin/uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --no-access-log
 ```
 
 По умолчанию используется `data/lexicona.sqlite3` относительно текущей директории.
+До отдельно проверенного trusted ingress forwarded headers не переписывают
+ASGI peer; raw Uvicorn access log отключён, чтобы не записывать произвольный URL.
+Это не готовый application audit logger и не доказательство будущего auth rate limit.
 `LEXICONA_DATABASE_URL` переопределяет URL и для приложения, и для Alembic:
 поддерживаются только файловые `sqlite+aiosqlite` URL без query parameters.
 Запуск приложения **не выполняет миграции**. Начальная миграция фиксирует только

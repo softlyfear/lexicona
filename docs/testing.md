@@ -24,8 +24,11 @@ Playwright использует обычный пользовательский 
 подключается к уже работающему development server. Затем создаёт собственную
 временную файловую БД, явно выполняет Alembic через `scripts/migrate.sh` и
 непосредственно запускает **две собственные detached process groups**: настоящий
-`uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1`
-и Vite через локальный Node, без промежуточного npm/shell launcher. Для обоих
+`uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --no-access-log`
+и Vite через локальный Node, без промежуточного npm/shell launcher. Uvicorn не
+переписывает socket peer forwarded-заголовками; raw URL access log отключён.
+Проверка аргументов настоящего child process не заменяет будущий auth IP-bucket
+regression или application-safe logging. Для обоих сервисов
 явно передаются одноразовые `LEXICONA_DATABASE_URL` и `TMPDIR`; inherited DB URL
 перекрывается, существующая БД не мигрируется. Migration/backend не source
 корневую `.env`; стандартную dotenv-загрузку Vite это не отключает.

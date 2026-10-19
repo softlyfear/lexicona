@@ -35,6 +35,9 @@ test.afterAll(async () => {
 test('real API, migrated WAL database, responsive UI and keyboard', async ({
   page,
 }, testInfo) => {
+  expect(server.services[0]?.spawnargs).toEqual(
+    expect.arrayContaining(['--no-proxy-headers', '--no-access-log']),
+  );
   const response = await page.request.get('/api/v1/health/ready');
   expect(response.status()).toBe(200);
   expect(response.headers()['cache-control']).toBe('no-store');
