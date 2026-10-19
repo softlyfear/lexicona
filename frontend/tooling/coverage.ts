@@ -328,6 +328,12 @@ const configuration = new Set([
 
 function directives(path: string, text: string) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+  const jsxText: ts.JsxText[] = [];
+  function collectJsxText(node: ts.Node) {
+    if (ts.isJsxText(node)) jsxText.push(node);
+    ts.forEachChild(node, collectJsxText);
+  }
+  collectJsxText(source);
   const found = new Set<number>();
   const messages: string[] = [];
   function visit(node: ts.Node) {
@@ -336,7 +342,9 @@ function directives(path: string, text: string) {
       ...(ts.getTrailingCommentRanges(text, node.end) ?? []),
     ];
     for (const { pos, end } of ranges) {
+      // Adjacent token boundaries can also scan JSX text as ordinary JS trivia.
       if (
+        !jsxText.some((range) => range.pos <= pos && pos < range.end) &&
         !found.has(pos) &&
         /\b(?:v8|c8|istanbul)\s+ignore\b|\bnode:coverage\s+(?:ignore|disable)|\bpragma\s*:\s*no\s+(?:cover|branch)/i.test(
           text.slice(pos, end),
