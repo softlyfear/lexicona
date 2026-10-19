@@ -1,27 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { execFile, spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { E2EServer, python, root } from './server';
 
 const exec = promisify(execFile);
-const root = resolve(import.meta.dirname, '../..');
-const python = join(root, 'backend/.venv/bin/python');
-let directory: string | undefined;
-let databasePath = '';
-let server: ChildProcess | undefined;
-let serverLog = '';
-
-async function listeners(): Promise<string> {
-  const { stdout } = await exec('ss', [
-    '-H',
-    '-ltn',
-    '( sport = :8000 or sport = :5173 )',
-  ]);
-  return stdout.trim();
-}
+const server = new E2EServer();
 
 async function changeRevision(value: string): Promise<string> {
   const { stdout } = await exec(
@@ -33,7 +16,7 @@ async function changeRevision(value: string): Promise<string> {
         '    previous = db.execute("SELECT version_num FROM alembic_version").fetchone()[0]\n' +
         '    db.execute("UPDATE alembic_version SET version_num = ?", (sys.argv[2],))\n' +
         '    print(previous)\n',
-      databasePath,
+      server.databasePath,
       value,
     ],
     { cwd: root, timeout: 10_000 },
@@ -42,82 +25,11 @@ async function changeRevision(value: string): Promise<string> {
 }
 
 test.beforeAll(async () => {
-  // Never attach to, migrate, or stop an existing development server/database.
-  expect(
-    await listeners(),
-    'E2E needs free localhost ports 8000 and 5173',
-  ).toBe('');
-  directory = await mkdtemp(join(tmpdir(), 'lexicona-e2e-'));
-  databasePath = join(directory, 'test.sqlite3');
-  const env = {
-    ...process.env,
-    LEXICONA_DATABASE_URL: `sqlite+aiosqlite:///${databasePath}`,
-  };
-  await exec('bash', ['scripts/migrate.sh'], {
-    cwd: root,
-    env,
-    timeout: 30_000,
-  });
-  const child = spawn('bash', ['scripts/dev.sh'], {
-    cwd: root,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  server = child;
-  child.stdout.on('data', (data: Buffer) => {
-    serverLog += data.toString();
-  });
-  child.stderr.on('data', (data: Buffer) => {
-    serverLog += data.toString();
-  });
-  let launchError: Error | undefined;
-  child.on('error', (error: Error) => {
-    launchError = error;
-  });
-  await expect
-    .poll(
-      async () => {
-        if (launchError) throw launchError;
-        if (child.exitCode !== null || child.signalCode !== null) {
-          throw new Error(`Own E2E launcher exited early: ${serverLog}`);
-        }
-        try {
-          const response = await fetch(
-            'http://127.0.0.1:5173/api/v1/health/ready',
-            { signal: AbortSignal.timeout(1000) },
-          );
-          return response.status;
-        } catch {
-          return 0;
-        }
-      },
-      {
-        timeout: 25_000,
-        message: 'Real frontend proxy → API → SQLite readiness',
-      },
-    )
-    .toBe(200);
+  await server.start();
 });
 
 test.afterAll(async () => {
-  const child = server;
-  if (child && child.exitCode === null && child.signalCode === null) {
-    await new Promise<void>((done, reject) => {
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error('Own E2E launcher did not stop after SIGTERM'));
-      }, 10_000);
-      child.once('exit', () => {
-        clearTimeout(timer);
-        done();
-      });
-      child.kill('SIGTERM');
-    });
-  }
-  if (directory) await rm(directory, { recursive: true, force: true });
-  if (server) {
-    expect(await listeners(), 'Own launcher must release both ports').toBe('');
-  }
+  await server.stop();
 });
 
 test('real API, migrated WAL database, responsive UI and keyboard', async ({
@@ -135,7 +47,7 @@ test('real API, migrated WAL database, responsive UI and keyboard', async ({
     'import sqlite3, sys\n' +
       'with sqlite3.connect(sys.argv[1]) as db:\n' +
       '    print(db.execute("PRAGMA journal_mode").fetchone()[0] + "|" + db.execute("SELECT version_num FROM alembic_version").fetchone()[0])\n',
-    databasePath,
+    server.databasePath,
   ]);
   expect(stdout.trim()).toMatch(/^wal\|\S+$/);
 
@@ -179,7 +91,7 @@ test('real schema mismatch shows safe failure and retry recovers', async ({
     const response = await page.request.get('/api/v1/health/ready');
     expect(response.status()).toBe(503);
     expect(response.headers()['cache-control']).toBe('no-store');
-    expect(await response.text()).not.toContain(databasePath);
+    expect(await response.text()).not.toContain(server.databasePath);
     const live = await page.request.get('/api/v1/health/live');
     expect(live.status()).toBe(200);
     await page.getByRole('button', { name: 'Проверить снова' }).click();
