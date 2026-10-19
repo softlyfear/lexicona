@@ -24,12 +24,17 @@ def configure_connection(
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA synchronous=FULL")
     cursor.close()
 
 
 def begin_transaction(connection: Connection) -> None:
     """Make transactions real even for DDL, SELECT and outer savepoints."""
-    connection.exec_driver_sql("BEGIN")
+    connection.exec_driver_sql(
+        "BEGIN IMMEDIATE"
+        if connection.get_execution_options().get("sqlite_write")
+        else "BEGIN"
+    )
 
 
 class Database:
@@ -46,7 +51,7 @@ class Database:
             raise ValueError("Only file-backed sqlite+aiosqlite URLs are supported")
         self._directory = Path(url.database).parent
         self.engine = create_async_engine(
-            url, pool_size=5, max_overflow=0, hide_parameters=True
+            url, pool_size=3, max_overflow=0, pool_timeout=5, hide_parameters=True
         )
         event.listen(self.engine.sync_engine, "do_connect", self._prepare_directory)
         event.listen(self.engine.sync_engine, "connect", configure_connection)
@@ -64,9 +69,11 @@ class Database:
         self._directory.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     @asynccontextmanager
-    async def unit_of_work(self) -> AsyncIterator[AsyncSession]:
-        """Commit one explicit transaction; roll back on any failure."""
+    async def unit_of_work(self, *, write: bool = False) -> AsyncIterator[AsyncSession]:
+        """Commit or roll back one UoW; reserve write access before yielding."""
         async with self.sessions() as session, session.begin():
+            if write:
+                await session.connection(execution_options={"sqlite_write": True})
             yield session
 
     async def is_ready(self) -> bool:
