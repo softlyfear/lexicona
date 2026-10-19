@@ -58,7 +58,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=503,
                 content=ErrorEnvelope(error=ErrorDetail()).model_dump(),
-                headers={"Cache-Control": "no-store"},
+                headers={"Cache-Control": "no-store", "Retry-After": "1"},
             )
         return Ready()
 

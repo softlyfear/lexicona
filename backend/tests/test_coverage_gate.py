@@ -122,6 +122,48 @@ def test_gate_accepts_real_covered_pragma_strings(tmp_path: Path) -> None:
     assert main([str(report), str(source)]) == 0
 
 
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "format_missing",
+        "format_unknown",
+        "version_missing",
+        "version_unknown",
+        "arcs_missing",
+        "missing_branches_missing",
+        "coerced_line",
+        "coerced_flag",
+    ],
+)
+def test_gate_validates_real_report_schema(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], fault: str
+) -> None:
+    from tools.coverage_gate import main
+
+    report, source = real_coverage_report(tmp_path, "answer = 42\n")
+    data = json.loads(report.read_text())
+    file = next(iter(data["files"].values()))
+    if fault == "format_missing":
+        del data["meta"]["format"]
+    elif fault == "format_unknown":
+        data["meta"]["format"] = 999
+    elif fault == "version_missing":
+        del data["meta"]["version"]
+    elif fault == "version_unknown":
+        data["meta"]["version"] = "0.0.0"
+    elif fault == "arcs_missing":
+        del file["executed_branches"]
+    elif fault == "missing_branches_missing":
+        del file["missing_branches"]
+    elif fault == "coerced_line":
+        file["executed_lines"] = ["1"]
+    else:
+        data["meta"]["branch_coverage"] = "true"
+    report.write_text(json.dumps(data))
+    assert main([str(report), str(source)]) == 1
+    assert "invalid coverage report" in capsys.readouterr().out
+
+
 def test_gate_accepts_fully_measured_source(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -131,10 +173,11 @@ def test_gate_accepts_fully_measured_source(tmp_path: Path) -> None:
     report.write_text(
         json.dumps(
             {
-                "meta": {"branch_coverage": True},
+                "meta": {"format": 3, "version": "7.16.2", "branch_coverage": True},
                 "files": {
                     str(module): {
                         "executed_lines": [1],
+                        "executed_branches": [],
                         "missing_lines": [],
                         "missing_branches": [],
                         "excluded_lines": [],
@@ -179,6 +222,7 @@ def test_gate_rejects_incomplete_measurement(
     module.write_text("answer = 42\n", encoding="utf-8")
     file_data: dict[str, object] = {
         "executed_lines": [1],
+        "executed_branches": [],
         "missing_lines": [2] if fault == "lines" else [],
         "missing_branches": [[1, 2]] if fault == "branches" else [],
         "excluded_lines": [3] if fault == "excluded" else [],
@@ -195,7 +239,11 @@ def test_gate_rejects_incomplete_measurement(
     report.write_text(
         json.dumps(
             {
-                "meta": {"branch_coverage": fault != "line_only"},
+                "meta": {
+                    "format": 3,
+                    "version": "7.16.2",
+                    "branch_coverage": fault != "line_only",
+                },
                 "files": {} if fault == "absent" else {str(module): file_data},
             }
         ),
@@ -216,10 +264,11 @@ def test_gate_cli_entrypoint(
     report.write_text(
         json.dumps(
             {
-                "meta": {"branch_coverage": True},
+                "meta": {"format": 3, "version": "7.16.2", "branch_coverage": True},
                 "files": {
                     str(source): {
                         "executed_lines": [],
+                        "executed_branches": [],
                         "missing_lines": [],
                         "missing_branches": [],
                         "excluded_lines": [],
