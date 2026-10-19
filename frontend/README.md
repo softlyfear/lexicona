@@ -33,7 +33,8 @@ npm run build
 - `npm run format` форматирует исходники и конфигурацию.
 - Coverage: V8, все `src/**/*.{ts,tsx}`, включая не импортированные тестами файлы и настоящий `main.tsx`; type-only `.d.ts` не исполняются. Per-file lines/branches/functions/statements — 100%. Отчёты в `coverage/` (не Git).
 - `build` запускает strict typecheck и создаёт `dist/` (не Git).
-- Unit/component tests используют jsdom и контролируемый fetch, **не доказывают реальное frontend → API → SQLite соединение**, browser layout или физическую доступность устройства. Реальную API/browser проверку следует запускать с backend отдельно; автоматический E2E target пока не добавлен.
+- Unit/component tests используют jsdom и контролируемый fetch, **не доказывают реальное frontend → API → SQLite соединение**, browser layout или физическую доступность устройства.
+- Реальный Chromium → Vite → API → одноразовая SQLite/WAL и fault-regressions fixture: `npm run test:e2e`. Сначала установите backend окружение и Chromium, освободите порты 8000/5173; точные команды, isolation/cleanup и ограничения — в [docs/testing.md](../docs/testing.md). Harness сам запускает два собственных сервиса; отдельный backend или `scripts/dev.sh` для E2E запускать не нужно.
 
 ## UI и данные
 

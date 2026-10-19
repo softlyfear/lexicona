@@ -23,8 +23,16 @@ Playwright использует обычный пользовательский 
 Нужны свободные localhost-порты 8000 и 5173. Тест сначала проверяет их и не
 подключается к уже работающему development server. Затем создаёт собственную
 временную файловую БД, явно выполняет Alembic через `scripts/migrate.sh` и
-запускает настоящий `scripts/dev.sh` с отдельным `LEXICONA_DATABASE_URL`.
-Пользовательская `.env` не читается, существующая БД не мигрируется.
+непосредственно запускает **две собственные detached process groups**: настоящий
+`uvicorn lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1`
+и Vite через локальный Node, без промежуточного npm/shell launcher. Для обоих
+явно передаются одноразовые `LEXICONA_DATABASE_URL` и `TMPDIR`; inherited DB URL
+перекрывается, существующая БД не мигрируется. Migration/backend не source
+корневую `.env`; стандартную dotenv-загрузку Vite это не отключает.
+
+E2E **не запускает и не smoke-проверяет `scripts/dev.sh`**. Его runtime/failure
+проверки выполняются отдельно; успешный E2E не является доказательством работы
+этого development launcher.
 
 Два последовательных сценария проверяют:
 
@@ -35,9 +43,30 @@ Playwright использует обычный пользовательский 
 - реальную неверную schema revision → ready503 при работающем live200;
 - отображение отказа и успешный retry после восстановления schema revision.
 
-Сетевые ответы не мокируются. В конце завершаются собственный launcher и его
-сервисы, проверяется освобождение портов, удаляется только собственный временный
-каталог БД. JSON-отчёт, screenshots и failure traces находятся в игнорируемом
+Сетевые ответы не мокируются. Teardown сигналит только записанным при spawn
+собственным service groups, независимо от жизнеспособности их leaders. После
+SIGTERM даётся 1.5s на исчезновение групп и reaping прямых children, затем
+SIGKILL и ещё до 1.5s; hard fallback/ранний выход сервиса остаются **ошибкой**,
+не превращаются в success. Удаление своего каталога БД/TMPDIR и проверка портов
+идут в `finally`, в том числе после ошибки/тайм-аута остановки или failed setup.
+Порты используются только для проверки, не для поиска целей kill; чужие
+процессы не завершаются. Проверка через `ss` имеет отдельный deadline 3s.
+
+`e2e/cleanup.e2e.ts` отдельно проверяет нормальную остановку, SIGSTOP собственных
+leaders и целых групп, раннюю SIGKILL-смерть API/Vite leader (включая оставшееся
+Vite subtree). Каждый сценарий использует настоящие сервисы/мигрированную БД,
+проверяет rejection при fault, bounded teardown, отсутствие записанных
+PIDs/groups, обоих listeners и собственных temp dirs **до** test emergency
+cleanup; несвязанный sentinel должен остаться жив. Только эти fixture-regressions:
+
+```bash
+(cd frontend && npm run test:e2e -- e2e/cleanup.e2e.ts)
+```
+
+Граница гарантии: cleanup выполняется живым Playwright worker. SIGKILL самого
+runner/worker, power loss и системные отказы файловой системы этим fixture не
+обрабатываются; отсутствие сервиса не объявляется успешным UI-тестом.
+JSON-отчёт, screenshots и failure traces находятся в игнорируемом
 `frontend/artifacts/`. Запуск с Chromium headless не доказывает физический touch,
 работу Firefox/WebKit, TTS или полный WCAG/device audit.
 
