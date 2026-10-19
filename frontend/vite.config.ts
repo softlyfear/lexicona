@@ -17,9 +17,8 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.d.ts'],
-      reporter: ['text', 'json-summary', 'html'],
+      include: ['src/**/*.{ts,tsx}', 'tooling/**/*.{ts,tsx}'],
+      reporter: ['text', 'json', 'json-summary', 'html'],
       thresholds: {
         perFile: true,
         lines: 100,
