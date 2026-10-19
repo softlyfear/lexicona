@@ -146,6 +146,7 @@ for role in backend frontend; do
 done
 assert_stopped
 printf 'PASS: explicit single worker with inherited WEB_CONCURRENCY=4 and UVICORN_WORKERS=3\n'
+printf 'PASS: explicit --no-proxy-headers and --no-access-log Uvicorn arguments\n'
 expect_exit 37 timeout 10 env FIXTURE_BACKEND_EXIT=37 bash "$sandbox/project/scripts/dev.sh"
 [[ $(<"$sandbox/state/backend.cwd") == "$sandbox/project/backend" ]] || fail 'backend cwd'
 [[ $(<"$sandbox/state/frontend.cwd") == "$sandbox/project/frontend" ]] || fail 'frontend cwd'
