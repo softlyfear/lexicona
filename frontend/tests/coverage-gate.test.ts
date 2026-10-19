@@ -36,6 +36,53 @@ it('reads real V8 source-location coverage, including typed TSX (positive probe)
   ).toContain('type-only');
 }, 30000);
 
+it('accepts fully covered literal JSX comment delimiters from native V8', () => {
+  const root = fixture({
+    'vite.config.ts': readFileSync('vite.config.ts', 'utf8'),
+    'src/View.tsx': `export const Slash = () => <p>// v8 ignore next</p>;
+export const Block = () => <p>/* v8 ignore next */</p>;
+`,
+    'tests/view.test.ts': `import { expect, it } from 'vitest';
+import { Slash, Block } from '../src/View';
+it('renders literal children', () => {
+  expect(Slash().props.children).toBe('// v8 ignore next');
+  expect(Block().props.children).toBe('/* v8 ignore next */');
+});`,
+    'tests/setup.ts': '',
+  });
+  roots.push(root);
+  expect(instrument(root)).toContain('passed');
+  const summary = JSON.parse(
+    readFileSync(join(root, 'coverage/coverage-summary.json'), 'utf8'),
+  ) as { total: Record<string, { pct: number }> };
+  for (const metric of ['lines', 'branches', 'functions', 'statements'])
+    expect(summary.total[metric]?.pct).toBe(100);
+  const result = gate.inspect(root);
+  expect(result.units['src/View.tsx']?.missing).toEqual([]);
+  expect(result.failures).toEqual([]);
+}, 30000);
+
+it('still rejects a genuine JSX comment beside literal JSX text with native V8', () => {
+  const root = fixture({
+    'vite.config.ts': readFileSync('vite.config.ts', 'utf8'),
+    'src/View.tsx': `export const View = () => <p>/* c8 ignore next */{/* v8 ignore next */}// istanbul ignore next</p>;
+`,
+    'tests/view.test.ts': `import { expect, it } from 'vitest';
+import { View } from '../src/View';
+it('renders only literal children', () => {
+  expect(View().props.children).toEqual(['/* c8 ignore next */', '// istanbul ignore next']);
+});`,
+    'tests/setup.ts': '',
+  });
+  roots.push(root);
+  expect(instrument(root)).toContain('passed');
+  const result = gate.inspect(root);
+  expect(result.units['src/View.tsx']?.missing).toEqual([]);
+  expect(result.failures).toEqual([
+    'src/View.tsx:1: forbidden coverage directive',
+  ]);
+}, 30000);
+
 const roots: string[] = [];
 it('rejects a real unexecuted line and function', () => {
   const root = fixture({
