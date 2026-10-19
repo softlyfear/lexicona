@@ -2,7 +2,7 @@
 # Explicit, foreground-only migration. No implicit migration on app startup.
 set -euo pipefail
 
-root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly root
 # shellcheck source=lib/common.sh
 source "$root/scripts/lib/common.sh"

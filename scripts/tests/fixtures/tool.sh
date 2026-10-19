@@ -21,6 +21,7 @@ case "${0##*/}" in
   alembic)
     [[ "$*" == 'upgrade head' ]] || exit 95
     printf '%s\n' "$PWD" >"$FIXTURE_STATE/migration.cwd"
+    printf '%s\n' "${CDPATH-unset}" >"$FIXTURE_STATE/migration.cdpath"
     exit "${FIXTURE_MIGRATE_EXIT:-0}"
     ;;
   npm)
@@ -47,6 +48,7 @@ printf '%s\n' "$$" >"$FIXTURE_STATE/$role.pid"
 printf '%s\n' "$PWD" >"$FIXTURE_STATE/$role.cwd"
 printf '%s\n' "${TMPDIR:-missing}" >"$FIXTURE_STATE/$role.tmp"
 printf '%s\n' "${WEB_CONCURRENCY-unset}" "${UVICORN_WORKERS-unset}" >"$FIXTURE_STATE/$role.workers-env"
+printf '%s\n' "${CDPATH-unset}" >"$FIXTURE_STATE/$role.cdpath"
 # Check the real filesystem after the service's cd, not just its env string.
 if [[ -d "${TMPDIR:-}" && -w "$TMPDIR" && -x "$TMPDIR" ]]; then
   printf '%s\n' "$PWD" >"$TMPDIR/$role.probe"

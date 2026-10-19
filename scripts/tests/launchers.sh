@@ -2,7 +2,7 @@
 # Synthetic process fixtures only; these do not exercise the application.
 set -euo pipefail
 
-source_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+source_root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly source_root
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/lexicona-shell-tests.XXXXXXXX")"
 readonly sandbox
@@ -113,6 +113,31 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 sleep 120 &
 unrelated_pid=$!
+# Relative invocation must ignore CDPATH for discovery, not erase it for tools.
+bootstrap_project="$sandbox/project with spaces"
+shadow="$sandbox/shadow with spaces"
+cp -R -- "$sandbox/project" "$bootstrap_project"
+mkdir -p "$shadow/scripts/tests"
+for cdpath in . "$shadow:."; do
+  (
+    cd -- "$bootstrap_project"
+    export CDPATH="$cdpath"
+    expect_exit 64 bash scripts/dev.sh unexpected
+    expect_exit 64 bash scripts/migrate.sh unexpected
+    expect_exit 37 timeout 10 env FIXTURE_BACKEND_EXIT=37 bash scripts/dev.sh
+    for role in backend frontend; do
+      [[ $(<"$sandbox/state/$role.cwd") == "$bootstrap_project/$role" ]] || fail "$role root redirected by CDPATH"
+      [[ $(<"$sandbox/state/$role.cdpath") == "$cdpath" ]] || fail "$role inherited CDPATH changed"
+    done
+    assert_stopped
+    expect_exit 41 env FIXTURE_MIGRATE_EXIT=41 bash scripts/migrate.sh
+    [[ $(<"$sandbox/state/migration.cwd") == "$bootstrap_project/backend" ]] || fail 'migration root redirected by CDPATH'
+    [[ $(<"$sandbox/state/migration.cdpath") == "$cdpath" ]] || fail 'migration inherited CDPATH changed'
+    [[ "$CDPATH" == "$cdpath" ]] || fail 'caller CDPATH changed'
+    kill -0 "$unrelated_pid" || fail 'unrelated process was killed'
+    printf 'PASS: relative launchers from path with spaces; CDPATH=%s preserved, shadow ignored\n' "$cdpath"
+  )
+done
 # Explicit worker argv must win without deleting the caller's environment.
 expect_exit 37 timeout 10 env WEB_CONCURRENCY=4 UVICORN_WORKERS=3 \
   FIXTURE_BACKEND_EXIT=37 bash "$sandbox/project/scripts/dev.sh"
