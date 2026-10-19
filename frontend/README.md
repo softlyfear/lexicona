@@ -31,10 +31,34 @@ npm run build
 ```
 
 - `npm run format` форматирует исходники и конфигурацию.
-- Coverage: V8, все `src/**/*.{ts,tsx}`, включая не импортированные тестами файлы и настоящий `main.tsx`; type-only `.d.ts` не исполняются. Per-file lines/branches/functions/statements — 100%. Отчёты в `coverage/` (не Git).
+- Coverage provider остаётся закреплённым **V8**: `src/**/*.{ts,tsx}` и `tooling/**/*.{ts,tsx}`, включая не импортированные тестами файлы и настоящий `main.tsx`. Per-file lines/branches/functions/statements — **100%**, без округления. Отчёты `coverage/coverage-final.json` (original-source locations TS/TSX), `coverage-summary.json` и HTML не входят в Git.
+- Strict typecheck включает `src`, `tooling`, `tests`, `e2e`, Vite/Playwright config; `skipLibCheck: false`. `npm run tooling:build` отдельно компилирует тот же strict tooling в `artifacts/coverage-tooling/` для Node CLI.
+- `npm run test:coverage:sabotage` проверяет gate на настоящей V8 instrumentation: positive TSX probe, missing line/function/branch (в том числе implicit else), entirely unimported/untracked source, rename/deletion, скрытые ignore-комментарии, baseline regression и explicit type-only N/A. Временные отрицательные collector fixtures намеренно имеют thresholds 0, чтобы получить реальные JSON с missing units и проверить отказ gate; **production thresholds остаются 100**. Directive-like строки/regex/JSX text не считаются ignore-комментариями.
 - `build` запускает strict typecheck и создаёт `dist/` (не Git).
 - Unit/component tests используют jsdom и контролируемый fetch, **не доказывают реальное frontend → API → SQLite соединение**, browser layout или физическую доступность устройства.
 - Реальный Chromium → Vite → API → одноразовая SQLite/WAL и fault-regressions fixture: `npm run test:e2e`. Сначала установите backend окружение и Chromium, освободите порты 8000/5173; точные команды, isolation/cleanup и ограничения — в [docs/testing.md](../docs/testing.md). Harness сам запускает два собственных сервиса; отдельный backend или `scripts/dev.sh` для E2E запускать не нужно.
+
+## Manifest-aware baseline gate
+
+`npm run coverage:gate -- B BASELINE_FRONTEND BASELINE_REPORT_DIR` принимает **ровно три аргумента**: полный 40-символьный SHA baseline, путь к отдельному frontend checkout этого commit и каталог его готового coverage report (относительно baseline frontend либо абсолютный). Candidate — текущая директория frontend. Gate сам повторно запускает candidate Vitest с V8, но **не создаёт baseline checkout, не устанавливает зависимости и не перезапускает baseline tests**.
+
+Подготовьте B отдельно: checkout на согласованном SHA, чистый frontend, `npm ci` из его lock, тот же Node/npm и installed TypeScript/Vitest/coverage-v8. Сохраните полный успешный baseline test run и original-source JSON. Если версия B ещё не включает JSON reporter, разовый запуск из **baseline frontend**:
+
+```sh
+npm run test:coverage -- --coverage.reporter=json --coverage.reporter=json-summary --coverage.reportsDirectory=artifacts/baseline-coverage
+```
+
+Затем из **candidate frontend** (переменные задаются оператором, не приватными файлами проекта):
+
+```sh
+npm run coverage:gate -- "$B" "$BASELINE_FRONTEND" artifacts/baseline-coverage
+```
+
+Baseline остаётся read-only для gate. Сравниваются lock hash и установленные версии TypeScript/Vitest/V8; несовместимый toolchain требует отдельного объяснённого baseline, не автоматического PASS. Отчёты candidate: `artifacts/coverage-gate.json` и `artifacts/coverage-gate-native.log`. JSON содержит B/H commit, root, source hashes/applicability, tracked/untracked/rename manifest, changed-source, diff/coverage hashes и missing-unit/baseline-regression failures. Для незакоммиченного candidate H — его HEAD **плюс** manifests/diff hash; для review запускайте gate повторно после commit.
+
+Inventory строится независимо от coverage imports по всему frontend для TS/TSX/JS/JSX/MJS/CJS (также MTS/CTS). Только корневые `node_modules`, `.git`, `dist`, `coverage`, `artifacts` — внешние/generated outputs; `tests/` и `e2e/` явно test-support, Vite/Playwright/ESLint configs — configuration. Types/пустые файлы без emitted executable units отмечаются `type-only: no emitted executable units`, не фиктивными 100%. Остальной runtime, включая новый каталог, обязан иметь source-location instrumentation: отсутствие в native include даёт FAIL, а не молчаливый пропуск. Source symlinks отклоняются. Каждый executable source сейчас проверяется строже changed-only: нулевые missing statements/functions/branch outcomes во всём файле; неизменённые и переименованные файлы дополнительно сравниваются с B. Реестр coverage exceptions пуст.
+
+Gate проверяет schema/maps/outcome counts/границы source locations и настоящие ignore-комментарии, но не является защитой от умышленно подделанных отчётов или модифицированного test runner. Сохранность исходников в процессе instrumentation проверяется hashes; baseline JSON должен происходить из отдельно проверенного запуска B. Coverage не заменяет assertions, независимый review, real API E2E и physical TTS.
 
 ## UI и данные
 
