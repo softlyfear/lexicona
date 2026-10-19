@@ -15,6 +15,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "tooling:build": "tsc -p tsconfig.tooling.json",
+    "coverage:gate": "npm run tooling:build && node --input-type=module -e \"import { run } from './artifacts/coverage-tooling/coverage.js'; run(process.cwd(), process.argv.slice(1));\" --",
+    "test:coverage:sabotage": "vitest run tests/coverage-gate.test.ts tests/coverage-config.test.ts",
     "test:e2e": "playwright test",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
