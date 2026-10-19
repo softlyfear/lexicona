@@ -22,6 +22,7 @@ React/TypeScript UI, формы, speech adapter, темы, доступност�
 5. Speech: feature detection, voiceschanged/bounded loading, EN/RU matching, per-browser voice choice, user gesture, cancel previous, start/end/error/watchdog cleanup. Нет голоса/сбой не ломает текстовые режимы. Passive completion не начислять повторно; TTS mock не доказательство звука.
 6. Service worker allowlist публичных assets; никаких приватных API/слов/ответов/auth tokens в localStorage/IndexedDB/Cache Storage/persisted Query. Offline состояние честно unsaved.
 7. Strict TS, scoped lint/format, Vitest+coverage по workflow, production build, relevant Playwright against real API, responsive/keyboard/contrast checks. Отчёт actual commands/exit/evidence/not_run. Не самостоятельное acceptance.
+8. E2E harness явно владеет созданными сервисами и disposable DB с момента запуска. На Linux отдельно созданные process groups не исчезают от kill одного launcher: graceful stop и bounded hard fallback должны завершать только собственные группы, а finally — удалять только свои временные каталоги. Проверять fault-path с остановленным/рано умершим процессом и сохранностью постороннего sentinel; не находить жертвы по занятым портам и не маскировать исходный failure.
 
 ## Pitfalls
 Не переписывать server normalization/scoring как другой источник истины, не показывать correct IDs заранее, не называть процент вероятностью знания. Demo suggestions явно демонстрационные; реальный lookup требует source/license/ranking. Не использовать личный browser profile/third-party analytics/paid TTS без разрешения.
