@@ -73,7 +73,7 @@ trap 'exit 143' TERM
 (
   cd -- "$root/backend"
   exec setsid "$root/backend/.venv/bin/uvicorn" lexicona.app:create_app \
-    --factory --host 127.0.0.1 --port 8000 --workers 1
+    --factory --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --no-access-log
 ) &
 children+=("$!")
 (

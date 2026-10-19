@@ -33,7 +33,10 @@ case "${0##*/}" in
     status="${FIXTURE_FRONTEND_EXIT:-hold}"
     ;;
   uvicorn)
-    [[ "$*" == 'lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1' ]] || exit 95
+    [[ "$*" == 'lexicona.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers --no-access-log' ]] || {
+      printf 'Expected single-worker Uvicorn with explicit --no-proxy-headers --no-access-log; got: %s\n' "$*" >&2
+      exit 95
+    }
     role=backend
     status="${FIXTURE_BACKEND_EXIT:-hold}"
     ;;
