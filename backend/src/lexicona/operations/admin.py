@@ -49,7 +49,8 @@ def protected_password() -> str:
 async def _run(args: Arguments, secret: str | None) -> None:
     database = Database(os.environ.get("LEXICONA_DATABASE_URL", DEFAULT_DATABASE_URL))
     passwords = PasswordService()
-    try:
+
+    async def operate() -> None:
         service = BootstrapService(database, passwords)
         await service.check(args.login)
         if secret is not None:
@@ -59,6 +60,23 @@ async def _run(args: Arguments, secret: str | None) -> None:
                 secret,
                 deadline=asyncio.get_running_loop().time() + 12,
             )
+
+    # Own the task before any read/write UoW starts. Forward cancellation once
+    # to stop business submissions; further cancels must not interrupt the
+    # driver's active-operation invalidation/close before the owner joins it.
+    operation = asyncio.create_task(operate())
+    try:
+        try:
+            await asyncio.shield(operation)
+        finally:
+            if not operation.done():
+                operation.cancel()
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    pass
+            operation.result()
     finally:
 
         async def close() -> None:
@@ -67,8 +85,8 @@ async def _run(args: Arguments, secret: str | None) -> None:
             finally:
                 await database.dispose()
 
-        # A second SIGINT/cancel must not skip DB disposal while threads join,
-        # nor interrupt disposal and leave pooled connections alive.
+        # Repeated outer cancellation must not skip DB disposal while threads
+        # join, nor interrupt disposal and leave pooled connections alive.
         cleanup = asyncio.create_task(close())
         cancelled = False
         while not cleanup.done():
