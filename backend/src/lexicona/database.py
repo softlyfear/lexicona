@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import ConnectionPoolEntry
 
-SCHEMA_REVISION = "0001_foundation"
+SCHEMA_REVISION = "0002_auth_core"
 DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///./data/lexicona.sqlite3"
 
 

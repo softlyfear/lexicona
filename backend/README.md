@@ -1,8 +1,10 @@
-# Lexicona backend foundation
+# Lexicona backend: foundation и auth-core CLI
 
-Ограниченный срез LX-001/LX-002: FastAPI application factory, health endpoints,
+Foundation LX-001/LX-002: FastAPI application factory, health endpoints,
 файловый SQLite, явные Alembic migrations и локальные quality gates.
-Аккаунты, словарь и тренировочные percentage/SRS policies здесь ещё не реализованы.
+Первый ограниченный этап LX-003 добавляет четыре auth-таблицы и защищённую CLI
+первого администратора. HTTP auth/admin endpoints, cookie/CSRF, invites workflow,
+UI аккаунтов, словарь и тренировочные percentage/SRS policies ещё не реализованы.
 
 ## Окружение и запуск
 
@@ -22,8 +24,10 @@ ASGI peer; raw Uvicorn access log отключён, чтобы не записы
 Это не готовый application audit logger и не доказательство будущего auth rate limit.
 `LEXICONA_DATABASE_URL` переопределяет URL и для приложения, и для Alembic:
 поддерживаются только файловые `sqlite+aiosqlite` URL без query parameters.
-Запуск приложения **не выполняет миграции**. Начальная миграция фиксирует только
-revision boundary `0001_foundation`, без фиктивных бизнес-таблиц.
+Запуск приложения **не выполняет миграции**. Неизменённая `0001_foundation`
+фиксирует исходную revision boundary. Текущий head `0002_auth_core` создаёт только
+`users`, `user_settings`, `auth_sessions`, `invites`; переход с `0001_foundation`
+выполняется той же явной командой `alembic upgrade head`.
 
 - `GET /api/v1/health/live`: `200 {"status":"alive"}`, независимо от SQLite/schema.
 - `GET /api/v1/health/ready`: `200 {"status":"ready"}` только при доступной БД
@@ -55,6 +59,61 @@ Readiness безопасно отвечает 503 при DB lock/ошибке/и
 200 после снятия причины. При обычном WAL writer reader/readiness не блокируются.
 Ожидание lock до 5 секунд, checkout до 5 секунд: суммарный DB wait budget до
 10 секунд без retry (меньше foundation лимита 12 секунд); это не end-to-end SLA.
+
+## Первый администратор: только локальная защищённая CLI
+
+После явной миграции пустой БД, из `backend/` и в интерактивном терминале:
+
+```sh
+.venv/bin/python -m lexicona.operations.admin bootstrap --login admin --display-name 'Администратор'
+```
+
+Это пример nonsecret login/name, **не** пароль по умолчанию. CLI дважды запрашивает
+пароль через скрытый TTY/getpass; ввод должен точно совпасть. При non-TTY, EOF,
+отмене, небезопасном getpass fallback или mismatch запись не начинается. Нет
+`--password`, password-file, password environment variable или public bootstrap.
+Не передавайте пароль в argv, shell history, перенаправленный stdin или логи.
+`LEXICONA_DATABASE_URL` выбирает ту же файловую БД, что приложение и Alembic;
+CLI не читает `.env` и не запускает миграции автоматически.
+
+Login: 3–32 ASCII `[a-z0-9_]`, A–Z приводятся к нижнему регистру; пробелы не trim.
+Display name: NFC/outer trim, 1–80 символов, без control/surrogate code points.
+Пароль: 12–128 Unicode scalar values, без trim/NFC/truncation, включая значимые
+пробелы. Длина 12 — продуктовый контракт, не заявление полного OWASP conformity.
+Проверка аргументов предшествует password prompt. Любая существующая учётная
+запись запрещает первоначальную настройку: это не recovery/elevation команда.
+
+| Exit | Статический результат |
+|---|---|
+| 0 | `Первый администратор создан.` (stdout, только известный commit) |
+| 2 | `Проверьте введённые данные.` |
+| 3 | `Логин недоступен.` (приоритет над already bootstrapped) |
+| 4 | `Первоначальная настройка уже выполнена.` |
+| 5 | `База данных не готова.` (schema/DB/busy/runtime failure) |
+| 130 | `Операция отменена.` |
+
+Все отказы идут в stderr без введённых значений, hash, SQL и filesystem paths.
+`--help` показывает только справку argparse, не выполняет bootstrap. Hash готовится
+до writer lock; fresh `BEGIN IMMEDIATE` повторяет проверки schema/login/пустоты и
+атомарно создаёт admin+default settings. При конкурентных запусках выигрывает один;
+второй получает 3 для того же canonical login или 4 для другого. Busy/unknown commit
+не повторяются автоматически; ошибка/отмена после submitted commit **не** означает
+rollback. При неизвестном результате проверьте состояние БД, не считайте exit5
+доказательством отсутствия аккаунта.
+
+Argon2id явно задан: version19, 65536KiB, t3, p1, salt16/hash32, UTF-8.
+Отдельный executor допускает 2 running и 4 removable FIFO waiters; full admission
+отвергается немедленно, queue wait ограничен min(2s, remaining deadline).
+Cancelled/expired pending jobs не начинают hash; running permit удерживается до
+реального завершения thread, даже если caller отменён. Закрытие сервиса прекращает
+admission, убирает pending work и join-ит threads вне event loop. CLI закрывает
+executor и DB, дожидаясь cleanup также при повторной coroutine cancellation.
+12s deadline относится к стадии create после защищённого ввода, не к времени
+размышления оператора; это не hard syscall timeout или готовый HTTP SLA.
+
+Password service пока используется CLI и тестами, **не** встроен в HTTP lifespan.
+Нет pre-auth/dummy hash/rate buckets/HTTP auth traffic: эти HTTP/CSRF/session и
+полные A02–A10 критерии остаются следующим отдельно назначаемым этапом.
 
 ## Проверки
 

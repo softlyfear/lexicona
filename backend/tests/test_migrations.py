@@ -61,7 +61,7 @@ async def test_future_upgrade_failure_rolls_back_ddl_savepoint_data_and_revision
     migration = """from alembic import op
 import sqlalchemy as sa
 revision = "0002_probe"
-down_revision = "0001_foundation"
+down_revision = "0002_auth_core"
 
 def upgrade():
     op.create_table("upgrade_probe", sa.Column("id", sa.Integer(), primary_key=True))
