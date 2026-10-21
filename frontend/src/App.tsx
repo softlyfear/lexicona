@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { AccountPage } from './auth/AccountPage';
+import { browserAuth } from './auth/browser';
 import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { checkReady } from './api';
@@ -5,6 +8,8 @@ import { ThemeControl } from './ThemeControl';
 import styles from './App.module.css';
 
 export function App() {
+  const [auth] = useState(() => browserAuth());
+  useEffect(() => auth.start(), [auth]);
   const connection = useQuery({
     queryKey: ['public', 'readiness'],
     queryFn: ({ signal }) => checkReady(signal),
@@ -38,19 +43,9 @@ export function App() {
           <Route path="/" element={<Navigate to="/dictionary" replace />} />
           <Route
             path="/dictionary"
-            element={
-              <section>
-                <p>Ваше пространство для слов</p>
-                <h1>Личный словарь</h1>
-                <h2>Словарь ещё не подключён</h2>
-                <p>
-                  Вход в аккаунт и работа со словами появятся в следующих
-                  версиях. Сейчас здесь нет сохранённых записей или
-                  демонстрационных слов.
-                </p>
-              </section>
-            }
+            element={<AccountPage client={auth.client} dictionary />}
           />
+          <Route path="/login" element={<AccountPage client={auth.client} />} />
           <Route
             path="/connection"
             element={

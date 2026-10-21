@@ -4,6 +4,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
+import { denial, reply, secret } from './auth-fixture';
+
+function stubPublic(fetcher: typeof fetch) {
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url === '/api/v1/auth/me') return Promise.resolve(denial());
+    if (url === '/api/v1/auth/csrf')
+      return Promise.resolve(
+        reply({ csrf_token: secret(), authenticated: false }),
+      );
+    return fetcher(input, init);
+  });
+}
 
 function renderApp(path = '/dictionary') {
   const client = new QueryClient();
@@ -34,7 +52,7 @@ describe('foundation shell', () => {
             finish = resolve;
           }),
       );
-    vi.stubGlobal('fetch', fetcher);
+    stubPublic(fetcher);
     const { unmount, client } = renderApp();
     expect(
       await screen.findByText('Сервис недоступен. Повторите проверку.'),
@@ -63,8 +81,7 @@ describe('foundation shell', () => {
   });
 
   it('reports HTTP 202 as unavailable instead of ready', async () => {
-    vi.stubGlobal(
-      'fetch',
+    stubPublic(
       vi
         .fn<typeof fetch>()
         .mockResolvedValue(
@@ -84,8 +101,7 @@ describe('foundation shell', () => {
   });
 
   it('returns from an unknown path using the dictionary link', async () => {
-    vi.stubGlobal(
-      'fetch',
+    stubPublic(
       vi
         .fn<typeof fetch>()
         .mockResolvedValue(new Response(JSON.stringify({ status: 'ready' }))),
@@ -98,15 +114,14 @@ describe('foundation shell', () => {
       .setup()
       .click(screen.getByRole('link', { name: 'Вернуться в словарь' }));
     expect(
-      screen.getByRole('heading', { name: 'Личный словарь' }),
+      await screen.findByRole('heading', { name: 'Вход в аккаунт' }),
     ).not.toBeNull();
     expect(await screen.findByText('Сервис готов')).not.toBeNull();
   });
 
   it('starts dictionary-first, reports actual readiness and never invents records', async () => {
     let finish!: (response: Response) => void;
-    vi.stubGlobal(
-      'fetch',
+    stubPublic(
       vi.fn<typeof fetch>().mockImplementation(
         () =>
           new Promise((resolve) => {
@@ -116,7 +131,7 @@ describe('foundation shell', () => {
     );
     renderApp('/');
     expect(
-      screen.getByRole('heading', { name: 'Личный словарь' }),
+      await screen.findByRole('heading', { name: 'Вход в аккаунт' }),
     ).not.toBeNull();
     expect(screen.getByRole('status').textContent).toContain(
       'Проверяем подключение',
@@ -126,7 +141,9 @@ describe('foundation shell', () => {
         .getByRole('button', { name: 'Проверить снова' })
         .hasAttribute('disabled'),
     ).toBe(true);
-    expect(screen.getByText('Словарь ещё не подключён')).not.toBeNull();
+    expect(
+      screen.getByText(/Регистрация по приглашению появится/),
+    ).not.toBeNull();
     await act(async () => {
       finish(new Response(JSON.stringify({ status: 'ready' })));
       await Promise.resolve();
@@ -141,7 +158,7 @@ describe('foundation shell', () => {
     ).not.toBeNull();
     await user.click(screen.getByRole('link', { name: 'Словарь' }));
     expect(
-      screen.getByRole('heading', { name: 'Личный словарь' }),
+      await screen.findByRole('heading', { name: 'Вход в аккаунт' }),
     ).not.toBeNull();
   });
 });
