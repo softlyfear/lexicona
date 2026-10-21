@@ -10,8 +10,8 @@
     "npm": ">=10.9.9 <11"
   },
   "scripts": {
-    "generate": "openapi-typescript ../../backend/openapi/auth-v1.json -o ../../frontend/src/shared/api/generated.ts",
-    "check": "openapi-typescript ../../backend/openapi/auth-v1.json -o ../../frontend/src/shared/api/generated.ts --check"
+    "generate": "cd ../../frontend && npm run tooling:build && node --input-type=module -e \"import { generate } from './artifacts/coverage-tooling/generate.js'; generate(process.cwd(), ['generate']);\"",
+    "check": "cd ../../frontend && npm run tooling:build && node --input-type=module -e \"import { generate } from './artifacts/coverage-tooling/generate.js'; generate(process.cwd(), ['check']);\""
   },
   "devDependencies": {
     "openapi-typescript": "7.13.0",

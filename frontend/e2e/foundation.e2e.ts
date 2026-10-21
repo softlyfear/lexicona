@@ -75,7 +75,7 @@ test('real API, migrated WAL database, responsive UI and keyboard', async ({
   await page.keyboard.press('Enter');
   await expect(page.getByRole('main')).toBeFocused();
   await expect(
-    page.getByRole('heading', { name: 'Словарь ещё не подключён' }),
+    page.getByRole('heading', { name: 'Вход в аккаунт' }),
   ).toBeVisible();
   await page.getByLabel('Тема').selectOption('light');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');

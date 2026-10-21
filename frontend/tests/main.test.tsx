@@ -1,6 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { mockMedia } from './media';
+import { denial, reply, secret } from './auth-fixture';
 
 describe('browser entry', () => {
   it('fails clearly if the HTML root is missing', async () => {
@@ -14,11 +15,16 @@ describe('browser entry', () => {
     const system = mockMedia(false);
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn<typeof fetch>()
-        .mockImplementation(() =>
-          Promise.resolve(new Response(JSON.stringify({ status: 'ready' }))),
-        ),
+      vi.fn<typeof fetch>().mockImplementation((input) => {
+        if (input === '/api/v1/auth/me') return Promise.resolve(denial());
+        if (input === '/api/v1/auth/csrf')
+          return Promise.resolve(
+            reply({ csrf_token: secret(), authenticated: false }),
+          );
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 'ready' })),
+        );
+      }),
     );
     const container = document.createElement('div');
     container.id = 'root';
@@ -33,7 +39,7 @@ describe('browser entry', () => {
       };
     });
     expect(
-      await screen.findByRole('heading', { name: 'Личный словарь' }),
+      await screen.findByRole('heading', { name: 'Вход в аккаунт' }),
     ).not.toBeNull();
     expect(screen.getByRole('combobox', { name: 'Тема' })).not.toBeNull();
     expect(document.documentElement.dataset.theme).toBe('dark');

@@ -1,6 +1,6 @@
-# Lexicona frontend foundation
+# Lexicona account client — phase2A
 
-React / TypeScript strict / Vite. Это основа приложения, **не готовый словарь или MVP**: доступны навигация, тема и реальная проверка готовности API. Вход и vocabulary API ещё не подключены; UI не показывает вымышленные сохранённые слова.
+React / TypeScript strict / Vite. Реальные `/login`, текущий аккаунт и logout через cookie API; `/dictionary` закрыт до me→csrf проверки и честно сообщает, что работа со словами ещё не реализована. `/connection` публичный. Это **не готовый словарь/MVP**: нет vocabulary CRUD, register/invite UI или функций безопасности аккаунта следующего среза.
 
 ## Локальный запуск
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Vite слушает только `127.0.0.1:5173`, strict port; `/api` проксируется на `http://127.0.0.1:8000`. Backend должен быть запущен отдельно по инструкции в корне проекта. Клиент запрашивает только `GET /api/v1/health/ready`: только HTTP 200 с `{"status":"ready"}` означает готовность API/БД, но не вход в аккаунт. Любой другой HTTP status (включая 201/202/203/206 и 503), некорректный ответ, ошибка сети или тайм-аут 8 секунд показывают недоступность и кнопку повторной проверки. `/health/live` не используется вместо readiness.
+Vite слушает только `127.0.0.1:5173`, strict port; `/api` проксируется на `http://127.0.0.1:8000`. Backend должен быть запущен отдельно по инструкции в корне проекта. Клиент использует четыре фактических auth API (`GET /auth/me`, `GET /auth/csrf`, `POST /auth/login`, `POST /auth/logout` под `/api/v1`) и публичный `GET /api/v1/health/ready`. Только HTTP 200 с `{"status":"ready"}` означает готовность API/БД, но не вход в аккаунт. Любой другой HTTP status (включая 201/202/203/206 и 503), некорректный ответ, ошибка сети или тайм-аут 8 секунд показывают недоступность и кнопку повторной проверки. `/health/live` не используется вместо readiness.
 
 `npm run preview` показывает собранные публичные assets на `127.0.0.1:4173`. В текущем Vite **8.3.4** preview наследует `server.proxy`: `/api` также проксируется на `http://127.0.0.1:8000`. Открытие страницы автоматически вызывает readiness, поэтому preview **не изолирован от backend**. Другой `--port` меняет только порт preview, не адрес backend.
 
@@ -64,7 +64,30 @@ Gate проверяет schema/maps/outcome counts/границы source locatio
 
 Dictionary-first shell: 320px/mobile, tablet и desktop; семантические landmarks, skip link, видимый keyboard focus, 44px controls. Цвета находятся только в semantic tokens `src/theme.css`; CSS Modules в `src/App.module.css`. Dark graphite/navy + gold/amber + warm white — default; light/system выбираются в «Тема», system реагирует на изменения ОС. Анимаций нет. Выбор темы хранится только в памяти и сбрасывается при reload.
 
-Health-query публичный, только in-memory, `gcTime: 0`, без автоматических retry; fetch `cache: 'no-store'`, same-origin credentials, deadline/cancellation. Нет service worker, Cache Storage, IndexedDB, localStorage, persisted Query, auth tokens или приватного словаря. Обработка поздних ответов разных аккаунтов остаётся обязательной частью будущего auth-среза, а не заявленной возможностью foundation.
+Health-query публичный, отдельно от private QueryClient, только in-memory, `gcTime: 0`, без автоматических retry; fetch `cache: 'no-store'`, same-origin credentials, deadline/cancellation. Нет service worker, Cache Storage, IndexedDB, local/sessionStorage или persisted Query. Theme также остаётся в памяти.
+
+## Account boundary и ограничения
+
+- `src/auth/admission.ts`: immutable operation/revision/principal lease. Транспорт проверяет lease/stamp до/после body await/validation; callers повторяют admission **после собственного await**, до identity/cache/callback effects. Unabortable late A200/401 и ошибки старой операции отбрасываются до B; current mismatch скрывает/detaches generation и допускает одну свежую me→csrf revalidation, не бесконечный retry.
+- Только designated unknown `me` устанавливает identity: `user.id` совпадает с canonical response stamp. Затем csrf обязан подтвердить тот же principal/authenticated flag. Login DTO provisional: private tree появляется только после same-user me и csrf. Error/early anonymous500 не означает confirmed logout. У auth fetch deadline15s, у readiness8s; server/transport failure не превращается в auth success.
+- Logout синхронно скрывает private tree, abort/clear/detach query **и mutation** caches, credentials/drafts/CSRF; отправляет captured old principal, CSRF и JSON `{}`. Неизвестный серверный исход явно не подтверждён. Mutation retry и optimistic authenticated state отсутствуют.
+- Новый private QueryClient на identity+revision, retry:false. API словаря здесь отсутствует; будущие private query/mutation callers обязаны использовать admission до queryFn return/callback, а не одну проверку в React effect. UUID principal — не session-generation/CAS и не полномочие владельца.
+- Cookie transitions сериализованы в памяти вкладки и, где доступно, same-origin Web Lock. BroadcastChannel несёт **только строку** `auth-changed`, без IDs/tokens/DTO. При отсутствии BC нет мгновенного background-tab notification: focus/visibility/pageshow выполняют fail-closed recheck. HTTP-cookie CAS не обещается. Pagehide/hidden и возврат/notification синхронно убирают React DOM через `flushSync`, прежде чем браузер может заморозить snapshot; private content возвращается только после проверки. Speech adapter пока отсутствует, не выдумывается.
+- RHF/Zod: password12–128 **Unicode scalar values**, без trim/NFC/truncation; malformed surrogates запрещены. Backend окончательный валидатор. Никаких default credentials, public bootstrap endpoint или auth storage. HTML/fetch используют no-referrer. Для JS JSON integer versions вне safe-integer range клиент fail-closed отказывает, не округляет и не выдумывает точность int64.
+
+## Actual generated types
+
+Из корня clone: `npm ci --prefix tooling/openapi`, затем `npm run generate --prefix tooling/openapi` / `npm run check --prefix tooling/openapi` (frontend install также обязателен). Pinned isolated CLI7.13/TS5.9 → canonical frontend Prettier → checked `src/shared/api/generated.ts`; frontend TS6/locks не меняются. Подробности — `tooling/openapi/README.md` в корне clone.
+
+Generated TS **не полный schema validator**: реальные `$ref`-sibling enum/propertyNames widening компенсируются строгим Zod closed-response/operation/status/code/message/allowed-fields validation. Tests сверяют фактический phase2A snapshot и его registry, воспроизводят отказ widened types без casts и проверяют canonical drift. Type-only N/A конкретного generated output доказан AST и emit inventory, без ignore/exclude. Executable `tooling/generate.ts` входит в strict/native whole100.
+
+## Real auth E2E
+
+`npm run test:e2e` запускает прежние health/theme/320px/keyboard/DB-fault/own-only cleanup regressions и auth matrix. Fixture под `e2e/accounts.ts` создаёт **только в disposable migrated DB** два тестовых аккаунта с реальным Argon2; random passwords идут stdin/memory, не argv/env/output. Это test-only setup, не production API/CLI bootstrap acceptance. Backend source не модифицируется.
+
+Auth tests: отдельные browser contexts для независимых accounts, shared-cookie tabs, reload/logout/back, pagehide/pageshow immediate-DOM boundary, held **реальные** HTTP200/401 (без замены payload), late cache/callback discard и actual expected-A+cookie/CSRF-B412/no-effect. Проверяются browser storage/SW отсутствие. Auth trace/video/screenshots выключены, password ввод не идёт в Playwright fill call logs; общие traces также выключены, поскольку даже public pages выполняют CSRF bootstrap.
+
+Старые assertions о публичной dictionary placeholder намеренно заменены ожиданием `/login`: dictionary теперь защищён. Health exact DTO, responsive/keyboard/theme и пять cleanup-fault scenarios не удалены. Full invite/register A09 ждёт phase2B и отдельного UI handoff; physical devices/TTS/full WCAG/deployment этим срезом не подтверждаются.
 
 ## Совместимость тестовых типов
 
