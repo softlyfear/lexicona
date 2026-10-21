@@ -75,6 +75,7 @@ class _Job:
     work: Callable[[], Result] | None
     result: asyncio.Future[Result]
     expires: float
+    on_complete: Callable[[], None] | None = None
     timer: asyncio.TimerHandle = field(init=False)
 
 
@@ -104,24 +105,38 @@ class PasswordService:
     async def hash(self, password: str, *, deadline: float) -> str:
         """Hash before a caller's absolute monotonic deadline."""
         return cast(
-            str, await self._submit(lambda: self._hasher.hash(password), deadline)
+            str, await self._submit(lambda: self._hasher.hash(password), deadline, None)
         )
 
-    async def verify(self, encoded: str, password: str, *, deadline: float) -> bool:
-        """Verify through the same admission budget as hash."""
+    async def verify(
+        self,
+        encoded: str,
+        password: str,
+        *,
+        deadline: float,
+        on_complete: Callable[[], None] | None = None,
+    ) -> bool:
+        """Verify; completion hooks run on this loop, not on caller cancellation."""
         return cast(
             bool,
             await self._submit(
-                lambda: self._hasher.verify(encoded, password), deadline
+                lambda: self._hasher.verify(encoded, password), deadline, on_complete
             ),
         )
 
-    async def _submit(self, work: Callable[[], Result], deadline: float) -> Result:
+    async def _submit(
+        self,
+        work: Callable[[], Result],
+        deadline: float,
+        on_complete: Callable[[], None] | None,
+    ) -> Result:
         loop = asyncio.get_running_loop()
         if self._closed or deadline <= loop.time() or len(self._pending) >= 4:
+            if on_complete is not None:
+                on_complete()
             raise PasswordBusy()
         result: asyncio.Future[Result] = loop.create_future()
-        job = _Job(work, result, min(loop.time() + 2, deadline))
+        job = _Job(work, result, min(loop.time() + 2, deadline), on_complete)
         job.timer = loop.call_at(job.expires, self._expire, job)
         self._pending.append(job)
         self._pump()
@@ -139,8 +154,14 @@ class PasswordService:
     def _remove(self, job: _Job) -> None:
         if job in self._pending:
             self._pending.remove(job)
+            self._notify(job)
         job.work = None
         job.timer.cancel()
+
+    def _notify(self, job: _Job) -> None:
+        callback, job.on_complete = job.on_complete, None
+        if callback is not None:
+            callback()
 
     def _expire(self, job: _Job) -> None:
         self._remove(job)
@@ -160,20 +181,20 @@ class PasswordService:
                 future = self._executor.submit(cast(Callable[[], Result], job.work))
             except Exception:
                 self._running -= 1
+                self._notify(job)
                 job.result.set_exception(PasswordUnavailable())
                 continue
             finally:
                 job.work = None
 
-            def completed(
-                done: Future[Result], result: asyncio.Future[Result] = job.result
-            ) -> None:
-                loop.call_soon_threadsafe(self._finished, done, result)
+            def completed(done: Future[Result], submitted: _Job = job) -> None:
+                loop.call_soon_threadsafe(self._finished, done, submitted)
 
             future.add_done_callback(completed)
 
-    def _finished(self, future: Future[Result], result: asyncio.Future[Result]) -> None:
+    def _finished(self, future: Future[Result], job: _Job) -> None:
         self._running -= 1
+        result = job.result
         try:
             value = future.result()
         except Exception:
@@ -182,6 +203,7 @@ class PasswordService:
         else:
             if not result.done():
                 result.set_result(value)
+        self._notify(job)
         self._pump()
 
     async def aclose(self) -> None:

@@ -1,10 +1,11 @@
-# Lexicona backend: foundation и auth-core CLI
+# Lexicona backend: foundation, auth CLI и phase2A HTTP
 
 Foundation LX-001/LX-002: FastAPI application factory, health endpoints,
 файловый SQLite, явные Alembic migrations и локальные quality gates.
-Первый ограниченный этап LX-003 добавляет четыре auth-таблицы и защищённую CLI
-первого администратора. HTTP auth/admin endpoints, cookie/CSRF, invites workflow,
-UI аккаунтов, словарь и тренировочные percentage/SRS policies ещё не реализованы.
+LX-003 содержит четыре auth-таблицы, защищённую CLI первого администратора и
+четыре настоящих HTTP routes: csrf, login, me, logout. Register и три admin invites
+routes остаются NOT_IMPLEMENTED; нет 200/501 заглушек. UI аккаунтов, invites
+workflow, словарь и тренировочные percentage/SRS policies здесь не реализованы.
 
 ## Окружение и запуск
 
@@ -21,7 +22,10 @@ uv sync --locked --python 3.13.16 --group dev
 По умолчанию используется `data/lexicona.sqlite3` относительно текущей директории.
 До отдельно проверенного trusted ingress forwarded headers не переписывают
 ASGI peer; raw Uvicorn access log отключён, чтобы не записывать произвольный URL.
-Это не готовый application audit logger и не доказательство будущего auth rate limit.
+Application logger `lexicona.http` пишет только request_id, method, route template
+(unknown — `unmatched`), status и duration, без raw URL/body/headers/identity.
+Factory подавляет driver DEBUG (`aiosqlite`, `sqlalchemy.engine`); SQL echo выключен,
+параметры SQL скрыты. Не включайте raw access/driver logs для auth traffic.
 `LEXICONA_DATABASE_URL` переопределяет URL и для приложения, и для Alembic:
 поддерживаются только файловые `sqlite+aiosqlite` URL без query parameters.
 Запуск приложения **не выполняет миграции**. Неизменённая `0001_foundation`
@@ -44,7 +48,8 @@ ASGI peer; raw Uvicorn access log отключён, чтобы не записы
 Один worker, pool size 3/max overflow 0/checkout timeout 5 секунд, отдельная
 `AsyncSession` на unit of work. На каждом новом physical connection явно
 устанавливаются WAL, foreign keys, `busy_timeout=5000`, `synchronous=FULL`.
-Последующие checkout сохраняют эти PRAGMA; приложение не меняет их в UoW.
+Auth UoW ограничивает busy wait оставшимся единым admission budget и восстанавливает
+`busy_timeout=5000` до безопасного reuse соединения.
 Выбрана только SQLAlchemy-managed BEGIN policy (`isolation_level=None` у драйвера),
 без смешивания с driver `autocommit=False`. Обычный UoW использует `BEGIN`,
 `unit_of_work(write=True)` резервирует writer через `BEGIN IMMEDIATE` **до** yield.
@@ -52,13 +57,16 @@ ASGI peer; raw Uvicorn access log отключён, чтобы не записы
 
 При busy write UoW завершается rollback без выполнения application body и без
 автоматического retry. Подготовка/хеширование/разбор/сеть должны выполняться **до**
-входа в write UoW; финальные проверки состояния и SQL — внутри. Сейчас write API
-нет: replay-safe business retry/DB_BUSY receipt semantics будут проверяться при
-первом таком endpoint, а не подменяться универсальным retry framework заранее.
+входа в write UoW; финальные проверки состояния и SQL — внутри. Auth mutations
+не повторяются автоматически: unknown commit не означает rollback,
+не даёт cookie/success и не превращается в secret replay receipt.
 Readiness безопасно отвечает 503 при DB lock/ошибке/исчерпании pool и восстанавливает
 200 после снятия причины. При обычном WAL writer reader/readiness не блокируются.
-Ожидание lock до 5 секунд, checkout до 5 секунд: суммарный DB wait budget до
-10 секунд без retry (меньше foundation лимита 12 секунд); это не end-to-end SLA.
+Auth имеет один monotonic admission deadline 12 секунд перед parser/hash/DB;
+каждое ожидание использует remaining этого deadline. Уже submitted native
+BEGIN/write/commit join-ится до rollback/close/pool reuse, в том числе при повторной
+отмене. Finalization может выйти за response budget: это не hard syscall SLA.
+Известный commit не объявляется rollback, но поздний ответ не получает success/cookie.
 
 ## Первый администратор: только локальная защищённая CLI
 
@@ -111,9 +119,88 @@ executor и DB, дожидаясь cleanup также при повторной 
 12s deadline относится к стадии create после защищённого ввода, не к времени
 размышления оператора; это не hard syscall timeout или готовый HTTP SLA.
 
-Password service пока используется CLI и тестами, **не** встроен в HTTP lifespan.
-Нет pre-auth/dummy hash/rate buckets/HTTP auth traffic: эти HTTP/CSRF/session и
-полные A02–A10 критерии остаются следующим отдельно назначаемым этапом.
+HTTP lifespan создаёт один такой service и один случайный dummy PHC вне event loop,
+до admission запросов; shutdown join-ит native work, затем закрывает DB. Unknown,
+wrong и inactive credentials получают одинаковый 401; real/dummy verify ровно один.
+
+## HTTP auth / identity boundary
+
+Все четыре routes находятся под `/api/v1/auth`; нужен same-origin cookie client.
+
+| Method / route | Request | Success |
+|---|---|---|
+| GET csrf | Exact Origin, либо Sec-Fetch-Site same-origin, либо exact-origin Referer | `{csrf_token,authenticated}`; existing session без rotation |
+| POST login | P; `{login,password}`; Origin+CSRF+expected anonymous | `{user,csrf_token}`; atomic P→A |
+| GET me | A; no query/body | `{user}` только текущего active user |
+| POST logout | A/P; `{}`; Origin+CSRF+expected current principal | `{csrf_token,authenticated:false}`; atomic A/P→P |
+
+GET/HEAD body не читается. POST reader принимает фактические ≤16384 bytes,
+UTF-8 JSON object, depth≤16, без duplicate keys/non-finite/extra fields и coercion.
+Read deadline min(5s, remaining admission); не-JSON/encoded payload — 415.
+Любые query fields, включая повторы, — 422. Неподдерживаемые scoped routes/methods
+дают безопасные 404/405 (Allow у405), а не placeholders.
+
+У всех scoped application responses, включая errors: `Cache-Control: no-store`,
+новый server UUIDv4 `X-Request-ID` и `X-Lexicona-Request-Principal`:
+`anonymous` либо `user:<canonical UUIDv4>`. Это authorization decision конкретного
+request, не echo и не текущее состояние browser cookie jar. Login success stamp
+остаётся anonymous; logout stamp — старый principal. У me stamp совпадает с user.id.
+Ошибки: `{error:{code,message,fields,request_id}}`, без input/SQL/exception values;
+429/503 имеют Retry-After≥1. Protocol rejects до ASGI не обещают эти app headers.
+
+Unsafe требует `X-CSRF-Token` своей session и
+`X-Lexicona-Expected-Principal` captured principal. Missing/duplicate/list/malformed
+или mismatch expected →412 `principal_mismatch` после auth/CSRF/state guards,
+повторная проверка внутри final write. Нет эффектов, touch или cookie на отказе.
+Если Origin присутствует, он authoritative и exact; иначе unsafe требует exact
+HTTPS Referer даже в dev. Cross-origin credentialed CORS не включён.
+
+Session: отдельные независимые cookie/CSRF tokens по256 bits, cookie hash-at-rest
+SHA-256 decoded bytes. P30min non-sliding; A idle7d/absolute30d; touch CAS не чаще5min.
+Login cap5/user сериализован и отзывает oldest `(created_at,id)` из valid sessions.
+Production cookie `__Host-lexicona_session`: Secure/HttpOnly/SameSite=Lax/Path=/,
+без Domain; explicit dev — `lexicona_session_dev`, без Secure. Max-Age P1800/A2592000,
+Expires берётся из persisted absolute timestamp. Reads/touch/errors не пишут cookie.
+
+Process-local limits: general120/IP/60s; P issuance20/IP/60s и global10000 valid P,
+cleanup≤500 expired/revoked P; login5 failures/in-flight/account и IP/900s. Fixed
+windows не продлеваются blocked attempts, success освобождает только свою reservation;
+running native work удерживает reservation до настоящего completion. Maps≤10000,
+cleanup≤128/request; account keys keyed digests с ephemeral process secret. Restart
+сбрасывает counters. IP — socket peer при обязательном `--no-proxy-headers`.
+
+### Config и test DI
+
+`create_app(database_url=None, *, auth_config=None, clock=utc_now, ids=uuid4,
+tokens=token, password_hasher=None, rate_clock=monotonic)` — isolated typed factory.
+`AuthConfig(public_origin="http://127.0.0.1:5173", development=True)` — explicit dev
+default для same-origin frontend proxy. Production передаёт explicit canonical
+HTTPS origin и `development=False`; HTTP/default port/path/userinfo/неcanonical
+authority отвергаются. Host/X-Forwarded-* никогда не определяют public origin.
+Factory не читает `.env`, не создаёт users и не запускает migrations.
+
+`clock` возвращает aware UTC; `ids` — UUIDv4; `tokens` — canonical43 ASCII из32bytes,
+независимый для каждого вызова. `Hasher(hash,verify)` — typed synchronous DI только
+для тестов; production default — настоящий ArgonHasher. Executor/lifespan ownership
+остаётся у приложения. `rate_clock` monotonic, не источник session UTC.
+
+### Actual OpenAPI: 4 auth + 2 legacy health
+
+`openapi/auth-v1.json` экспортируется из **этой** factory, без lifespan/hash/DB
+connection, без Hermes/локальной мастерской. Он содержит реальные request/response
+DTO, оба identity headers, 412, status/code/message mapping и header presence.
+Schema не утверждает реализацию восьми auth routes: POST register, GET/POST admin
+invites и POST admin invites/{invite_id}/revoke — NOT_IMPLEMENTED, отсутствуют в paths.
+
+```sh
+.venv/bin/python -m tools.export_openapi
+.venv/bin/python -m tools.export_openapi --check
+```
+
+Check только читает artifact и возвращает nonzero при drift/missing file. Генерация
+frontend типов принадлежит отдельному tooling/frontend scope; backend не создаёт
+`frontend/src/shared/api/generated.ts`. Полный browser flow/register/invites остаётся
+следующим срезом, не доказан только этим OpenAPI и backend coverage.
 
 ## Проверки
 
@@ -167,7 +254,7 @@ mkdir -p .local-reports
 .venv/bin/ruff check src tests migrations tools
 .venv/bin/ruff format --check src tests migrations tools
 .venv/bin/mypy --strict src tests migrations tools
-.venv/bin/coverage run -m pytest -q
+.venv/bin/coverage run --concurrency=greenlet,thread -m pytest -q
 .venv/bin/coverage json -o .local-reports/coverage.json
 .venv/bin/coverage report
 .venv/bin/python -m tools.coverage_gate .local-reports/coverage.json src migrations tools
@@ -187,6 +274,11 @@ source inventory. Округлённый общий процент не явля
 (включая custom partial-branch patterns) не доказывает полноту покрытия. Отсутствие
 arc evidence — отказ, не синтез из выполненных строк. Dev minimum coverage
 соответствует проверенной lock-версии с используемыми API анализа/cleanup.
+
+`--concurrency=greenlet,thread` измеряет настоящие SQLAlchemy async→greenlet
+continuations вместе с threads. Без него CTracer пропускает строки после await
+в greenlet context; это не отсутствие исполнения и не причина добавлять fake hits.
+Конфигурация/threshold100 и source gate не ослаблены; исключений нет.
 
 Тесты проверяют реальные online upgrade/re-upgrade/downgrade, offline SQL,
 health/error contract, file-backed WAL/FK/busy timeout, commit/rollback,

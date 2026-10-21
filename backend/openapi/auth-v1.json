@@ -1,0 +1,3360 @@
+{
+  "components": {
+    "schemas": {
+      "AuthDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "csrf_token": {
+            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserDTO"
+          }
+        },
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "title": "AuthDTO",
+        "type": "object"
+      },
+      "AuthErrorDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/AuthErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "AuthErrorDTO",
+        "type": "object"
+      },
+      "AuthErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "enum": [
+                "login",
+                "password",
+                "_request"
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid4",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "fields",
+          "request_id"
+        ],
+        "title": "AuthErrorDetail",
+        "type": "object"
+      },
+      "CsrfDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "csrf_token": {
+            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token",
+          "authenticated"
+        ],
+        "title": "CsrfDTO",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "const": "not_ready",
+            "default": "not_ready",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "const": "Service is not ready",
+            "default": "Service is not ready",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "LogoutDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticated": {
+            "const": false,
+            "default": false,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "csrf_token": {
+            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token",
+          "authenticated"
+        ],
+        "title": "LogoutDTO",
+        "type": "object"
+      },
+      "MeDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserDTO"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "MeDTO",
+        "type": "object"
+      },
+      "Ready": {
+        "properties": {
+          "status": {
+            "const": "ready",
+            "default": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "Ready",
+        "type": "object"
+      },
+      "UserDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "login": {
+            "maxLength": 32,
+            "minLength": 3,
+            "pattern": "^[a-z0-9_]{3,32}$",
+            "title": "Login",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "maximum": 9.223372036854776e+18,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "display_name",
+          "role",
+          "version"
+        ],
+        "title": "UserDTO",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Lexicona",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/auth/csrf": {
+      "get": {
+        "description": "Confirmed-origin issuance or reuse of the existing CSRF token. GET body is never read. No query fields. Existing A may CAS-touch; existing P never slides. Cookie is not rewritten on reuse.",
+        "operationId": "authCsrf",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfDTO"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "description": "Only after known committed issuance/rotation, never on errors or existing csrf reads. Production __Host-lexicona_session; explicit dev lexicona_session_dev.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "auth_required"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Требуется вход."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "auth_required",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "auth_required": "Требуется вход."
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "csrf_failed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверка безопасности не пройдена."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "csrf_failed",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "csrf_failed": "Проверка безопасности не пройдена."
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not_found"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Ресурс не найден."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "not_found",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "not_found": "Ресурс не найден."
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "method_not_allowed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Метод не поддерживается."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "method_not_allowed",
+            "headers": {
+              "Allow": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "method_not_allowed": "Метод не поддерживается."
+            }
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_timeout"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Время ожидания запроса истекло."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_timeout",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_timeout": "Время ожидания запроса истекло."
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "validation_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверьте поля формы."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "validation_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "validation_error": "Проверьте поля формы."
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "rate_limited"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Слишком много попыток. Повторите позже."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "rate_limited",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "rate_limited": "Слишком много попыток. Повторите позже."
+            }
+          },
+          "431": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_headers_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Заголовки запроса слишком большие."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_headers_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_headers_too_large": "Заголовки запроса слишком большие."
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "internal_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Внутренняя ошибка сервиса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "internal_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "internal_error": "Внутренняя ошибка сервиса."
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "db_busy",
+                            "service_unavailable"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "База данных занята. Повторите позже.",
+                            "Сервис временно недоступен."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "db_busy; service_unavailable",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "db_busy": "База данных занята. Повторите позже.",
+              "service_unavailable": "Сервис временно недоступен."
+            }
+          }
+        },
+        "summary": "Csrf"
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "Only valid pre-auth may authenticate. Atomic P revoke and new A creation; request principal remains anonymous. No automatic retry. No query fields.",
+        "operationId": "authLogin",
+        "parameters": [
+          {
+            "description": "Checked after session, CSRF and login-state checks, again in final write. Missing/malformed/duplicate/mismatch yields 412 with no effects.",
+            "in": "header",
+            "name": "X-Lexicona-Expected-Principal",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Synchronizer token of this session; missing/malformed/duplicate/mismatch yields 403.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "If present must equal configured public origin. Otherwise exact-origin HTTPS Referer is required, even in dev. Never trust Host or forwarded headers.",
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "HTTPS fallback only when Origin is absent; no userinfo or fragment.",
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "login": {
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[A-Za-z0-9_]{3,32}$",
+                    "title": "Login",
+                    "type": "string"
+                  },
+                  "password": {
+                    "maxLength": 128,
+                    "minLength": 12,
+                    "title": "Password",
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "login",
+                  "password"
+                ],
+                "title": "LoginDTO",
+                "type": "object"
+              }
+            }
+          },
+          "description": "UTF-8 JSON object; actual streamed limit 16384 bytes, depth 16, read min(5s, remaining admission). Reject duplicate keys/non-finite values/invalid Unicode; forbid extra fields. Content-Encoding absent or identity only.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthDTO"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "description": "Only after known committed issuance/rotation, never on errors or existing csrf reads. Production __Host-lexicona_session; explicit dev lexicona_session_dev.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "invalid_request",
+                            "invalid_json"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Некорректный запрос.",
+                            "Некорректный JSON."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "invalid_request; invalid_json",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "invalid_json": "Некорректный JSON.",
+              "invalid_request": "Некорректный запрос."
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "auth_required",
+                            "invalid_credentials"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Требуется вход.",
+                            "Неверный логин или пароль."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "auth_required; invalid_credentials",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "auth_required": "Требуется вход.",
+              "invalid_credentials": "Неверный логин или пароль."
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "csrf_failed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверка безопасности не пройдена."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "csrf_failed",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "csrf_failed": "Проверка безопасности не пройдена."
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not_found"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Ресурс не найден."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "not_found",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "not_found": "Ресурс не найден."
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "method_not_allowed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Метод не поддерживается."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "method_not_allowed",
+            "headers": {
+              "Allow": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "method_not_allowed": "Метод не поддерживается."
+            }
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_timeout"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Время ожидания запроса истекло."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_timeout",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_timeout": "Время ожидания запроса истекло."
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "already_authenticated"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Сначала выйдите из текущего аккаунта."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "already_authenticated",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "already_authenticated": "Сначала выйдите из текущего аккаунта."
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "principal_mismatch"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Аккаунт изменился. Обновите страницу."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "principal_mismatch",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "principal_mismatch": "Аккаунт изменился. Обновите страницу."
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Запрос слишком большой."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_too_large": "Запрос слишком большой."
+            }
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unsupported_media_type"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Неподдерживаемый формат запроса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "unsupported_media_type",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "unsupported_media_type": "Неподдерживаемый формат запроса."
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "validation_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверьте поля формы."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "validation_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "validation_error": "Проверьте поля формы."
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "rate_limited"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Слишком много попыток. Повторите позже."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "rate_limited",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "rate_limited": "Слишком много попыток. Повторите позже."
+            }
+          },
+          "431": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_headers_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Заголовки запроса слишком большие."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_headers_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_headers_too_large": "Заголовки запроса слишком большие."
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "internal_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Внутренняя ошибка сервиса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "internal_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "internal_error": "Внутренняя ошибка сервиса."
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "db_busy",
+                            "service_unavailable",
+                            "auth_busy"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "База данных занята. Повторите позже.",
+                            "Сервис временно недоступен.",
+                            "Сервис занят. Повторите позже."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "db_busy; service_unavailable; auth_busy",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "auth_busy": "Сервис занят. Повторите позже.",
+              "db_busy": "База данных занята. Повторите позже.",
+              "service_unavailable": "Сервис временно недоступен."
+            }
+          }
+        },
+        "summary": "Login"
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Atomically revoke valid A or P and create a new P. Stamp is the old request principal. Expired or replayed old credential is 401, not success. No automatic retry. No query fields.",
+        "operationId": "authLogout",
+        "parameters": [
+          {
+            "description": "Checked after session, CSRF and login-state checks, again in final write. Missing/malformed/duplicate/mismatch yields 412 with no effects.",
+            "in": "header",
+            "name": "X-Lexicona-Expected-Principal",
+            "required": true,
+            "schema": {
+              "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Synchronizer token of this session; missing/malformed/duplicate/mismatch yields 403.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "If present must equal configured public origin. Otherwise exact-origin HTTPS Referer is required, even in dev. Never trust Host or forwarded headers.",
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "HTTPS fallback only when Origin is absent; no userinfo or fragment.",
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "Unsafe empty-object input still rejects extra fields and scalar bodies.",
+                "properties": {},
+                "title": "EmptyDTO",
+                "type": "object"
+              }
+            }
+          },
+          "description": "UTF-8 JSON object; actual streamed limit 16384 bytes, depth 16, read min(5s, remaining admission). Reject duplicate keys/non-finite values/invalid Unicode; forbid extra fields. Content-Encoding absent or identity only.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutDTO"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "description": "Only after known committed issuance/rotation, never on errors or existing csrf reads. Production __Host-lexicona_session; explicit dev lexicona_session_dev.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "invalid_request",
+                            "invalid_json"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Некорректный запрос.",
+                            "Некорректный JSON."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "invalid_request; invalid_json",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "invalid_json": "Некорректный JSON.",
+              "invalid_request": "Некорректный запрос."
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "auth_required"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Требуется вход."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "auth_required",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "auth_required": "Требуется вход."
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "csrf_failed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверка безопасности не пройдена."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "csrf_failed",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "csrf_failed": "Проверка безопасности не пройдена."
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not_found"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Ресурс не найден."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "not_found",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "not_found": "Ресурс не найден."
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "method_not_allowed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Метод не поддерживается."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "method_not_allowed",
+            "headers": {
+              "Allow": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "method_not_allowed": "Метод не поддерживается."
+            }
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_timeout"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Время ожидания запроса истекло."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_timeout",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_timeout": "Время ожидания запроса истекло."
+            }
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "principal_mismatch"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Аккаунт изменился. Обновите страницу."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "principal_mismatch",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "principal_mismatch": "Аккаунт изменился. Обновите страницу."
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Запрос слишком большой."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_too_large": "Запрос слишком большой."
+            }
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unsupported_media_type"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Неподдерживаемый формат запроса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "unsupported_media_type",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "unsupported_media_type": "Неподдерживаемый формат запроса."
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "validation_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверьте поля формы."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "validation_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "validation_error": "Проверьте поля формы."
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "rate_limited"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Слишком много попыток. Повторите позже."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "rate_limited",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "rate_limited": "Слишком много попыток. Повторите позже."
+            }
+          },
+          "431": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_headers_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Заголовки запроса слишком большие."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_headers_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_headers_too_large": "Заголовки запроса слишком большие."
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "internal_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Внутренняя ошибка сервиса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "internal_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "internal_error": "Внутренняя ошибка сервиса."
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "db_busy",
+                            "service_unavailable"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "База данных занята. Повторите позже.",
+                            "Сервис временно недоступен."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "db_busy; service_unavailable",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "db_busy": "База данных занята. Повторите позже.",
+              "service_unavailable": "Сервис временно недоступен."
+            }
+          }
+        },
+        "summary": "Logout"
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "Only the active user of the validated cookie, from the same DB decision as the principal stamp. GET body is never read. No query fields. No cookie write; metadata touch at five-minute boundary.",
+        "operationId": "authMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeDTO"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "auth_required"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Требуется вход."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "auth_required",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "auth_required": "Требуется вход."
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not_found"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Ресурс не найден."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "not_found",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "not_found": "Ресурс не найден."
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "method_not_allowed"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Метод не поддерживается."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "method_not_allowed",
+            "headers": {
+              "Allow": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "method_not_allowed": "Метод не поддерживается."
+            }
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_timeout"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Время ожидания запроса истекло."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_timeout",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_timeout": "Время ожидания запроса истекло."
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "validation_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Проверьте поля формы."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "validation_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "validation_error": "Проверьте поля формы."
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "rate_limited"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Слишком много попыток. Повторите позже."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "rate_limited",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "rate_limited": "Слишком много попыток. Повторите позже."
+            }
+          },
+          "431": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "request_headers_too_large"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Заголовки запроса слишком большие."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "request_headers_too_large",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "request_headers_too_large": "Заголовки запроса слишком большие."
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "internal_error"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "Внутренняя ошибка сервиса."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "internal_error",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "internal_error": "Внутренняя ошибка сервиса."
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorDTO",
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "db_busy",
+                            "service_unavailable"
+                          ]
+                        },
+                        "message": {
+                          "enum": [
+                            "База данных занята. Повторите позже.",
+                            "Сервис временно недоступен."
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "db_busy; service_unavailable",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always present on scoped application responses.",
+                "required": true,
+                "schema": {
+                  "const": "no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Integer seconds; at least one.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                }
+              },
+              "X-Lexicona-Request-Principal": {
+                "description": "Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo.",
+                "required": true,
+                "schema": {
+                  "pattern": "^(?:anonymous|user:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Independent server UUIDv4; request header is never reflected.",
+                "required": true,
+                "schema": {
+                  "format": "uuid4",
+                  "type": "string"
+                }
+              }
+            },
+            "x-error-codes": {
+              "db_busy": "База данных занята. Повторите позже.",
+              "service_unavailable": "Сервис временно недоступен."
+            }
+          }
+        },
+        "summary": "Me"
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Live Api V1 Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live"
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ready"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready"
+      }
+    }
+  }
+}
