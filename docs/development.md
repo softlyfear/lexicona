@@ -133,7 +133,7 @@ mkdir -p .local-reports
 .venv/bin/ruff check src tests migrations tools
 .venv/bin/ruff format --check src tests migrations tools
 .venv/bin/mypy --strict src tests migrations tools
-.venv/bin/coverage run -m pytest -q
+.venv/bin/coverage run --concurrency=greenlet,thread -m pytest -q
 .venv/bin/coverage json -o .local-reports/coverage.json
 .venv/bin/coverage report
 .venv/bin/python -m tools.coverage_gate .local-reports/coverage.json src migrations tools
@@ -147,6 +147,8 @@ measurement задаются `pyproject.toml`; отдельный gate неза�
 нужно отдельно выполнить в неизменном checkout/окружении; порядок и параметры
 `--baseline`/`--manifest` описаны в `backend/README.md`. Отчёт H не доказывает,
 что тесты B запускались. Изменение runtime/toolchain явно фиксируется в review.
+Для SQLAlchemy async continuations используется `--concurrency=greenlet,thread`;
+baseline и candidate измеряются в том же режиме, без изменения порогов и исключений.
 
 Frontend (отдельный shell-блок из корня):
 
