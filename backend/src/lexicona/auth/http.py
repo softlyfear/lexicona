@@ -13,6 +13,7 @@ from argon2 import Type, extract_parameters
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ValidationError
 from starlette.requests import ClientDisconnect
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from lexicona.auth import schema
 from lexicona.auth.config import AuthConfig
@@ -41,6 +42,19 @@ from lexicona.auth.passwords import (
 )
 from lexicona.auth.rates import Rates, Reservation, peer
 from lexicona.auth.sessions import Session, Sessions, User
+
+
+class RejectScopedSlashes:
+    """Reject noncanonical scoped paths before the router can echo their URL."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # AuthBoundary owns admission/errors; unrelated legacy routing is untouched.
+        if "auth_decision" in scope and scope["path"].endswith("/"):
+            raise AuthError("not_found")
+        await self.app(scope, receive, send)
 
 
 def set_cookie(

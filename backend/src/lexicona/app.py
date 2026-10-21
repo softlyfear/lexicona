@@ -19,7 +19,7 @@ from lexicona.auth.bootstrap import utc_now
 from lexicona.auth.boundary import AuthBoundary
 from lexicona.auth.config import AuthConfig, token
 from lexicona.auth.errors import AuthError, decision, error_response
-from lexicona.auth.http import LoginPasswords, router
+from lexicona.auth.http import LoginPasswords, RejectScopedSlashes, router
 from lexicona.auth.passwords import Hasher
 from lexicona.auth.rates import Rates
 from lexicona.auth.sessions import Sessions
@@ -108,6 +108,7 @@ def create_app(
             )
         return Ready()
 
+    app.add_middleware(RejectScopedSlashes)
     app.add_middleware(AuthBoundary, rates=rates)
     app.include_router(router(sessions, config, rates, passwords))
     return app
