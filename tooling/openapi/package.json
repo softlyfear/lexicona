@@ -1,0 +1,20 @@
+{
+  "name": "lexicona-openapi-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated build-time OpenAPI to TypeScript generation",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.23.3 <23",
+    "npm": ">=10.9.9 <11"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../../backend/openapi/auth-v1.json -o ../../frontend/src/shared/api/generated.ts",
+    "check": "openapi-typescript ../../backend/openapi/auth-v1.json -o ../../frontend/src/shared/api/generated.ts --check"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}
