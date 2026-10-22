@@ -9,6 +9,8 @@ from starlette.responses import JSONResponse
 ERRORS: dict[str, tuple[int, str]] = {
     "invalid_request": (400, "Некорректный запрос."),
     "invalid_json": (400, "Некорректный JSON."),
+    "invite_invalid": (400, "Приглашение недействительно."),
+    "login_unavailable": (409, "Логин недоступен."),
     "auth_required": (401, "Требуется вход."),
     "invalid_credentials": (401, "Неверный логин или пароль."),
     "csrf_failed": (403, "Проверка безопасности не пройдена."),
@@ -16,6 +18,8 @@ ERRORS: dict[str, tuple[int, str]] = {
     "not_found": (404, "Ресурс не найден."),
     "method_not_allowed": (405, "Метод не поддерживается."),
     "request_timeout": (408, "Время ожидания запроса истекло."),
+    "version_conflict": (409, "Данные изменились. Обновите страницу."),
+    "invite_state_conflict": (409, "Состояние приглашения изменилось."),
     "already_authenticated": (409, "Сначала выйдите из текущего аккаунта."),
     "principal_mismatch": (412, "Аккаунт изменился. Обновите страницу."),
     "request_too_large": (413, "Запрос слишком большой."),
