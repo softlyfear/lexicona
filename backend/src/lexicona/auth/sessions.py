@@ -313,6 +313,8 @@ class Sessions:
         context: Decision,
         digest: bytes | None,
         authorize: Callable[[Session], None],
+        *,
+        user_check: Callable[[User], None] = lambda _: None,
     ) -> tuple[Session, User]:
         """Recheck A and CAS metadata in a fresh, short serialized write."""
         self.budget(context)
@@ -321,6 +323,7 @@ class Sessions:
         ) as db:
             current = await self.required(db, context, digest, authorize)
             user = await self.by_id(db, current.authenticated_id())
+            user_check(user)
             now = self.now()
             if now - current.last_seen >= TOUCH_US:
                 self.budget(context)

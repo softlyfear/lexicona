@@ -25,55 +25,61 @@ def test_actual_schema_has_four_auth_routes_and_legacy_health(tmp_path: Path) ->
         "/api/v1/auth/login",
         "/api/v1/auth/me",
         "/api/v1/auth/logout",
+        "/api/v1/auth/register",
+        "/api/v1/admin/invites",
+        "/api/v1/admin/invites/{invite_id}/revoke",
         "/api/v1/health/live",
         "/api/v1/health/ready",
     }
+    assert sum(len(obj(operations)) for operations in paths.values()) == 10
     for path in paths:
-        operation = obj(
-            obj(paths[path])["post" if path.endswith(("/login", "/logout")) else "get"]
-        )
-        responses = obj(operation["responses"])
-        if "/auth/" in path:
-            assert {
-                "200",
-                "401",
-                "404",
-                "405",
-                "408",
-                "422",
-                "429",
-                "431",
-                "500",
-                "503",
-            } <= set(responses)
-            for response in responses.values():
-                headers = obj(obj(response)["headers"])
+        for method, value in obj(paths[path]).items():
+            operation = obj(value)
+            responses = obj(operation["responses"])
+            if "/auth/" in path or "/admin/" in path:
                 assert {
-                    "Cache-Control",
-                    "X-Request-ID",
-                    "X-Lexicona-Request-Principal",
-                } <= set(headers)
-                pattern = obj(obj(headers["X-Lexicona-Request-Principal"])["schema"])[
-                    "pattern"
-                ]
-                assert isinstance(pattern, str) and pattern.startswith("^")
-            if path.endswith(("/login", "/logout")):
-                assert {"403", "412", "413", "415"} <= set(responses)
-                parameters = operation["parameters"]
-                assert isinstance(parameters, list)
-                assert any(
-                    obj(p).get("name") == "X-Lexicona-Expected-Principal"
-                    and obj(p).get("required") is True
-                    for p in parameters
+                    "201"
+                    if path.endswith("/register")
+                    or (path.endswith("/invites") and method == "post")
+                    else "200",
+                    "401",
+                    "404",
+                    "405",
+                    "408",
+                    "422",
+                    "429",
+                    "431",
+                    "500",
+                    "503",
+                } <= set(responses)
+                for response in responses.values():
+                    headers = obj(obj(response)["headers"])
+                    assert {
+                        "Cache-Control",
+                        "X-Request-ID",
+                        "X-Lexicona-Request-Principal",
+                    } <= set(headers)
+                    pattern = obj(
+                        obj(headers["X-Lexicona-Request-Principal"])["schema"]
+                    )["pattern"]
+                    assert isinstance(pattern, str) and pattern.startswith("^")
+                if method == "post":
+                    assert {"403", "412", "413", "415"} <= set(responses)
+                    parameters = operation["parameters"]
+                    assert isinstance(parameters, list)
+                    assert any(
+                        obj(p).get("name") == "X-Lexicona-Expected-Principal"
+                        and obj(p).get("required") is True
+                        for p in parameters
+                    )
+                    assert "requestBody" in operation
+                    assert obj(responses["412"])["x-error-codes"] == {
+                        "principal_mismatch": "Аккаунт изменился. Обновите страницу."
+                    }
+            else:
+                assert "X-Lexicona-Request-Principal" not in obj(
+                    obj(responses["200"]).get("headers", {})
                 )
-                assert "requestBody" in operation
-                assert obj(responses["412"])["x-error-codes"] == {
-                    "principal_mismatch": "Аккаунт изменился. Обновите страницу."
-                }
-        else:
-            assert "X-Lexicona-Request-Principal" not in obj(
-                obj(responses["200"]).get("headers", {})
-            )
     components = obj(obj(schema["components"])["schemas"])
     for name in (
         "CsrfDTO",
@@ -83,6 +89,9 @@ def test_actual_schema_has_four_auth_routes_and_legacy_health(tmp_path: Path) ->
         "UserDTO",
         "AuthErrorDTO",
         "AuthErrorDetail",
+        "InviteDTO",
+        "InviteCreatedDTO",
+        "InviteListDTO",
     ):
         dto = obj(components[name])
         assert dto["additionalProperties"] is False
@@ -116,3 +125,45 @@ def test_export_check_is_stable_and_independent_of_database(
     assert export.main(["--check", str(target)]) == 1
     assert export.main(["--check", str(tmp_path / "missing.json")]) == 1
     assert export.main([str(tmp_path)]) == 1
+
+
+def test_phase2b_exact_success_and_primitives() -> None:
+    schema = obj(create_app().openapi())
+    paths = obj(schema["paths"])
+    components = obj(obj(schema["components"])["schemas"])
+    invite = obj(components["InviteDTO"])
+    properties = obj(invite["properties"])
+    assert set(properties) == {
+        "id",
+        "created_by",
+        "created_at",
+        "expires_at",
+        "used_at",
+        "revoked_at",
+        "state",
+        "version",
+    }
+    pattern = obj(properties["created_at"])["pattern"]
+    assert isinstance(pattern, str) and pattern.endswith("[0-9]{6}Z$")
+    assert (
+        obj(properties["id"])["pattern"]
+        == obj(obj(obj(components["UserDTO"])["properties"])["id"])["pattern"]
+    )
+    for path, method, success in [
+        ("/api/v1/auth/register", "post", "201"),
+        ("/api/v1/admin/invites", "post", "201"),
+        ("/api/v1/admin/invites", "get", "200"),
+        ("/api/v1/admin/invites/{invite_id}/revoke", "post", "200"),
+    ]:
+        operation = obj(obj(paths[path])[method])
+        responses = obj(operation["responses"])
+        assert {status for status in responses if status.startswith("2")} == {success}
+        if path.endswith("/revoke"):
+            parameters = operation["parameters"]
+            assert isinstance(parameters, list)
+            parameter = next(
+                obj(item) for item in parameters if obj(item).get("name") == "invite_id"
+            )
+            assert (
+                obj(parameter["schema"])["pattern"] == obj(properties["id"])["pattern"]
+            )

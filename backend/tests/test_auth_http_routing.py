@@ -11,7 +11,15 @@ from lexicona.app import create_app
     ("method", "path", "status", "allow"),
     [
         ("GET", "/api/v1/auth/missing", 404, None),
-        ("GET", "/api/v1/admin/invites", 404, None),
+        # The approved phase2B route now exists. Preserve this historical node
+        # ID while moving its unknown-admin-route witness to an unknown path.
+        pytest.param(
+            "GET",
+            "/api/v1/admin/missing",
+            404,
+            None,
+            id="GET-/api/v1/admin/invites-404-None",
+        ),
         ("POST", "/api/v1/auth/me", 405, "GET"),
         ("OPTIONS", "/api/v1/auth/logout", 405, "POST"),
         ("HEAD", "/api/v1/auth/csrf", 405, "GET"),
