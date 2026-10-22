@@ -146,6 +146,9 @@ class Rates:
         self.issuance = Bucket(20, 60, clock)
         self.accounts = Bucket(5, 900, clock)
         self.ips = Bucket(5, 900, clock)
+        self.register_tokens = Bucket(5, 900, clock)
+        self.register_ips = Bucket(10, 900, clock)
+        self.creations = Bucket(10, 60, clock)
         self._clock = clock
 
     def login(self, account: str, address: str) -> Reservation:
@@ -163,3 +166,32 @@ class Rates:
         for window in windows:
             window.active += 1
         return Reservation(windows)
+
+    def register(self, digest: str, address: str) -> Reservation:
+        """Reserve validated invite-digest/IP axes without yielding or raw tokens."""
+        now = self._clock()
+        token_key, token_window, token_end = self.register_tokens._inspect(digest, now)
+        ip_key, ip_window, ip_end = self.register_ips._inspect(address, now)
+        ends = [end for end in (token_end, ip_end) if end is not None]
+        if ends:
+            blocked(max(ends), now)
+        windows = (
+            self.register_tokens._admit(token_key, token_window, now),
+            self.register_ips._admit(ip_key, ip_window, now),
+        )
+        for window in windows:
+            window.active += 1
+        return Reservation(windows)
+
+    def create(self, admin: str, capacity_retry: int | None) -> None:
+        """One admission inspects both blocking windows without extending either."""
+        now = self._clock()
+        key, window, end = self.creations._inspect(admin, now)
+        retries = [] if end is None else [max(1, math.ceil(end - now))]
+        if capacity_retry is not None:
+            retries.append(capacity_retry)
+        if retries:
+            # Capacity is already an exact integer ceiling of UTC microseconds.
+            # An absolute float round trip can add an ulp and another second.
+            blocked(max(retries), 0)
+        self.creations._admit(key, window, now)
