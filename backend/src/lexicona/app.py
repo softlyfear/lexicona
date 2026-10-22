@@ -14,6 +14,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException
+from starlette.routing import Match, Route
 
 from lexicona.auth.bootstrap import utc_now
 from lexicona.auth.boundary import AuthBoundary
@@ -76,15 +77,27 @@ def create_app(
                 await database.dispose()
 
     app = FastAPI(title="Lexicona", version="0.1.0", lifespan=lifespan)
+    auth_routes = router(sessions, config, rates, passwords)
+    invite_routes = invite_router(sessions, config, passwords, rates)
 
     @app.exception_handler(HTTPException)
     async def routing_error(request: Request, error: HTTPException) -> Response:
         if "auth_decision" not in request.scope:
             return await http_exception_handler(request, error)
+        headers = dict(error.headers or {})
+        if error.status_code == 405:
+            # The router reports only its first partial match, not the whole target.
+            methods: set[str] = set()
+            for route in (*auth_routes.routes, *invite_routes.routes):
+                if isinstance(route, Route):
+                    match, _ = route.matches(request.scope)
+                    if match == Match.PARTIAL:
+                        methods.update(route.methods or ())
+            headers["Allow"] = ", ".join(sorted(methods))
         return error_response(
             AuthError(
                 "method_not_allowed" if error.status_code == 405 else "not_found",
-                headers=dict(error.headers or {}),
+                headers=headers,
             ),
             decision(request),
         )
@@ -111,6 +124,6 @@ def create_app(
 
     app.add_middleware(RejectScopedSlashes)
     app.add_middleware(AuthBoundary, rates=rates)
-    app.include_router(router(sessions, config, rates, passwords))
-    app.include_router(invite_router(sessions, config, passwords, rates))
+    app.include_router(auth_routes)
+    app.include_router(invite_routes)
     return app
