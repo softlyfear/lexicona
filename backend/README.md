@@ -1,11 +1,12 @@
-# Lexicona backend: foundation, auth CLI и phase2A HTTP
+# Lexicona backend: foundation, auth CLI и phase2A/phase2B HTTP
 
 Foundation LX-001/LX-002: FastAPI application factory, health endpoints,
 файловый SQLite, явные Alembic migrations и локальные quality gates.
 LX-003 содержит четыре auth-таблицы, защищённую CLI первого администратора и
-четыре настоящих HTTP routes: csrf, login, me, logout. Register и три admin invites
-routes остаются NOT_IMPLEMENTED; нет 200/501 заглушек. UI аккаунтов, invites
-workflow, словарь и тренировочные percentage/SRS policies здесь не реализованы.
+восемь настоящих auth/admin операций: csrf, login, register, me, logout,
+invite create/list/revoke. Нет дополнительных endpoints или 200/501 заглушек.
+Это server-only срез: browser UI аккаунтов/invites, словарь и тренировочные
+percentage/SRS policies здесь не реализованы и полный LX-003 не заявлен.
 
 ## Окружение и запуск
 
@@ -125,19 +126,23 @@ wrong и inactive credentials получают одинаковый 401; real/du
 
 ## HTTP auth / identity boundary
 
-Все четыре routes находятся под `/api/v1/auth`; нужен same-origin cookie client.
+Auth routes находятся под `/api/v1/auth`, invites — под `/api/v1/admin`; нужен same-origin cookie client.
 
 | Method / route | Request | Success |
 |---|---|---|
 | GET csrf | Exact Origin, либо Sec-Fetch-Site same-origin, либо exact-origin Referer | `{csrf_token,authenticated}`; existing session без rotation |
-| POST login | P; `{login,password}`; Origin+CSRF+expected anonymous | `{user,csrf_token}`; atomic P→A |
+| POST login | P; `{login,password}`; Origin+CSRF+expected anonymous | 200 `{user,csrf_token}`; atomic P→A |
+| POST register | P; `{invite_token,login,display_name,password}`; те же unsafe guards | 201 `{user,csrf_token}`; atomic user/settings/consume/P→A |
 | GET me | A; no query/body | `{user}` только текущего active user |
 | POST logout | A/P; `{}`; Origin+CSRF+expected current principal | `{csrf_token,authenticated:false}`; atomic A/P→P |
+| GET /admin/invites | Current active admin; `limit?`, `cursor?` | 200 `{items,next_cursor}`; полный административный список |
+| POST /admin/invites | Current active admin; `{}`; unsafe guards | 201 `{invite,invite_token}`; новый invite72h |
+| POST /admin/invites/{invite_id}/revoke | Current active admin; `{expected_version}`; unsafe guards | 200 `InviteDTO`; CAS или текущий revoked без изменения |
 
 GET/HEAD body не читается. POST reader принимает фактические ≤16384 bytes,
 UTF-8 JSON object, depth≤16, без duplicate keys/non-finite/extra fields и coercion.
 Read deadline min(5s, remaining admission); не-JSON/encoded payload — 415.
-Любые query fields, включая повторы, — 422. Неподдерживаемые scoped routes/methods
+Query fields и повторы — 422, кроме двух полей invite list ниже. Неподдерживаемые scoped routes/methods
 дают безопасные 404/405 (Allow у405), а не placeholders.
 
 У всех scoped application responses, включая errors: `Cache-Control: no-store`,
@@ -169,6 +174,56 @@ running native work удерживает reservation до настоящего c
 cleanup≤128/request; account keys keyed digests с ephemeral process secret. Restart
 сбрасывает counters. IP — socket peer при обязательном `--no-proxy-headers`.
 
+### Invites и закрытая регистрация
+
+Invite TTL ровно72h; equality уже expired. В БД только SHA-256 decoded32 bytes,
+не raw token. Секрет выдаётся только первым known-committed201 создания; list,
+revoke, ошибки и retry его не восстанавливают. `InviteDTO` всегда содержит
+`id,created_by,created_at,expires_at,used_at,revoked_at,state,version`;
+nullable поля присутствуют как null. Нет used_by/login получателя/hash/secret.
+Timestamp UTC с шестью микросекундными цифрами и Z, UUID canonical lower-casev4.
+State: used, иначе revoked, иначе expired при now>=expires, иначе active;
+переход времени version не изменяет.
+
+Список: `(created_at DESC,id DESC)`, `limit` default50/range1..100, только ASCII
+`[1-9][0-9]{0,2}` без leading zero/sign/trim. Cursor<=256 — canonical unpadded
+base64url компактного UTF-8 JSON `{v:1,created_at_us:integer,id:UUIDv4}` в этом
+порядке полей; никакого whitespace/UUID repair, duplicate/extra fields или bool
+вместо integer. Следующая страница строго меньше tuple; новых дубликатов при
+inserts нет, snapshot consistency между страницами не обещается. Query не
+является owner selector. GET body не читается; успешный list использует тот же
+throttled5min session touch с повторной current-role проверкой до touch.
+
+Registration: pre-auth+origin+CSRF+expected, bounded parse и dual reservation;
+сначала valid invite, только затем duplicate login. Все unknown/expired/used/
+revoked invites одинаково400 `invite_invalid`; valid duplicate409
+`login_unavailable` с безопасным fields.login, без consume. Argon2 hash готовится
+в lifespan-owned2+4 executor вне write lock. Финальный IMMEDIATE заново проверяет
+P/time/CSRF/expected и invite/login; user+default settings+conditional invite
+consume(version+1)+P revoke+новая A фиксируются одним commit. Два independent P
+на один invite дают один201 и один400; fault до known commit откатывает весь UoW.
+Hash facade использует существующий generic native submission/completion seam:
+reservation не освобождается при одном лишь HTTP timeout/cancel. Алгоритм native
+executor/DB finalization не заменён; submitted unknown commit — не rollback.
+
+Revoke сначала сверяет expected_version (strict integer1..9223372036854775807),
+потом state. Stale409 `version_conflict`; used/expired409
+`invite_state_conflict`; missing404. Active→revoked увеличивает version;
+revoked+currentversion200 возвращает прежние данные без эффекта. Current
+active/admin/session/CSRF/expected повторяются внутри final write до effects.
+Admin authorizes только административные invites, не чужой private vocabulary.
+
+Дополнительные process-local fixed windows: register10 attempts/IP/900s и
+5/token-digest/900s, failures/in-flight занимают slots, success снимает только
+свой; create10/admin/60s и global100 active invites через serialized count+insert.
+Retry-After — ceiling до самого позднего blocking end (включая active-cap expiry).
+Новые maps также<=10000, без live eviction, cleanup всех затронутых maps<=128
+за request. Старые general120/60, P issuance и login5/900 не заменены.
+
+Нет automatic mutation retry или secret receipt. Потерянный register response:
+me→csrf, затем явный login при необходимости, не слепой повтор register. Неизвестен
+create outcome: list, явный revoke лишнего и новое создание; token невосстановим.
+
 ### Config и test DI
 
 `create_app(database_url=None, *, auth_config=None, clock=utc_now, ids=uuid4,
@@ -184,13 +239,14 @@ Factory не читает `.env`, не создаёт users и не запуск
 для тестов; production default — настоящий ArgonHasher. Executor/lifespan ownership
 остаётся у приложения. `rate_clock` monotonic, не источник session UTC.
 
-### Actual OpenAPI: 4 auth + 2 legacy health
+### Actual OpenAPI: 8 auth/admin + 2 legacy health operations
 
 `openapi/auth-v1.json` экспортируется из **этой** factory, без lifespan/hash/DB
 connection, без Hermes/локальной мастерской. Он содержит реальные request/response
 DTO, оба identity headers, 412, status/code/message mapping и header presence.
-Schema не утверждает реализацию восьми auth routes: POST register, GET/POST admin
-invites и POST admin invites/{invite_id}/revoke — NOT_IMPLEMENTED, отсутствуют в paths.
+Schema содержит ровно8 auth/admin method+route rows и2 legacy health operations
+(9 paths,10 methods), closed DTO и bounded manual request parser metadata.
+Четыре phase2B операции включены; дополнительных account/settings routes нет.
 
 ```sh
 .venv/bin/python -m tools.export_openapi
@@ -199,8 +255,8 @@ invites и POST admin invites/{invite_id}/revoke — NOT_IMPLEMENTED, отсут
 
 Check только читает artifact и возвращает nonzero при drift/missing file. Генерация
 frontend типов принадлежит отдельному tooling/frontend scope; backend не создаёт
-`frontend/src/shared/api/generated.ts`. Полный browser flow/register/invites остаётся
-следующим срезом, не доказан только этим OpenAPI и backend coverage.
+`frontend/src/shared/api/generated.ts`. Полный browser account/invites flow остаётся
+отдельным срезом, не доказан только этим OpenAPI и backend coverage.
 
 ## Проверки
 

@@ -7,6 +7,7 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from time import monotonic
+from typing import cast
 from uuid import UUID
 
 from argon2 import Type, extract_parameters
@@ -100,6 +101,32 @@ class LoginPasswords:
             await self.service.aclose()
         self.service = None
         self.dummy = None
+
+    async def hash(
+        self, password: str, context: Decision, reservation: Reservation
+    ) -> str:
+        """Use the native submission completion seam for registration hashing.
+
+        PasswordService.hash has no completion argument; its existing generic
+        native submission method does. Do not release on coroutine timeout.
+        """
+        service = self.service
+        if service is None:
+            raise AuthError("service_unavailable")
+        reservation.start()
+        try:
+            return cast(
+                str,
+                await service._submit(
+                    lambda: service._hasher.hash(password),
+                    context.deadline,
+                    reservation.completed,
+                ),
+            )
+        except PasswordBusy:
+            raise AuthError("auth_busy") from None
+        except PasswordUnavailable:
+            raise AuthError("service_unavailable") from None
 
     async def verify(
         self,
@@ -218,7 +245,15 @@ async def body[Model: BaseModel](request: Request, model: type[Model]) -> Model:
             location = item["loc"]
             field = (
                 location[0]
-                if location and location[0] in {"login", "password"}
+                if location
+                and location[0]
+                in {
+                    "login",
+                    "password",
+                    "display_name",
+                    "invite_token",
+                    "expected_version",
+                }
                 else "_request"
             )
             code = item["type"]

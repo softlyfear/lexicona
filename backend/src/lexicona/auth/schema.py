@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 
 from lexicona.auth.config import PRINCIPAL_PATTERN, TOKEN_PATTERN
-from lexicona.auth.dto import AuthErrorDTO
+from lexicona.auth.dto import UUID_PATTERN, AuthErrorDTO
 from lexicona.auth.errors import ERRORS
 
 COMMON_ERRORS = (
@@ -49,7 +49,9 @@ HEADERS: dict[str, object] = {
 }
 
 
-def responses(*extra: str, cookie: bool = False) -> dict[int | str, dict[str, object]]:
+def responses(
+    *extra: str, cookie: bool = False, success_status: int = 200
+) -> dict[int | str, dict[str, object]]:
     """Bind exact status/code/message registry entries, including early errors."""
     success = dict(HEADERS)
     if cookie:
@@ -61,7 +63,7 @@ def responses(*extra: str, cookie: bool = False) -> dict[int | str, dict[str, ob
                 "dev lexicona_session_dev."
             ),
         }
-    result: dict[int | str, dict[str, object]] = {200: {"headers": success}}
+    result: dict[int | str, dict[str, object]] = {success_status: {"headers": success}}
     for code in (*COMMON_ERRORS, *extra):
         status, message = ERRORS[code]
         if status not in result:
@@ -100,7 +102,7 @@ def responses(*extra: str, cookie: bool = False) -> dict[int | str, dict[str, ob
     return result
 
 
-def unsafe(model: type[BaseModel]) -> dict[str, object]:
+def unsafe(model: type[BaseModel], *, invite_path: bool = False) -> dict[str, object]:
     """Document the existing parser without handing body reads to FastAPI."""
     return {
         "requestBody": {
@@ -114,6 +116,22 @@ def unsafe(model: type[BaseModel]) -> dict[str, object]:
             "content": {"application/json": {"schema": model.model_json_schema()}},
         },
         "parameters": [
+            *(
+                [
+                    {
+                        "name": "invite_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid4",
+                            "pattern": UUID_PATTERN,
+                        },
+                    }
+                ]
+                if invite_path
+                else []
+            ),
             {
                 "name": "X-Lexicona-Expected-Principal",
                 "in": "header",

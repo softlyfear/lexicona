@@ -92,6 +92,7 @@ def unsafe_guard(
     context: Decision,
     *,
     pre_auth: bool = False,
+    admin: bool | None = None,
 ) -> None:
     """Preserve auth, CSRF, state, then expected-principal rejection order."""
     origin_guard(request, config)
@@ -106,6 +107,8 @@ def unsafe_guard(
         raise AuthError("csrf_failed")
     if pre_auth and current.user_id is not None:
         raise AuthError("already_authenticated")
+    if admin is False:
+        raise AuthError("forbidden")
     expected = single(
         request, "x-lexicona-expected-principal", error="principal_mismatch"
     )
