@@ -142,7 +142,7 @@ describe('foundation shell', () => {
         .hasAttribute('disabled'),
     ).toBe(true);
     expect(
-      screen.getByText(/Регистрация по приглашению появится/),
+      screen.getByRole('link', { name: 'Регистрация по приглашению' }),
     ).not.toBeNull();
     await act(async () => {
       finish(new Response(JSON.stringify({ status: 'ready' })));

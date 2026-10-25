@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { useForm } from 'react-hook-form';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { RegistrationForm } from './RegistrationForm';
+import { InvitesPage } from './InvitesPage';
 import type { AuthClient } from './client';
 import { loginSchema } from './wire';
 import styles from './AccountPage.module.css';
@@ -61,8 +63,8 @@ function LoginForm({ client }: { client: AuthClient }) {
       </p>
       <button type="submit">Войти</button>
       <p>
-        Регистрация по приглашению появится после подключения серверного API.
-        Пароль не сохраняется приложением.
+        <Link to="/register">Регистрация по приглашению</Link>. Пароль не
+        сохраняется приложением.
       </p>
     </form>
   );
@@ -71,12 +73,28 @@ function LoginForm({ client }: { client: AuthClient }) {
 export function AccountPage({
   client,
   dictionary = false,
+  registration = false,
+  invites = false,
 }: {
   client: AuthClient;
   dictionary?: boolean;
+  registration?: boolean;
+  invites?: boolean;
 }) {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   if (state.phase === 'authenticated' && state.user && state.privateQueries) {
+    if (invites)
+      return state.user.role === 'admin' ? (
+        <InvitesPage key={state.revision} client={client} />
+      ) : (
+        <section>
+          <h1>Недостаточно прав</h1>
+          <p>Приглашения доступны только текущему администратору.</p>
+          <Link className={styles.link} to="/dictionary">
+            Вернуться в словарь
+          </Link>
+        </section>
+      );
     if (!dictionary) return <Navigate to="/dictionary" replace />;
     return (
       <QueryClientProvider key={state.revision} client={state.privateQueries}>
@@ -96,6 +114,13 @@ export function AccountPage({
             Выйти
           </button>
           <h1>Личный словарь</h1>
+          {state.user.role === 'admin' && (
+            <p>
+              <Link className={styles.link} to="/admin/invites">
+                Управление приглашениями
+              </Link>
+            </p>
+          )}
           <h2>Работа со словами ещё не реализована</h2>
           <p>
             Аккаунт проверен сервером. Здесь пока нет сохранённых записей,
@@ -105,8 +130,19 @@ export function AccountPage({
       </QueryClientProvider>
     );
   }
-  if (state.phase === 'anonymous') {
-    if (dictionary) return <Navigate to="/login" replace />;
+  if (state.phase === 'anonymous' || state.phase === 'registering') {
+    if (dictionary || invites) return <Navigate to="/login" replace />;
+    if (registration)
+      return (
+        <section>
+          <h1>Регистрация по приглашению</h1>
+          <RegistrationForm
+            key={state.revision}
+            client={client}
+            busy={state.phase === 'registering'}
+          />
+        </section>
+      );
     return (
       <section>
         <h1>Вход в аккаунт</h1>

@@ -45,6 +45,57 @@ export const userSchema = z.strictObject({
   version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 }) satisfies z.ZodType<components['schemas']['UserDTO']>;
 export type User = z.infer<typeof userSchema>;
+export const registerSchema = loginSchema.extend({
+  invite_token: tokenSchema,
+  display_name: userSchema.shape.display_name,
+});
+export type Registration = z.infer<typeof registerSchema>;
+export const timestampSchema = z.iso.datetime({ precision: 6 });
+export const inviteSchema = z.strictObject({
+  id: uuidSchema,
+  created_by: uuidSchema.nullable(),
+  created_at: timestampSchema,
+  expires_at: timestampSchema,
+  used_at: timestampSchema.nullable(),
+  revoked_at: timestampSchema.nullable(),
+  state: z.enum(['active', 'used', 'revoked', 'expired']),
+  version: userSchema.shape.version,
+}) satisfies z.ZodType<components['schemas']['InviteDTO']>;
+export type Invite = z.infer<typeof inviteSchema>;
+export const inviteCreatedSchema = z.strictObject({
+  invite: inviteSchema,
+  invite_token: tokenSchema,
+}) satisfies z.ZodType<components['schemas']['InviteCreatedDTO']>;
+export const cursorSchema = z
+  .string()
+  .max(256)
+  .regex(/^[A-Za-z0-9_-]+$/)
+  .refine((value) => {
+    try {
+      const raw = atob(value.replaceAll('-', '+').replaceAll('_', '/'));
+      const match =
+        /^\{"v":1,"created_at_us":(0|[1-9][0-9]*),"id":"([0-9a-f-]+)"\}$/.exec(
+          raw,
+        );
+      if (match === null) return false;
+      const [, created] = z
+        .tuple([z.string(), z.string(), uuidSchema])
+        .parse(Array.from(match));
+      return (
+        BigInt(created) <= 9223372036854775807n &&
+        btoa(raw)
+          .replaceAll('+', '-')
+          .replaceAll('/', '_')
+          .replaceAll('=', '') === value
+      );
+    } catch {
+      return false;
+    }
+  });
+export const inviteListSchema = z.strictObject({
+  items: z.array(inviteSchema),
+  next_cursor: cursorSchema.nullable(),
+}) satisfies z.ZodType<components['schemas']['InviteListDTO']>;
 export const meSchema = z.strictObject({
   user: userSchema,
 }) satisfies z.ZodType<components['schemas']['MeDTO']>;
@@ -86,7 +137,7 @@ const unsafe = {
   413: { request_too_large: 'Запрос слишком большой.' },
   415: { unsupported_media_type: 'Неподдерживаемый формат запроса.' },
 };
-/** Frozen phase2A registry, checked against actual OpenAPI including $ref siblings. */
+/** Frozen eight-operation registry, checked against actual OpenAPI including $ref siblings. */
 export const errors: Record<
   Operation,
   Record<string, Record<string, string>>
@@ -99,6 +150,28 @@ export const errors: Record<
     401: { ...common[401], invalid_credentials: 'Неверный логин или пароль.' },
     409: { already_authenticated: 'Сначала выйдите из текущего аккаунта.' },
     503: { ...common[503], auth_busy: 'Сервис занят. Повторите позже.' },
+  },
+  register: {
+    ...unsafe,
+    400: { ...unsafe[400], invite_invalid: 'Приглашение недействительно.' },
+    409: {
+      already_authenticated: 'Сначала выйдите из текущего аккаунта.',
+      login_unavailable: 'Логин недоступен.',
+    },
+    503: { ...common[503], auth_busy: 'Сервис занят. Повторите позже.' },
+  },
+  inviteList: { ...common, 403: { forbidden: 'Недостаточно прав.' } },
+  inviteCreate: {
+    ...unsafe,
+    403: { ...unsafe[403], forbidden: 'Недостаточно прав.' },
+  },
+  inviteRevoke: {
+    ...unsafe,
+    403: { ...unsafe[403], forbidden: 'Недостаточно прав.' },
+    409: {
+      version_conflict: 'Данные изменились. Обновите страницу.',
+      invite_state_conflict: 'Состояние приглашения изменилось.',
+    },
   },
 };
 const fieldMessages = z.enum([
@@ -119,16 +192,26 @@ const messages = z
         fieldMessages.options.filter((message) => items.includes(message)),
       ),
   );
+const unavailableFields = z.strictObject({
+  login: z.tuple([z.literal('Логин недоступен.')]),
+});
+const validationFields = z.strictObject({
+  login: messages.optional(),
+  password: messages.optional(),
+  display_name: messages.optional(),
+  invite_token: messages.optional(),
+  expected_version: messages.optional(),
+  invite_id: messages.optional(),
+  limit: messages.optional(),
+  cursor: messages.optional(),
+  _request: messages.optional(),
+});
 const errorSchema = z.strictObject({
   error: z.strictObject({
     code: z.string(),
     message: z.string(),
     request_id: uuidSchema,
-    fields: z.strictObject({
-      login: messages.optional(),
-      password: messages.optional(),
-      _request: messages.optional(),
-    }),
+    fields: z.record(z.string(), z.unknown()),
   }),
 });
 export function parseError(
@@ -138,11 +221,15 @@ export function parseError(
 ) {
   const { error } = errorSchema.parse(input);
   const expected = errors[operation][status]?.[error.code];
-  if (
-    !expected ||
-    expected !== error.message ||
-    (status !== 422 && Object.keys(error.fields).length !== 0)
-  )
+  if (!expected || expected !== error.message)
     throw new Error('Invalid error response');
-  return error;
+  const fields: Partial<
+    Record<keyof z.infer<typeof validationFields>, string[] | undefined>
+  > =
+    error.code === 'login_unavailable'
+      ? unavailableFields.parse(error.fields)
+      : status === 422
+        ? validationFields.parse(error.fields)
+        : z.strictObject({}).parse(error.fields);
+  return { ...error, fields };
 }

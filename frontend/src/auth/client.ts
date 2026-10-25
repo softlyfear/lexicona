@@ -2,19 +2,22 @@ import { QueryClient } from '@tanstack/react-query';
 import { Admission } from './admission';
 import type { Principal } from './admission';
 import { AuthFailure, request } from './transport';
+import { InvitesResource } from './invites';
 import {
   authSchema,
   csrfSchema,
   loginSchema,
   logoutSchema,
   meSchema,
+  registerSchema,
 } from './wire';
-import type { User } from './wire';
+import type { User, Registration } from './wire';
 
 type Phase =
   | 'unknown'
   | 'checking'
   | 'anonymous'
+  | 'registering'
   | 'authenticated'
   | 'signing-out'
   | 'error';
@@ -26,6 +29,10 @@ export interface AuthSnapshot {
   message: string;
 }
 export type Serialize = (work: () => Promise<void>) => Promise<void>;
+interface RegistrationFeedback {
+  message: string;
+  fields: Partial<Record<string, string[] | undefined>>;
+}
 
 /** Only this memory owner can attach a new identity+revision QueryClient. */
 export class AuthClient {
@@ -236,6 +243,89 @@ export class AuthClient {
           'unknown',
           'Вход не подтверждён. Проверьте текущий аккаунт; не повторяйте вход автоматически.',
         );
+    }
+  };
+
+  openInvites = () => {
+    const { user, privateQueries, revision } = this.snapshot;
+    if (
+      this.snapshot.phase !== 'authenticated' ||
+      user?.role !== 'admin' ||
+      !privateQueries
+    )
+      throw new AuthFailure();
+    return new InvitesResource({
+      userId: user.id,
+      revision,
+      queries: privateQueries,
+      fetcher: this.fetcher,
+      signal: this.controller.signal,
+      csrf: this.csrf,
+      capture: (operation) => this.admission.capture(operation),
+      subscribe: this.subscribe,
+      recheck: this.recheck,
+    });
+  };
+
+  cancelRegistration = () => {
+    if (this.snapshot.phase === 'registering') void this.recheck();
+  };
+
+  register = async (
+    input: Registration,
+  ): Promise<RegistrationFeedback | undefined> => {
+    if (this.snapshot.phase !== 'anonymous') return;
+    const parsed = registerSchema.safeParse(input);
+    if (!parsed.success)
+      return { message: 'Проверьте поля формы.', fields: {} };
+    const csrf = this.csrf;
+    const lease = this.admission.capture('register');
+    const generation = this.controller;
+    this.publish('registering');
+    const outcome = { provisional: false };
+    try {
+      await this.exclusive(async () => {
+        lease.current();
+        const result = await request(
+          lease,
+          authSchema,
+          this.controller.signal,
+          this.fetcher,
+          csrf,
+          parsed.data,
+        );
+        lease.current();
+        outcome.provisional = true;
+        this.broadcast();
+        this.csrf = undefined;
+        this.admission.replace('unknown');
+        this.publish('checking');
+        await this.identify(result.user.id);
+      });
+    } catch (error) {
+      if (this.controller !== generation) return;
+      if (
+        !outcome.provisional &&
+        error instanceof AuthFailure &&
+        ['validation_error', 'invite_invalid', 'login_unavailable'].includes(
+          error.code,
+        )
+      ) {
+        lease.current();
+        this.publish('anonymous');
+        const message =
+          error.code === 'invite_invalid'
+            ? 'Приглашение недействительно.'
+            : error.code === 'login_unavailable'
+              ? 'Логин недоступен.'
+              : 'Проверьте поля формы.';
+        return { message, fields: error.fields };
+      }
+      this.hide(
+        'error',
+        'unknown',
+        'Регистрация не подтверждена. Проверьте текущий аккаунт; не отправляйте регистрацию повторно автоматически. Если вход не подтверждён, войдите явно с выбранными данными.',
+      );
     }
   };
 

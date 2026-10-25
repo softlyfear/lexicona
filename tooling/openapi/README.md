@@ -7,8 +7,9 @@
 ## Actual source и установка
 
 Источник — экспорт **реального** backend `backend/openapi/auth-v1.json`.
-Принятый phase2A содержит csrf/login/me/logout и два legacy health routes,
-не будущие register/admin-invites. Sole backend owner управляет schema/wire.
+Actual snapshot содержит восемь auth/admin operations: csrf/login/me/logout,
+register и invitations list/create/revoke, плюс два legacy health routes.
+Sole backend owner управляет schema/wire; frontend не меняет её под generator.
 Output принадлежит frontend: `frontend/src/shared/api/generated.ts`.
 
 Node **22.23.3**, npm **10.9.9**. Из корня clone:

@@ -1,5 +1,19 @@
 export type Principal = 'anonymous' | `user:${string}`;
-export type Operation = 'me' | 'csrf' | 'login' | 'logout';
+export const operations = {
+  me: { path: '/api/v1/auth/me', method: 'GET', status: 200 },
+  csrf: { path: '/api/v1/auth/csrf', method: 'GET', status: 200 },
+  login: { path: '/api/v1/auth/login', method: 'POST', status: 200 },
+  logout: { path: '/api/v1/auth/logout', method: 'POST', status: 200 },
+  register: { path: '/api/v1/auth/register', method: 'POST', status: 201 },
+  inviteList: { path: '/api/v1/admin/invites', method: 'GET', status: 200 },
+  inviteCreate: { path: '/api/v1/admin/invites', method: 'POST', status: 201 },
+  inviteRevoke: {
+    path: '/api/v1/admin/invites/{invite_id}/revoke',
+    method: 'POST',
+    status: 200,
+  },
+} as const;
+export type Operation = keyof typeof operations;
 export class Discarded extends Error {}
 
 /** Captures are immutable. Every awaited transport/body step must re-admit. */

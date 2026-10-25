@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
+// Playwright's default failure aria snapshot can contain one-time invite output.
+// The installed runner checks this flag before capturing any page snapshot.
+process.env.PLAYWRIGHT_NO_COPY_PROMPT = '1';
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
@@ -19,6 +23,7 @@ export default defineConfig({
     headless: true,
     // Auth traffic contains designated CSRF responses: never retain traces.
     trace: 'off',
-    screenshot: 'only-on-failure',
+    screenshot: 'off',
+    video: 'off',
   },
 });

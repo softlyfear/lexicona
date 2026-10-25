@@ -59,3 +59,40 @@ except Exception:
   });
   return accounts;
 }
+
+/** Test-only clock-boundary setup on one known real API-issued invitation. */
+export async function expireInvite(database: string, id: string) {
+  const script = `
+import sqlite3, sys, time, uuid
+try:
+    target = sys.argv[2]
+    if str(uuid.UUID(target)) != target: raise ValueError()
+    now = time.time_ns() // 1000
+    with sqlite3.connect(sys.argv[1]) as db:
+        changed = db.execute('UPDATE invites SET created_at=?,expires_at=? WHERE id=? AND used_at IS NULL AND revoked_at IS NULL', (now-259200000001,now-1,target)).rowcount
+        if changed != 1: raise ValueError()
+    print('expired')
+except Exception:
+    print('Expiry fixture failed', file=sys.stderr)
+    sys.exit(1)
+`;
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(python, ['-c', script, database, id], {
+      cwd: root,
+      timeout: 5000,
+      killSignal: 'SIGKILL',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let output = '';
+    child.stdout.on('data', (data: Buffer) => {
+      output += data.toString();
+    });
+    child.on('error', () => {
+      reject(new Error('Expiry fixture failed'));
+    });
+    child.on('exit', (code) => {
+      if (code === 0 && output.trim() === 'expired') resolve();
+      else reject(new Error('Expiry fixture failed'));
+    });
+  });
+}
