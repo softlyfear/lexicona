@@ -5,8 +5,10 @@ Foundation LX-001/LX-002: FastAPI application factory, health endpoints,
 LX-003 содержит четыре auth-таблицы, защищённую CLI первого администратора и
 восемь настоящих auth/admin операций: csrf, login, register, me, logout,
 invite create/list/revoke. Нет дополнительных endpoints или 200/501 заглушек.
-Это server-only срез: browser UI аккаунтов/invites, словарь и тренировочные
-percentage/SRS policies здесь не реализованы и полный LX-003 не заявлен.
+Browser UI входа, регистрации по приглашению и управления приглашениями описан
+в [frontend/README.md](../frontend/README.md). Словарь, тренировочные percentage/SRS
+policies и дополнительные функции безопасности аккаунта ещё не реализованы;
+готовность полного MVP или production здесь не заявлена.
 
 ## Окружение и запуск
 
