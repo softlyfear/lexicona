@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import type { components } from '../src/shared/api/generated';
+import { operations } from '../src/auth/admission';
+import type { Operation } from '../src/auth/admission';
 import {
   errors,
   parseError,
@@ -35,7 +37,7 @@ describe('strict validation compensates for conservative generated transport typ
       createHash('sha256')
         .update(readFileSync('../backend/openapi/auth-v1.json'))
         .digest('hex'),
-    ).toBe('b42cfcbcd9a2705da69d0933496bca6fd99ec6801ffe259c82f45966c9b995e8');
+    ).toBe('37837d1092484a351a65bdab9b709368db87f6a3e0cae3f08ab668053070c5d1');
     const widened = {
       error: {
         code: 'unpublished_code',
@@ -83,10 +85,24 @@ describe('strict validation compensates for conservative generated transport typ
     ).toThrow();
   });
   it('matches every actual operation/status/code/message and rejects drift/extra fields', () => {
-    for (const operation of ['csrf', 'login', 'logout', 'me'] as const) {
-      const method =
-        operation === 'login' || operation === 'logout' ? 'post' : 'get';
-      const actual = schema.paths[`/api/v1/auth/${operation}`]?.[method];
+    expect(Object.keys(operations).sort()).toEqual([
+      'csrf',
+      'inviteCreate',
+      'inviteList',
+      'inviteRevoke',
+      'login',
+      'logout',
+      'me',
+      'register',
+    ]);
+    expect(
+      Object.values(schema.paths).flatMap((methods) => Object.values(methods))
+        .length,
+    ).toBe(10);
+    for (const operation of Object.keys(operations) as Operation[]) {
+      const descriptor = operations[operation];
+      const actual =
+        schema.paths[descriptor.path]?.[descriptor.method.toLowerCase()];
       expect(actual).toBeDefined();
       const registry: Record<string, Record<string, string>> = {};
       for (const [status, response] of Object.entries(
@@ -98,7 +114,15 @@ describe('strict validation compensates for conservative generated transport typ
           response['x-error-codes'],
         )) {
           const body = {
-            error: { code, message, fields: {}, request_id: requestId },
+            error: {
+              code,
+              message,
+              fields:
+                code === 'login_unavailable'
+                  ? { login: ['Логин недоступен.'] }
+                  : {},
+              request_id: requestId,
+            },
           };
           expect(parseError(operation, Number(status), body).code).toBe(code);
           expect(() =>

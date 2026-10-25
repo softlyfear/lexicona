@@ -47,6 +47,14 @@ export function App() {
           />
           <Route path="/login" element={<AccountPage client={auth.client} />} />
           <Route
+            path="/register"
+            element={<AccountPage client={auth.client} registration />}
+          />
+          <Route
+            path="/admin/invites"
+            element={<AccountPage client={auth.client} invites />}
+          />
+          <Route
             path="/connection"
             element={
               <section>

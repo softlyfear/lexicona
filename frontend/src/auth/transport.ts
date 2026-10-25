@@ -1,17 +1,21 @@
 import type { z } from 'zod';
+import { z as validator } from 'zod';
 import type { Admission } from './admission';
+import { operations } from './admission';
 import {
   authSchema,
   csrfSchema,
   meSchema,
   parseError,
   uuidSchema,
+  cursorSchema,
 } from './wire';
 
 export class AuthFailure extends Error {
   constructor(
     readonly status = 0,
     readonly code = 'unavailable',
+    readonly fields: Partial<Record<string, string[] | undefined>> = {},
   ) {
     super('Не удалось проверить аккаунт. Повторите проверку.');
   }
@@ -25,6 +29,7 @@ export async function request<T>(
   fetcher: typeof fetch,
   csrf?: string,
   body?: unknown,
+  parameters: { invite_id?: string; limit?: number; cursor?: string } = {},
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
@@ -36,7 +41,8 @@ export async function request<T>(
     combined.throwIfAborted();
     if (
       (lease.capturedPrincipal === 'unknown' && lease.operation !== 'me') ||
-      (lease.operation === 'login' && lease.capturedPrincipal !== 'anonymous')
+      ((lease.operation === 'login' || lease.operation === 'register') &&
+        lease.capturedPrincipal !== 'anonymous')
     )
       throw new AuthFailure();
     const headers = new Headers({ Accept: 'application/json' });
@@ -46,15 +52,39 @@ export async function request<T>(
       headers.set('X-CSRF-Token', csrf);
       headers.set('X-Lexicona-Expected-Principal', lease.capturedPrincipal);
     }
-    const response = await fetcher(`/api/v1/auth/${lease.operation}`, {
-      method: body === undefined ? 'GET' : 'POST',
+    const descriptor = operations[lease.operation];
+    let path: string = descriptor.path;
+    if (lease.operation === 'inviteRevoke') {
+      const { invite_id } = validator
+        .strictObject({ invite_id: uuidSchema })
+        .parse(parameters);
+      path = path.replace('{invite_id}', invite_id);
+    } else if (lease.operation === 'inviteList') {
+      const parsed = validator
+        .strictObject({
+          limit: validator.number().int().min(1).max(100).optional(),
+          cursor: cursorSchema.optional(),
+        })
+        .parse(parameters);
+      const query = new URLSearchParams();
+      if (parsed.limit !== undefined) query.set('limit', String(parsed.limit));
+      if (parsed.cursor !== undefined) query.set('cursor', parsed.cursor);
+      if (query.size) path += '?' + query.toString();
+    } else validator.strictObject({}).parse(parameters);
+    if ((descriptor.method === 'GET') !== (body === undefined))
+      throw new AuthFailure();
+    const encoded = body === undefined ? undefined : JSON.stringify(body);
+    lease.current();
+    combined.throwIfAborted();
+    const response = await fetcher(path, {
+      method: descriptor.method,
       credentials: 'same-origin',
       cache: 'no-store',
       redirect: 'error',
       referrerPolicy: 'no-referrer',
       signal: combined,
       headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(encoded === undefined ? {} : { body: encoded }),
     });
     lease.current();
     combined.throwIfAborted();
@@ -71,10 +101,10 @@ export async function request<T>(
     const raw: unknown = await response.json();
     lease.check(stamp);
     combined.throwIfAborted();
-    if (response.status !== 200) {
+    if (response.status !== descriptor.status) {
       const error = parseError(lease.operation, response.status, raw);
       if (error.request_id !== requestId) throw new AuthFailure();
-      throw new AuthFailure(response.status, error.code);
+      throw new AuthFailure(response.status, error.code, error.fields);
     }
     const result = schema.parse(raw);
     if (
@@ -87,7 +117,8 @@ export async function request<T>(
       csrfSchema.parse(result).authenticated !== (stamp !== 'anonymous')
     )
       throw new AuthFailure();
-    if (lease.operation === 'login') authSchema.parse(result);
+    if (lease.operation === 'login' || lease.operation === 'register')
+      authSchema.parse(result);
     lease.check(stamp);
     return result;
   } catch (error) {

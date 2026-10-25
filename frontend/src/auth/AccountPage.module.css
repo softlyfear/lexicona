@@ -24,3 +24,41 @@
 .identity {
   color: var(--color-muted);
 }
+.link,
+.form a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  max-width: 100%;
+}
+.field {
+  display: grid;
+  gap: 0.5rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.secret,
+.invites li {
+  background: var(--color-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-block: 1rem;
+  overflow-wrap: anywhere;
+}
+.secret output {
+  display: block;
+  margin-block: 1rem;
+  user-select: all;
+}
+.invites {
+  padding: 0;
+  list-style: none;
+}
+.invites dd {
+  margin: 0 0 0.75rem;
+  overflow-wrap: anywhere;
+}

@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+  '/api/v1/admin/invites': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Invites */
+    get: operations['adminInviteList'];
+    put?: never;
+    /** Create */
+    post: operations['adminInviteCreate'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/invites/{invite_id}/revoke': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revoke */
+    post: operations['adminInviteRevoke'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/auth/csrf': {
     parameters: {
       query?: never;
@@ -78,6 +113,23 @@ export interface paths {
     get: operations['authMe'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/register': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Register */
+    post: operations['authRegister'];
     delete?: never;
     options?: never;
     head?: never;
@@ -174,6 +226,50 @@ export interface components {
     ErrorEnvelope: {
       error: components['schemas']['ErrorDetail'];
     };
+    /** InviteCreatedDTO */
+    InviteCreatedDTO: {
+      invite: components['schemas']['InviteDTO'];
+      /** Invite Token */
+      invite_token: string;
+    };
+    /** InviteDTO */
+    InviteDTO: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Created By */
+      created_by: string | null;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid4
+       */
+      id: string;
+      /** Revoked At */
+      revoked_at: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'active' | 'used' | 'revoked' | 'expired';
+      /** Used At */
+      used_at: string | null;
+      /** Version */
+      version: number;
+    };
+    /** InviteListDTO */
+    InviteListDTO: {
+      /** Items */
+      items: components['schemas']['InviteDTO'][];
+      /** Next Cursor */
+      next_cursor: string | null;
+    };
     /** LogoutDTO */
     LogoutDTO: {
       /**
@@ -226,6 +322,722 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  adminInviteList: {
+    parameters: {
+      query?: {
+        /** @description Decimal1..100; duplicate and unknown query keys are rejected. */
+        limit?: string;
+        /** @description Canonical unpadded base64url compact JSON {v:1,created_at_us:integer,id:UUIDv4}; descending tuple keyset. */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InviteListDTO'];
+        };
+      };
+      /** @description auth_required */
+      401: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description forbidden */
+      403: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description method_not_allowed */
+      405: {
+        headers: {
+          Allow: string;
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_timeout */
+      408: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description validation_error */
+      422: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description rate_limited */
+      429: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_headers_too_large */
+      431: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description internal_error */
+      500: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description db_busy; service_unavailable */
+      503: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+    };
+  };
+  adminInviteCreate: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Checked after session, CSRF and login-state checks, again in final write. Missing/malformed/duplicate/mismatch yields 412 with no effects. */
+        'X-Lexicona-Expected-Principal': string;
+        /** @description Synchronizer token of this session; missing/malformed/duplicate/mismatch yields 403. */
+        'X-CSRF-Token': string;
+        /** @description If present must equal configured public origin. Otherwise exact-origin HTTPS Referer is required, even in dev. Never trust Host or forwarded headers. */
+        Origin?: string;
+        /** @description HTTPS fallback only when Origin is absent; no userinfo or fragment. */
+        Referer?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    /** @description UTF-8 JSON object; actual streamed limit 16384 bytes, depth 16, read min(5s, remaining admission). Reject duplicate keys/non-finite values/invalid Unicode; forbid extra fields. Content-Encoding absent or identity only. */
+    requestBody: {
+      content: {
+        'application/json': Record<string, never>;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InviteCreatedDTO'];
+        };
+      };
+      /** @description invalid_request; invalid_json */
+      400: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description auth_required */
+      401: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description csrf_failed; forbidden */
+      403: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description method_not_allowed */
+      405: {
+        headers: {
+          Allow: string;
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_timeout */
+      408: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description principal_mismatch */
+      412: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_too_large */
+      413: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description unsupported_media_type */
+      415: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description validation_error */
+      422: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description rate_limited */
+      429: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_headers_too_large */
+      431: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description internal_error */
+      500: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description db_busy; service_unavailable */
+      503: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+    };
+  };
+  adminInviteRevoke: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Checked after session, CSRF and login-state checks, again in final write. Missing/malformed/duplicate/mismatch yields 412 with no effects. */
+        'X-Lexicona-Expected-Principal': string;
+        /** @description Synchronizer token of this session; missing/malformed/duplicate/mismatch yields 403. */
+        'X-CSRF-Token': string;
+        /** @description If present must equal configured public origin. Otherwise exact-origin HTTPS Referer is required, even in dev. Never trust Host or forwarded headers. */
+        Origin?: string;
+        /** @description HTTPS fallback only when Origin is absent; no userinfo or fragment. */
+        Referer?: string;
+      };
+      path: {
+        invite_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description UTF-8 JSON object; actual streamed limit 16384 bytes, depth 16, read min(5s, remaining admission). Reject duplicate keys/non-finite values/invalid Unicode; forbid extra fields. Content-Encoding absent or identity only. */
+    requestBody: {
+      content: {
+        'application/json': {
+          /** Expected Version */
+          expected_version: number;
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InviteDTO'];
+        };
+      };
+      /** @description invalid_request; invalid_json */
+      400: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description auth_required */
+      401: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description csrf_failed; forbidden */
+      403: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description method_not_allowed */
+      405: {
+        headers: {
+          Allow: string;
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_timeout */
+      408: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description version_conflict; invite_state_conflict */
+      409: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description principal_mismatch */
+      412: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_too_large */
+      413: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description unsupported_media_type */
+      415: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description validation_error */
+      422: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description rate_limited */
+      429: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_headers_too_large */
+      431: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description internal_error */
+      500: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description db_busy; service_unavailable */
+      503: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+    };
+  };
   authCsrf: {
     parameters: {
       query?: never;
@@ -1091,6 +1903,287 @@ export interface operations {
         };
       };
       /** @description db_busy; service_unavailable */
+      503: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+    };
+  };
+  authRegister: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Checked after session, CSRF and login-state checks, again in final write. Missing/malformed/duplicate/mismatch yields 412 with no effects. */
+        'X-Lexicona-Expected-Principal': string;
+        /** @description Synchronizer token of this session; missing/malformed/duplicate/mismatch yields 403. */
+        'X-CSRF-Token': string;
+        /** @description If present must equal configured public origin. Otherwise exact-origin HTTPS Referer is required, even in dev. Never trust Host or forwarded headers. */
+        Origin?: string;
+        /** @description HTTPS fallback only when Origin is absent; no userinfo or fragment. */
+        Referer?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    /** @description UTF-8 JSON object; actual streamed limit 16384 bytes, depth 16, read min(5s, remaining admission). Reject duplicate keys/non-finite values/invalid Unicode; forbid extra fields. Content-Encoding absent or identity only. */
+    requestBody: {
+      content: {
+        'application/json': {
+          /** Display Name */
+          display_name: string;
+          /** Invite Token */
+          invite_token: string;
+          /** Login */
+          login: string;
+          /** Password */
+          password: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Only after known committed issuance/rotation, never on errors or existing csrf reads. Production __Host-lexicona_session; explicit dev lexicona_session_dev. */
+          'Set-Cookie'?: string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthDTO'];
+        };
+      };
+      /** @description invalid_request; invalid_json; invite_invalid */
+      400: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description auth_required */
+      401: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description csrf_failed */
+      403: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description not_found */
+      404: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description method_not_allowed */
+      405: {
+        headers: {
+          Allow: string;
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_timeout */
+      408: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description login_unavailable; already_authenticated */
+      409: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description principal_mismatch */
+      412: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_too_large */
+      413: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description unsupported_media_type */
+      415: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description validation_error */
+      422: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description rate_limited */
+      429: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Integer seconds; at least one. */
+          'Retry-After': string;
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description request_headers_too_large */
+      431: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description internal_error */
+      500: {
+        headers: {
+          /** @description Always present on scoped application responses. */
+          'Cache-Control': 'no-store';
+          /** @description Actual request authorization decision, or deny-only anonymous. Login success remains anonymous; logout stamps the old principal. Never an expected-header echo. */
+          'X-Lexicona-Request-Principal': string;
+          /** @description Independent server UUIDv4; request header is never reflected. */
+          'X-Request-ID': string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuthErrorDTO'];
+        };
+      };
+      /** @description db_busy; service_unavailable; auth_busy */
       503: {
         headers: {
           /** @description Always present on scoped application responses. */
