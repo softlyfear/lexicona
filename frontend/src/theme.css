@@ -1,0 +1,60 @@
+/* Semantic tokens. Components use only these; a new theme redefines them. */
+:root {
+  color-scheme: dark;
+  --bg: #12141c;
+  --surface: #1a1d2b;
+  --surface-raised: #232738;
+  --border: #2e3348;
+  --text: #f4ecd8;
+  --text-muted: #a9a394;
+  --accent: #f2b632;
+  --accent-strong: #ffcf4d;
+  --on-accent: #1a1405;
+  --success: #4cc38a;
+  --success-bg: #173528;
+  --danger: #f06a6a;
+  --danger-bg: #3b1d22;
+  --focus: #ffd56b;
+  --radius: 10px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--accent);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
