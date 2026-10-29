@@ -1,11 +1,12 @@
 import random
-from typing import Literal, cast
+from typing import Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import Select, case, func, select, update
 
 from lexicona import progress
+from lexicona.cloze import mask_example
 from lexicona.db import utcnow
 from lexicona.deps import CurrentAuth, Db
 from lexicona.models import TrainingItem, TrainingSession, Word
@@ -19,9 +20,15 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice", "input", "cards"] = "choice"
-    direction: Literal["en_ru", "ru_en"] = "en_ru"
+    mode: Literal["choice", "input", "cards", "cloze"] = "choice"
+    direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
     size: int = Field(default=10, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def valid_mode_direction(self) -> Self:
+        if (self.mode == "cloze") != (self.direction == "en_en"):
+            raise ValueError("invalid mode and direction combination")
+        return self
 
 
 class ItemOut(BaseModel):
@@ -178,6 +185,14 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 continue
             prompt, options, correct = built
             expected_answers = None
+        elif body.mode == "cloze":
+            masked = mask_example(target.headword, target.example_en)
+            if masked is None:
+                continue
+            prompt = masked
+            expected_answers = [target.headword]
+            options = []
+            correct = None
         else:
             prompt = target.headword if body.direction == "en_ru" else target.translations[0].text
             expected_answers = (
@@ -199,7 +214,8 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             )
         )
     if not session.items:
-        raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_words")
+        detail = "no_eligible_cloze_examples" if body.mode == "cloze" else "not_enough_words"
+        raise HTTPException(status.HTTP_409_CONFLICT, detail)
 
     db.add(session)
     await db.commit()
@@ -236,7 +252,7 @@ def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
             progress=word_progress,
         )
     assert item.is_correct is not None
-    if item.session.mode == "input":
+    if item.session.mode in ("input", "cloze"):
         assert item.submitted_text is not None
         assert item.expected_answers is not None
         return TextAnswerOut(
@@ -344,7 +360,7 @@ async def answer_item(
 
     if (
         (item.session.mode == "choice" and not isinstance(body, AnswerIn))
-        or (item.session.mode == "input" and not isinstance(body, TextAnswerIn))
+        or (item.session.mode in ("input", "cloze") and not isinstance(body, TextAnswerIn))
         or (item.session.mode == "cards" and not isinstance(body, GradeAnswerIn))
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")

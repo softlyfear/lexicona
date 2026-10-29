@@ -168,6 +168,13 @@
   overflow-wrap: anywhere;
 }
 
+.examplePrompt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: clamp(1.1rem, 4vw, 1.5rem);
+}
+
 .options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));

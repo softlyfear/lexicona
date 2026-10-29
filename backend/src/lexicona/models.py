@@ -106,7 +106,7 @@ class TrainingItem(Base):
     word_id: Mapped[str] = mapped_column(ForeignKey("words.id", ondelete="CASCADE"), index=True)
     word_content_version: Mapped[int]
     position: Mapped[int]
-    prompt: Mapped[str] = mapped_column(String(200))
+    prompt: Mapped[str] = mapped_column(Text)
     options: Mapped[list[str]] = mapped_column(JSON)
     correct_option: Mapped[int | None]
     chosen_option: Mapped[int | None]

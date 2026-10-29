@@ -19,6 +19,7 @@ const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
   { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
+  { mode: 'cloze', direction: 'en_en', label: 'Слово в примере: EN → EN' },
   { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
   { mode: 'cards', direction: 'ru_en', label: 'Карточки: RU → EN' },
 ]
@@ -87,6 +88,12 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
           </div>
         </fieldset>
         <p className={ui.muted}>Сначала идут слова с наименьшим прогрессом.</p>
+        {mode === 'cloze' && (
+          <p className={ui.muted}>
+            Подходят английские примеры, где слово или выражение встречается ровно один раз целиком.
+            В занятие войдут только подходящие слова.
+          </p>
+        )}
         {start.isError && (
           <p className={ui.error} role="alert">
             {mode !== 'choice' &&
@@ -229,8 +236,8 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
     )
   }
 
-  const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
-  const answerLang = promptLang === 'en' ? 'ru' : 'en'
+  const promptLang = session.direction === 'ru_en' ? 'ru' : 'en'
+  const answerLang = session.direction === 'en_ru' ? 'ru' : 'en'
   const busy = action.isPending
   const disabled = busy || !!result
   const cardAnswer =
@@ -260,7 +267,10 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
         </button>
       </div>
       <div className={`${ui.card} ${css.question}`}>
-        <span className={css.prompt} lang={promptLang}>
+        <span
+          className={`${css.prompt} ${session.mode === 'cloze' ? css.examplePrompt : ''}`}
+          lang={promptLang}
+        >
           {item.prompt}
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
@@ -297,11 +307,15 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
           })}
         </div>
       )}
-      {session.mode === 'input' && (
+      {(session.mode === 'input' || session.mode === 'cloze') && (
         <form key={item.id} className={css.form} onSubmit={submit}>
           <label className={ui.field}>
             <span className={ui.label}>
-              {session.direction === 'en_ru' ? 'Введите перевод' : 'Введите слово'}
+              {session.mode === 'cloze'
+                ? 'Введите пропущенное выражение'
+                : session.direction === 'en_ru'
+                  ? 'Введите перевод'
+                  : 'Введите слово'}
             </span>
             <input
               className={ui.input}

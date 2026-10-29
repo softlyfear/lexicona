@@ -50,6 +50,16 @@ describe('api', () => {
     await expect(api.deleteWord('id')).resolves.toBeUndefined()
   })
 
+  it('starts cloze with the explicit en_en direction', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(201, { id: 's', mode: 'cloze', direction: 'en_en', items: [] })
+    await api.startTraining('en_en', 10, 'cloze')
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/training/sessions')
+    expect(init.body).toBe(JSON.stringify({ mode: 'cloze', direction: 'en_en', size: 10 }))
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+  })
+
   it('sends reveal and skip mutations with CSRF and no payload', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { outcome: 'skipped', delta: 0, progress: 5 })

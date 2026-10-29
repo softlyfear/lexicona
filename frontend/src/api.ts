@@ -1,6 +1,6 @@
 export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
-export type Direction = 'en_ru' | 'ru_en'
-export type TrainingMode = 'choice' | 'input' | 'cards'
+export type Direction = 'en_ru' | 'ru_en' | 'en_en'
+export type TrainingMode = 'choice' | 'input' | 'cards' | 'cloze'
 export type CardGrade = 'again' | 'hard' | 'good' | 'easy'
 
 export interface User {
@@ -164,6 +164,8 @@ const MESSAGES: Record<string, string> = {
   invalid_credentials: 'Неверный логин или пароль.',
   too_many_attempts: 'Слишком много попыток. Попробуйте через 15 минут.',
   not_enough_words: 'Нужно хотя бы 4 слова с разными переводами.',
+  no_eligible_cloze_examples:
+    'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',
 }
 
 export function errorMessage(error: unknown): string {
