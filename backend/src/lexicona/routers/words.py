@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints, field_validator
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.deps import CurrentAuth, Db
@@ -22,6 +22,9 @@ Text300 = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300
 Text2000 = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 Text4000 = Annotated[str, StringConstraints(strip_whitespace=True, max_length=4000)]
 Blank = AfterValidator(_blank_to_none)
+WordSort = Literal[
+    "created_desc", "created_asc", "headword_asc", "headword_desc", "progress_asc", "progress_desc"
+]
 
 
 class WordIn(BaseModel):
@@ -97,7 +100,10 @@ def _fill(word: Word, body: WordIn) -> None:
 
 @router.get("")
 async def list_words(
-    auth: CurrentAuth, db: Db, q: Annotated[str, Query(max_length=200)] = ""
+    auth: CurrentAuth,
+    db: Db,
+    q: Annotated[str, Query(max_length=200)] = "",
+    sort: WordSort = "created_desc",
 ) -> list[WordOut]:
     query = select(Word).where(Word.owner_id == auth.user.id)
     if needle := normalize(q):
@@ -108,7 +114,15 @@ async def list_words(
                 Word.translations.any(WordTranslation.normalized_text.like(pattern, escape="\\")),
             )
         )
-    words = await db.scalars(query.order_by(Word.created_at.desc(), Word.id))
+    ordering: dict[WordSort, ColumnElement[Any]] = {
+        "created_desc": Word.created_at.desc(),
+        "created_asc": Word.created_at.asc(),
+        "headword_asc": Word.normalized_headword.asc(),
+        "headword_desc": Word.normalized_headword.desc(),
+        "progress_asc": Word.progress.asc(),
+        "progress_desc": Word.progress.desc(),
+    }
+    words = await db.scalars(query.order_by(ordering[sort], Word.id.asc()))
     return [WordOut.of(word) for word in words]
 
 

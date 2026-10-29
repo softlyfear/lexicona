@@ -43,6 +43,10 @@
   max-width: 24rem;
 }
 
+.sort {
+  width: min(100%, 19rem);
+}
+
 .form {
   display: flex;
   flex-direction: column;

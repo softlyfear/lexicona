@@ -2,6 +2,13 @@ export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
 export type Direction = 'en_ru' | 'ru_en' | 'en_en'
 export type TrainingMode = 'choice' | 'input' | 'cards' | 'cloze'
 export type CardGrade = 'again' | 'hard' | 'good' | 'easy'
+export type WordSort =
+  | 'created_desc'
+  | 'created_asc'
+  | 'headword_asc'
+  | 'headword_desc'
+  | 'progress_asc'
+  | 'progress_desc'
 
 export interface User {
   id: string
@@ -141,7 +148,8 @@ export const api = {
   updateSettings: (difficulty: Difficulty) =>
     request<User>('PUT', '/auth/settings', { difficulty }),
 
-  listWords: (q: string) => request<Word[]>('GET', `/words?${new URLSearchParams({ q })}`),
+  listWords: (q: string, sort: WordSort = 'created_desc') =>
+    request<Word[]>('GET', `/words?${new URLSearchParams({ q, sort })}`),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),

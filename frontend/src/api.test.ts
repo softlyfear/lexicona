@@ -38,6 +38,19 @@ describe('api', () => {
     })
   })
 
+  it('sends search and sort parameters to the dictionary endpoint', async () => {
+    const fetchMock = mockFetch(200, [])
+    await api.listWords('ёж cat', 'progress_desc')
+    const [path] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const url = new URL(path, 'http://test')
+    expect(url.pathname).toBe('/api/words')
+    expect(url.searchParams.get('q')).toBe('ёж cat')
+    expect(url.searchParams.get('sort')).toBe('progress_desc')
+    await api.listWords('')
+    const [defaultPath] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
+    expect(new URL(defaultPath, 'http://test').searchParams.get('sort')).toBe('created_desc')
+  })
+
   it('turns error responses into ApiError with the server detail', async () => {
     mockFetch(401, { detail: 'invalid_credentials' })
     const error = await api.login('a', 'b').catch((e: unknown) => e)

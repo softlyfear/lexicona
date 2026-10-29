@@ -7,6 +7,9 @@
 - Миграции Alembic; одна БД, naive UTC. Авторизация cookie, CSRF на мутациях.
 - Изоляция по owner_id; чужой объект возвращает 404. API всегда no-store.
 - React SPA: TanStack Query, react-router, CSS Modules; сеть только через api.ts.
+- Словарь сортируется сервером по allowlist: дата добавления, normalized_headword или
+  progress в обе стороны; равенства — id ASC. Поиск q и sort хранятся в URL,
+  query key ['words', q, sort] разделяет выдачи; invalidation ['words'] обновляет все порядки.
 - Один процесс отдаёт API и собранный frontend. Docker + Caddy — целевая поставка.
 - Прогресс 0–100; content_version защищает от устаревших вопросов, повторный ответ
   не должен повторно начислять прогресс. Правильный ответ решает сервер.
