@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Format explicit edited paths from Codex/Claude events; never execute shell input."""
+"""Format explicit edited paths from Codex events; never execute shell input."""
 
 import json
 import subprocess
