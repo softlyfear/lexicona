@@ -50,6 +50,20 @@ describe('api', () => {
     await expect(api.deleteWord('id')).resolves.toBeUndefined()
   })
 
+  it('sends reveal and skip mutations with CSRF and no payload', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, { outcome: 'skipped', delta: 0, progress: 5 })
+    await api.revealAnswer('item')
+    await api.skipItem('item')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [path, init] of fetchMock.mock.calls as unknown as [string, RequestInit][]) {
+      expect(path).toMatch(/^\/api\/training\/items\/item\/(reveal|skip)$/)
+      expect(init.method).toBe('POST')
+      expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+      expect(init.body).toBeUndefined()
+    }
+  })
+
   it('reports network failures in plain words', () => {
     expect(errorMessage(new TypeError('Failed to fetch'))).toBe('Нет связи с сервером.')
   })

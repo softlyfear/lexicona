@@ -29,6 +29,7 @@ async def test_input_checks_snapshot_without_leaking(
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": answer})
     assert response.status_code == 200
     assert response.json() == {
+        "outcome": "answered",
         "correct": True,
         "submitted_text": answer,
         "expected_answers": expected,
@@ -81,6 +82,7 @@ async def test_input_snapshot_stale_meaning_and_difficulty(app: FastAPI, alice: 
     await alice.put(f"/api/words/{word['id']}", json={"headword": "cat", "translations": ["котик"]})
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кошка"})
     assert response.json() == {
+        "outcome": "answered",
         "correct": True,
         "submitted_text": "кошка",
         "expected_answers": ["кот", "кошка"],

@@ -54,14 +54,20 @@ describe('карточки', () => {
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(screen.getByRole('button', { name: 'Показать ответ' })).toBeDisabled()
     expect(api.revealCard).toHaveBeenCalledOnce()
-    await act(async () => finishReveal({ expected_answers: ['кот', 'кошка'] }))
+    await act(async () => finishReveal({ outcome: 'revealed', expected_answers: ['кот', 'кошка'] }))
     expect(await screen.findByText('Ответ: кот, кошка')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Хорошо' }))
     expect(api.answerCard).toHaveBeenCalledWith('i1', 'good')
     for (const label of ['Повторить', 'Трудно', 'Хорошо', 'Легко'])
       expect(screen.getByRole('button', { name: label })).toBeDisabled()
     await act(async () =>
-      finishAnswer({ grade: 'good', expected_answers: ['кот', 'кошка'], delta: 4, progress: 4 }),
+      finishAnswer({
+        outcome: 'answered',
+        grade: 'good',
+        expected_answers: ['кот', 'кошка'],
+        delta: 4,
+        progress: 4,
+      }),
     )
     expect(await screen.findByRole('status')).toHaveTextContent('Хорошо (+4) · прогресс 4%')
     expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
@@ -80,10 +86,16 @@ describe('карточки', () => {
     })
     vi.mocked(api.revealCard)
       .mockRejectedValueOnce(new TypeError('offline'))
-      .mockResolvedValueOnce({ expected_answers: ['cat'] })
+      .mockResolvedValueOnce({ outcome: 'revealed', expected_answers: ['cat'] })
     vi.mocked(api.answerCard)
       .mockRejectedValueOnce(new TypeError('offline'))
-      .mockResolvedValueOnce({ grade: 'hard', expected_answers: ['cat'], delta: 0, progress: 3 })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        grade: 'hard',
+        expected_answers: ['cat'],
+        delta: 0,
+        progress: 3,
+      })
     renderPage()
     await user.click(screen.getByLabelText('Карточки: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))

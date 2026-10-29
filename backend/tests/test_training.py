@@ -91,6 +91,7 @@ async def test_correct_and_wrong_answers_move_progress(app: FastAPI, alice: Clie
 
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"option": right})
     assert response.json() == {
+        "outcome": "answered",
         "correct": True,
         "correct_option": right,
         "chosen_option": right,

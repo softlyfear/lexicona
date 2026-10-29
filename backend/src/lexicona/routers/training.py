@@ -3,7 +3,7 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import case, func, select, update
+from sqlalchemy import Select, case, func, select, update
 
 from lexicona import progress
 from lexicona.db import utcnow
@@ -66,6 +66,7 @@ class GradeAnswerIn(BaseModel):
 
 
 class AnswerOut(BaseModel):
+    outcome: Literal["answered"] = "answered"
     correct: bool
     correct_option: int
     chosen_option: int
@@ -74,6 +75,7 @@ class AnswerOut(BaseModel):
 
 
 class TextAnswerOut(BaseModel):
+    outcome: Literal["answered"] = "answered"
     correct: bool
     submitted_text: str
     expected_answers: list[str]
@@ -82,14 +84,38 @@ class TextAnswerOut(BaseModel):
 
 
 class RevealOut(BaseModel):
+    outcome: Literal["revealed"] = "revealed"
     expected_answers: list[str]
 
 
 class GradeAnswerOut(BaseModel):
+    outcome: Literal["answered"] = "answered"
     grade: Grade
     expected_answers: list[str]
     delta: int
     progress: int
+
+
+class AssistedOut(BaseModel):
+    outcome: Literal["assisted"] = "assisted"
+    expected_answers: list[str]
+    delta: Literal[0] = 0
+    progress: int
+
+
+class ChoiceAssistedOut(AssistedOut):
+    correct_option: int
+
+
+class SkippedOut(BaseModel):
+    outcome: Literal["skipped"] = "skipped"
+    delta: Literal[0] = 0
+    progress: int
+
+
+TerminalOut = (
+    AnswerOut | TextAnswerOut | GradeAnswerOut | ChoiceAssistedOut | AssistedOut | SkippedOut
+)
 
 
 def _meanings(word: Word) -> set[str]:
@@ -185,10 +211,21 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     )
 
 
-def _answer_out(
-    item: TrainingItem, word_progress: int
-) -> AnswerOut | TextAnswerOut | GradeAnswerOut:
+def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
     assert item.delta is not None
+    if item.outcome == "skipped":
+        return SkippedOut(progress=word_progress)
+    if item.outcome == "assisted":
+        if item.session.mode == "choice":
+            assert item.correct_option is not None
+            return ChoiceAssistedOut(
+                expected_answers=[item.options[item.correct_option]],
+                correct_option=item.correct_option,
+                progress=word_progress,
+            )
+        assert item.expected_answers is not None
+        return AssistedOut(expected_answers=item.expected_answers, progress=word_progress)
+    assert item.outcome == "answered"
     if item.session.mode == "cards":
         assert item.grade is not None
         assert item.expected_answers is not None
@@ -220,8 +257,9 @@ def _answer_out(
     )
 
 
-@router.post("/items/{item_id}/reveal")
-async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut:
+async def _owned_item_and_word(
+    item_id: str, auth: CurrentAuth, db: Db
+) -> tuple[TrainingItem, Word]:
     item = await db.scalar(
         select(TrainingItem)
         .join(TrainingSession)
@@ -229,32 +267,80 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut:
     )
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
-    if item.session.mode != "cards":
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_reveal_for_mode")
+    word = await db.scalar(
+        select(Word).where(Word.id == item.word_id, Word.owner_id == auth.user.id)
+    )
+    if word is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
+    return item, word
 
-    if item.revealed_at is None:
+
+def _owned_sessions(auth: CurrentAuth) -> Select[str]:
+    return select(TrainingSession.id).where(TrainingSession.owner_id == auth.user.id)
+
+
+@router.post("/items/{item_id}/reveal")
+async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | TerminalOut:
+    item, word = await _owned_item_and_word(item_id, auth, db)
+
+    if item.outcome is not None:
+        return _answer_out(item, word.progress)
+
+    if item.session.mode == "cards":
         await db.execute(
             update(TrainingItem)
-            .where(TrainingItem.id == item.id, TrainingItem.revealed_at.is_(None))
+            .where(
+                TrainingItem.id == item.id,
+                TrainingItem.session_id.in_(_owned_sessions(auth)),
+                TrainingItem.revealed_at.is_(None),
+                TrainingItem.outcome.is_(None),
+            )
             .values(revealed_at=utcnow())
         )
-        await db.commit()
+    else:
+        await db.execute(
+            update(TrainingItem)
+            .where(
+                TrainingItem.id == item.id,
+                TrainingItem.session_id.in_(_owned_sessions(auth)),
+                TrainingItem.outcome.is_(None),
+            )
+            .values(outcome="assisted", delta=0, answered_at=utcnow())
+        )
+    await db.commit()
+    await db.refresh(item)
+    await db.refresh(word)
 
+    if item.outcome is not None:
+        return _answer_out(item, word.progress)
     assert item.expected_answers is not None
     return RevealOut(expected_answers=item.expected_answers)
+
+
+@router.post("/items/{item_id}/skip")
+async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
+    item, word = await _owned_item_and_word(item_id, auth, db)
+    if item.outcome is None:
+        await db.execute(
+            update(TrainingItem)
+            .where(
+                TrainingItem.id == item.id,
+                TrainingItem.session_id.in_(_owned_sessions(auth)),
+                TrainingItem.outcome.is_(None),
+            )
+            .values(outcome="skipped", delta=0, answered_at=utcnow())
+        )
+        await db.commit()
+        await db.refresh(item)
+        await db.refresh(word)
+    return _answer_out(item, word.progress)
 
 
 @router.post("/items/{item_id}/answer")
 async def answer_item(
     item_id: str, body: AnswerIn | TextAnswerIn | GradeAnswerIn, auth: CurrentAuth, db: Db
-) -> AnswerOut | TextAnswerOut | GradeAnswerOut:
-    item = await db.scalar(
-        select(TrainingItem)
-        .join(TrainingSession)
-        .where(TrainingItem.id == item_id, TrainingSession.owner_id == auth.user.id)
-    )
-    if item is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
+) -> TerminalOut:
+    item, word = await _owned_item_and_word(item_id, auth, db)
 
     if (
         (item.session.mode == "choice" and not isinstance(body, AnswerIn))
@@ -262,14 +348,10 @@ async def answer_item(
         or (item.session.mode == "cards" and not isinstance(body, GradeAnswerIn))
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
+    if item.outcome is not None:
+        return _answer_out(item, word.progress)
     if item.session.mode == "cards" and item.revealed_at is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")
-
-    word = await db.scalar(
-        select(Word).where(Word.id == item.word_id, Word.owner_id == auth.user.id)
-    )
-    if word is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
 
     if item.answered_at is None:
         if isinstance(body, AnswerIn):
@@ -302,25 +384,36 @@ async def answer_item(
         )
         # Check the version in the write transaction, not against a potentially stale read.
         current_version = (
-            select(Word.content_version).where(Word.id == item.word_id).scalar_subquery()
+            select(Word.content_version)
+            .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
+            .scalar_subquery()
         )
         # Conditional update: of two concurrent answers only one is recorded.
         claimed = await db.execute(
             update(TrainingItem)
-            .where(TrainingItem.id == item.id, TrainingItem.answered_at.is_(None))
+            .where(
+                TrainingItem.id == item.id,
+                TrainingItem.session_id.in_(_owned_sessions(auth)),
+                TrainingItem.outcome.is_(None),
+            )
             .values(
                 chosen_option=chosen_option,
                 submitted_text=submitted_text,
                 grade=grade,
                 is_correct=correct,
                 delta=case((current_version == item.word_content_version, change), else_=0),
+                outcome="answered",
                 answered_at=utcnow(),
             )
         )
         if claimed.rowcount == 1 and change:  # type: ignore[attr-defined]
             await db.execute(
                 update(Word)
-                .where(Word.id == word.id, Word.content_version == item.word_content_version)
+                .where(
+                    Word.id == word.id,
+                    Word.owner_id == auth.user.id,
+                    Word.content_version == item.word_content_version,
+                )
                 .values(
                     progress=func.max(
                         progress.MIN_PROGRESS,

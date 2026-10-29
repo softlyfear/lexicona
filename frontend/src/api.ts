@@ -45,6 +45,7 @@ export interface TrainingSession {
 }
 
 export interface AnswerResult {
+  outcome: 'answered'
   correct: boolean
   correct_option: number
   chosen_option: number
@@ -53,6 +54,7 @@ export interface AnswerResult {
 }
 
 export interface TextAnswerResult {
+  outcome: 'answered'
   correct: boolean
   submitted_text: string
   expected_answers: string[]
@@ -61,14 +63,35 @@ export interface TextAnswerResult {
 }
 
 export interface CardRevealResult {
+  outcome: 'revealed'
   expected_answers: string[]
 }
 
-export interface CardAnswerResult extends CardRevealResult {
+export interface CardAnswerResult {
+  outcome: 'answered'
+  expected_answers: string[]
   grade: CardGrade
   delta: number
   progress: number
 }
+
+export interface AssistedResult {
+  outcome: 'assisted'
+  expected_answers: string[]
+  correct_option?: number
+  delta: 0
+  progress: number
+}
+
+export interface SkippedResult {
+  outcome: 'skipped'
+  delta: 0
+  progress: number
+}
+
+export type TerminalResult =
+  AnswerResult | TextAnswerResult | CardAnswerResult | AssistedResult | SkippedResult
+export type RevealResult = CardRevealResult | TerminalResult
 
 export class ApiError extends Error {
   readonly status: number
@@ -126,13 +149,15 @@ export const api = {
   startTraining: (direction: Direction, size: number, mode: TrainingMode = 'choice') =>
     request<TrainingSession>('POST', '/training/sessions', { mode, direction, size }),
   answer: (itemId: string, option: number) =>
-    request<AnswerResult>('POST', `/training/items/${itemId}/answer`, { option }),
+    request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>
-    request<TextAnswerResult>('POST', `/training/items/${itemId}/answer`, { text }),
-  revealCard: (itemId: string) =>
-    request<CardRevealResult>('POST', `/training/items/${itemId}/reveal`),
+    request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { text }),
+  revealCard: (itemId: string) => request<RevealResult>('POST', `/training/items/${itemId}/reveal`),
+  revealAnswer: (itemId: string) =>
+    request<TerminalResult>('POST', `/training/items/${itemId}/reveal`),
+  skipItem: (itemId: string) => request<TerminalResult>('POST', `/training/items/${itemId}/skip`),
   answerCard: (itemId: string, grade: CardGrade) =>
-    request<CardAnswerResult>('POST', `/training/items/${itemId}/answer`, { grade }),
+    request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { grade }),
 }
 
 const MESSAGES: Record<string, string> = {

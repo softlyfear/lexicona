@@ -114,6 +114,7 @@ class TrainingItem(Base):
     submitted_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
     revealed_at: Mapped[datetime | None]
     grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(8), nullable=True)
     is_correct: Mapped[bool | None]
     delta: Mapped[int | None]
     answered_at: Mapped[datetime | None]

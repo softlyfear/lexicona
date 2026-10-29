@@ -37,6 +37,7 @@ describe('письменная тренировка', () => {
     const user = userEvent.setup()
     vi.mocked(api.answerText)
       .mockResolvedValueOnce({
+        outcome: 'answered',
         correct: true,
         submitted_text: 'кот 1',
         expected_answers: ['кот', 'кошка'],
@@ -44,6 +45,7 @@ describe('письменная тренировка', () => {
         progress: 8,
       })
       .mockResolvedValueOnce({
+        outcome: 'answered',
         correct: false,
         submitted_text: 'волк',
         expected_answers: ['собака'],
@@ -77,6 +79,7 @@ describe('письменная тренировка', () => {
     vi.mocked(api.answerText)
       .mockRejectedValueOnce(new TypeError('offline'))
       .mockResolvedValueOnce({
+        outcome: 'answered',
         correct: true,
         submitted_text: 'cat',
         expected_answers: ['cat'],

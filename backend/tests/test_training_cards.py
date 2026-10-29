@@ -38,11 +38,12 @@ async def test_cards_hide_answers_until_reveal(
     for _ in range(2):
         response = await alice.post(reveal)
         assert response.status_code == 200
-        assert response.json() == {"expected_answers": expected}
+        assert response.json() == {"outcome": "revealed", "expected_answers": expected}
         assert response.headers["cache-control"] == "no-store"
     assert (await alice.get("/api/words")).json()[0]["progress"] == 0
     response = await alice.post(answer, json={"grade": "good"})
     assert response.json() == {
+        "outcome": "answered",
         "grade": "good",
         "expected_answers": expected,
         "delta": 4,
@@ -64,6 +65,7 @@ async def test_card_ratings_are_subjective(
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": grade})
     assert response.json() == {
+        "outcome": "answered",
         "grade": grade,
         "expected_answers": ["кот"],
         "delta": delta,
@@ -129,7 +131,8 @@ async def test_card_snapshot_and_frozen_difficulty(app: FastAPI, alice: Client) 
     await alice.put("/api/auth/settings", json={"difficulty": "very_hard"})
     await alice.put(f"/api/words/{word['id']}", json={"headword": "cat", "translations": ["котик"]})
     assert (await alice.post(f"/api/training/items/{item['id']}/reveal")).json() == {
-        "expected_answers": ["кот", "кошка"]
+        "outcome": "revealed",
+        "expected_answers": ["кот", "кошка"],
     }
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": "good"})
     assert response.json()["delta"] == 0
@@ -141,11 +144,16 @@ async def test_card_snapshot_and_frozen_difficulty(app: FastAPI, alice: Client) 
     assert response.json()["delta"] == 2  # very_hard frozen at creation
 
 
-async def test_non_card_reveal_is_rejected(alice: Client) -> None:
+async def test_non_card_reveal_closes_as_assisted(alice: Client) -> None:
     await add_word(alice, "cat", "кот")
     response = await alice.post("/api/training/sessions", json={"mode": "input"})
     item = response.json()["items"][0]
-    assert (await alice.post(f"/api/training/items/{item['id']}/reveal")).status_code == 422
+    assert (await alice.post(f"/api/training/items/{item['id']}/reveal")).json() == {
+        "outcome": "assisted",
+        "expected_answers": ["кот"],
+        "delta": 0,
+        "progress": 0,
+    }
     assert (
         await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": "good"})
     ).status_code == 422
@@ -196,19 +204,21 @@ async def test_card_cosmetic_edit_preserves_snapshot_and_score(app: FastAPI, ali
     )
     assert update.status_code == 200
     reveal = await alice.post(f"/api/training/items/{item['id']}/reveal")
-    assert reveal.json() == {"expected_answers": ["кот", "кошка"]}
+    assert reveal.json() == {"outcome": "revealed", "expected_answers": ["кот", "кошка"]}
     result = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": "good"})
     assert result.json()["delta"] == 4
     assert result.json()["progress"] == 34
 
 
-async def test_choice_item_cannot_be_revealed_as_card(alice: Client) -> None:
+async def test_choice_item_reveal_returns_choice_snapshot(alice: Client) -> None:
     for en, ru in [("cat", "кот"), ("dog", "собака"), ("cow", "корова"), ("fox", "лиса")]:
         await add_word(alice, en, ru)
     session = await alice.post("/api/training/sessions", json={"mode": "choice"})
     item = session.json()["items"][0]
     reveal = await alice.post(f"/api/training/items/{item['id']}/reveal")
-    assert reveal.status_code == 422
+    assert reveal.status_code == 200
+    assert reveal.json()["outcome"] == "assisted"
+    assert reveal.json()["expected_answers"] == [item["options"][reveal.json()["correct_option"]]]
     assert reveal.headers["cache-control"] == "no-store"
 
 

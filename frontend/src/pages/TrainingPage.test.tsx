@@ -37,6 +37,7 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     vi.mocked(api.answer)
       .mockResolvedValueOnce({
+        outcome: 'answered',
         correct: true,
         correct_option: 1,
         chosen_option: 1,
@@ -44,6 +45,7 @@ describe('TrainingPage', () => {
         progress: 4,
       })
       .mockResolvedValueOnce({
+        outcome: 'answered',
         correct: false,
         correct_option: 0,
         chosen_option: 2,

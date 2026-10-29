@@ -1,13 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ApiError,
   api,
   errorMessage,
-  type AnswerResult,
   type CardGrade,
   type Direction,
-  type TextAnswerResult,
+  type TerminalResult,
   type TrainingMode,
   type TrainingSession,
 } from '../api'
@@ -33,10 +32,6 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 
 export function TrainingPage() {
   const [session, setSession] = useState<TrainingSession | null>(null)
-  if (session?.mode === 'cards')
-    return <CardsRun session={session} onFinish={() => setSession(null)} />
-  if (session?.mode === 'input')
-    return <InputRun session={session} onFinish={() => setSession(null)} />
   if (session) return <Run session={session} onFinish={() => setSession(null)} />
   return <Setup onStart={setSession} />
 }
@@ -111,133 +106,49 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
   )
 }
 
-function CardsRun({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
-  const queryClient = useQueryClient()
-  const [index, setIndex] = useState(0)
-  const item = session.items[index]
-  const done = index >= session.items.length
-  const reveal = useMutation({ mutationFn: () => api.revealCard(item.id) })
-  const answer = useMutation({ mutationFn: (grade: CardGrade) => api.answerCard(item.id, grade) })
+type Action =
+  | { kind: 'choice'; option: number }
+  | { kind: 'text'; text: string }
+  | { kind: 'grade'; grade: CardGrade }
+  | { kind: 'reveal' }
+  | { kind: 'skip' }
 
-  useEffect(() => {
-    return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
-  }, [queryClient])
-
-  function grade(value: CardGrade) {
-    if (reveal.data && !answer.data && !answer.isPending) answer.mutate(value)
-  }
-
-  function next() {
-    reveal.reset()
-    answer.reset()
-    setIndex((i) => i + 1)
-  }
-
-  if (done) {
-    return (
-      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
-        <h1 className={css.title}>Готово</h1>
-        <p>Оценено карточек: {index}</p>
-        <div className={css.actions}>
-          <button className={ui.primary} onClick={onFinish} autoFocus>
-            Ещё занятие
-          </button>
-        </div>
-      </section>
-    )
-  }
-
-  const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
-  const answerLang = promptLang === 'en' ? 'ru' : 'en'
-  return (
-    <section className={css.stack}>
-      <div className={css.toolbar}>
-        <span className={ui.muted}>
-          {index + 1} / {session.items.length}
-        </span>
-        <button className={ui.ghost} onClick={onFinish}>
-          Завершить
-        </button>
-      </div>
-      <div className={`${ui.card} ${css.question}`}>
-        <span className={css.prompt} lang={promptLang}>
-          {item.prompt}
-        </span>
-        <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
-      </div>
-      {!reveal.data && (
-        <div>
-          <button
-            className={ui.primary}
-            onClick={() => reveal.mutate()}
-            disabled={reveal.isPending}
-          >
-            Показать ответ
-          </button>
-        </div>
-      )}
-      {reveal.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(reveal.error)} Попробуйте ещё раз.
-        </p>
-      )}
-      {reveal.data && (
-        <div className={css.stack}>
-          <p className={ui.muted} lang={answerLang}>
-            Ответ: {(answer.data?.expected_answers ?? reveal.data.expected_answers).join(', ')}
-          </p>
-          <fieldset className={css.choices}>
-            <legend className={ui.label}>Как вы запомнили?</legend>
-            <div className={css.actions}>
-              {CARD_GRADES.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={ui.button}
-                  onClick={() => grade(option.value)}
-                  disabled={!!answer.data || answer.isPending}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        </div>
-      )}
-      {answer.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(answer.error)} Попробуйте ещё раз.
-        </p>
-      )}
-      {answer.data && (
-        <div className={css.feedback} role="status">
-          <span>
-            {CARD_GRADES.find((option) => option.value === answer.data.grade)?.label} (
-            {answer.data.delta > 0 ? '+' : ''}
-            {answer.data.delta}) · прогресс {answer.data.progress}%
-          </span>
-          <button className={ui.primary} onClick={next} autoFocus>
-            Далее
-          </button>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function InputRun({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
+function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
   const queryClient = useQueryClient()
   const [index, setIndex] = useState(0)
   const [text, setText] = useState('')
-  const [results, setResults] = useState<TextAnswerResult[]>([])
+  const [revealed, setRevealed] = useState<string[] | null>(null)
+  const [results, setResults] = useState<TerminalResult[]>([])
+  const locked = useRef(false)
   const item = session.items[index]
-  const result = results[index] as TextAnswerResult | undefined
+  const result = results[index] as TerminalResult | undefined
   const done = index >= session.items.length
-  const answer = useMutation({
-    mutationFn: (value: string) => api.answerText(item.id, value),
+  const action = useMutation({
+    mutationFn: (value: Action) => {
+      switch (value.kind) {
+        case 'choice':
+          return api.answer(item.id, value.option)
+        case 'text':
+          return api.answerText(item.id, value.text)
+        case 'grade':
+          return api.answerCard(item.id, value.grade)
+        case 'reveal':
+          return session.mode === 'cards' ? api.revealCard(item.id) : api.revealAnswer(item.id)
+        case 'skip':
+          return api.skipItem(item.id)
+      }
+    },
     onSuccess: (data) => {
-      setText(data.submitted_text)
-      setResults((prev) => [...prev, data])
+      if (data.outcome === 'revealed') {
+        setRevealed(data.expected_answers)
+        locked.current = false
+      } else {
+        if (data.outcome === 'answered' && 'submitted_text' in data) setText(data.submitted_text)
+        setResults((previous) => [...previous, data])
+      }
+    },
+    onError: () => {
+      locked.current = false
     },
   })
 
@@ -245,142 +156,36 @@ function InputRun({ session, onFinish }: { session: TrainingSession; onFinish: (
     return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
   }, [queryClient])
 
+  function perform(value: Action) {
+    if (locked.current || result) return
+    locked.current = true
+    action.mutate(value)
+  }
+
+  function next() {
+    locked.current = false
+    action.reset()
+    setText('')
+    setRevealed(null)
+    setIndex((i) => i + 1)
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!result && !answer.isPending && !/^\s*\.?\s*$/u.test(text)) answer.mutate(text)
-  }
-
-  function next() {
-    answer.reset()
-    setText('')
-    setIndex((i) => i + 1)
-  }
-
-  if (done) {
-    const correct = results.filter((r) => r.correct).length
-    return (
-      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
-        <h1 className={css.title}>Готово</h1>
-        <p className={css.score}>
-          {correct} из {results.length}
-        </p>
-        <div className={css.actions}>
-          <button className={ui.primary} onClick={onFinish} autoFocus>
-            Ещё занятие
-          </button>
-        </div>
-      </section>
-    )
-  }
-
-  const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
-  const answerLang = promptLang === 'en' ? 'ru' : 'en'
-  return (
-    <section className={css.stack}>
-      <div className={css.toolbar}>
-        <span className={ui.muted}>
-          {index + 1} / {session.items.length}
-        </span>
-        <button className={ui.ghost} onClick={onFinish}>
-          Завершить
-        </button>
-      </div>
-      <div className={`${ui.card} ${css.question}`}>
-        <span className={css.prompt} lang={promptLang}>
-          {item.prompt}
-        </span>
-        <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
-      </div>
-      <form key={item.id} className={css.form} onSubmit={submit}>
-        <label className={ui.field}>
-          <span className={ui.label}>
-            {session.direction === 'en_ru' ? 'Введите перевод' : 'Введите слово'}
-          </span>
-          <input
-            className={ui.input}
-            type="text"
-            lang={answerLang}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            maxLength={200}
-            disabled={!!result || answer.isPending}
-            autoComplete="off"
-            autoFocus
-          />
-        </label>
-        <div>
-          <button
-            className={ui.primary}
-            type="submit"
-            disabled={!!result || answer.isPending || /^\s*\.?\s*$/u.test(text)}
-          >
-            Проверить
-          </button>
-        </div>
-      </form>
-      {answer.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(answer.error)} Попробуйте ещё раз.
-        </p>
-      )}
-      {result && (
-        <div className={css.stack} role="status">
-          <div className={css.feedback}>
-            <span className={result.correct ? css.good : css.bad}>
-              {result.correct ? 'Верно' : 'Неверно'} ({result.delta > 0 ? '+' : ''}
-              {result.delta}) · прогресс {result.progress}%
-            </span>
-            <button className={ui.primary} onClick={next} autoFocus>
-              Далее
-            </button>
-          </div>
-          <p className={ui.muted} lang={answerLang}>
-            Ответ: {result.expected_answers.join(', ')}
-          </p>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
-  const queryClient = useQueryClient()
-  const [index, setIndex] = useState(0)
-  const [results, setResults] = useState<AnswerResult[]>([])
-  const item = session.items[index]
-  const result = results[index] as AnswerResult | undefined
-  const done = index >= session.items.length
-
-  const answer = useMutation({
-    mutationFn: (option: number) => api.answer(item.id, option),
-    onSuccess: (data) => setResults((prev) => [...prev, data]),
-  })
-
-  // Progress changed on the server: the word list must refetch next time.
-  useEffect(() => {
-    return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
-  }, [queryClient])
-
-  function choose(option: number) {
-    if (!result && !answer.isPending) answer.mutate(option)
-  }
-
-  function next() {
-    answer.reset()
-    setIndex((i) => i + 1)
+    if (!/^\s*\.?\s*$/u.test(text)) perform({ kind: 'text', text })
   }
 
   useEffect(() => {
-    if (done) return
+    if (done || session.mode !== 'choice') return
     function onKey(event: KeyboardEvent) {
       if (
         event.target instanceof HTMLElement &&
         event.target.closest('button') &&
         event.key === 'Enter'
       )
-        return // let the focused button handle Enter itself
+        return
       const n = Number(event.key)
-      if (!result && n >= 1 && n <= 4) choose(n - 1)
+      if (!result && n >= 1 && n <= 4) perform({ kind: 'choice', option: n - 1 })
       else if (result && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault()
         next()
@@ -391,13 +196,30 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
   })
 
   if (done) {
-    const correct = results.filter((r) => r.correct).length
+    const answers = results.filter((r) => r.outcome === 'answered' && 'correct' in r)
+    const correct = answers.filter((r) => 'correct' in r && r.correct).length
+    const assisted = results.filter((r) => r.outcome === 'assisted').length
+    const skipped = results.filter((r) => r.outcome === 'skipped').length
+    const graded = results.filter((r) => r.outcome === 'answered' && 'grade' in r).length
     return (
       <section className={`${ui.card} ${css.stack} ${css.summary}`}>
         <h1 className={css.title}>Готово</h1>
-        <p className={css.score}>
-          {correct} из {results.length}
-        </p>
+        {session.mode === 'cards' ? (
+          <p>Оценено карточек: {graded}</p>
+        ) : (
+          <>
+            {answers.length > 0 && (
+              <p className={css.score}>
+                {correct} из {answers.length}
+              </p>
+            )}
+            <p>
+              Верно: {correct} · Неверно: {answers.length - correct}
+            </p>
+            <p>С помощью: {assisted}</p>
+          </>
+        )}
+        <p>Пропущено: {skipped}</p>
         <div className={css.actions}>
           <button className={ui.primary} onClick={onFinish} autoFocus>
             Ещё занятие
@@ -408,13 +230,32 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
   }
 
   const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
+  const answerLang = promptLang === 'en' ? 'ru' : 'en'
+  const busy = action.isPending
+  const disabled = busy || !!result
+  const cardAnswer =
+    revealed ??
+    (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null)
+  const revealedAnswers =
+    result?.outcome === 'assisted' || (result?.outcome === 'answered' && 'submitted_text' in result)
+      ? result.expected_answers
+      : null
+  let label = ''
+  if (result) {
+    if (result.outcome === 'skipped') label = 'Пропущено'
+    else if (result.outcome === 'assisted') label = 'С помощью'
+    else if ('grade' in result)
+      label = CARD_GRADES.find((option) => option.value === result.grade)?.label ?? ''
+    else label = result.correct ? 'Верно' : 'Неверно'
+  }
+
   return (
     <section className={css.stack}>
       <div className={css.toolbar}>
         <span className={ui.muted}>
           {index + 1} / {session.items.length}
         </span>
-        <button className={ui.ghost} onClick={onFinish}>
+        <button className={ui.ghost} onClick={onFinish} disabled={busy}>
           Завершить
         </button>
       </div>
@@ -424,40 +265,139 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
       </div>
-      <div className={css.options} role="group" aria-label="Варианты ответа">
-        {item.options.map((option, i) => {
-          let state = ''
-          if (result && i === result.correct_option) state = css.right
-          else if (result && i === result.chosen_option) state = css.wrong
-          return (
+      {session.mode === 'choice' && (
+        <div className={css.options} role="group" aria-label="Варианты ответа">
+          {item.options.map((option, i) => {
+            let state = ''
+            if (
+              result &&
+              result.outcome !== 'skipped' &&
+              'correct_option' in result &&
+              i === result.correct_option
+            )
+              state = css.right
+            else if (
+              result?.outcome === 'answered' &&
+              'chosen_option' in result &&
+              i === result.chosen_option
+            )
+              state = css.wrong
+            return (
+              <button
+                key={i}
+                className={`${ui.button} ${css.option} ${state}`}
+                onClick={() => perform({ kind: 'choice', option: i })}
+                disabled={disabled}
+                lang={answerLang}
+              >
+                <span className={css.optionKey}>{i + 1}</span>
+                {option}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {session.mode === 'input' && (
+        <form key={item.id} className={css.form} onSubmit={submit}>
+          <label className={ui.field}>
+            <span className={ui.label}>
+              {session.direction === 'en_ru' ? 'Введите перевод' : 'Введите слово'}
+            </span>
+            <input
+              className={ui.input}
+              type="text"
+              lang={answerLang}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              maxLength={200}
+              disabled={disabled}
+              autoComplete="off"
+              autoFocus
+            />
+          </label>
+          <div>
             <button
-              key={i}
-              className={`${ui.button} ${css.option} ${state}`}
-              onClick={() => choose(i)}
-              disabled={!!result || answer.isPending}
-              lang={promptLang === 'en' ? 'ru' : 'en'}
+              className={ui.primary}
+              type="submit"
+              disabled={disabled || /^\s*\.?\s*$/u.test(text)}
             >
-              <span className={css.optionKey}>{i + 1}</span>
-              {option}
+              Проверить
             </button>
-          )
-        })}
+          </div>
+        </form>
+      )}
+      {session.mode === 'cards' && cardAnswer && (
+        <div className={css.stack}>
+          <p className={ui.muted} lang={answerLang}>
+            Ответ: {cardAnswer.join(', ')}
+          </p>
+          <fieldset className={css.choices}>
+            <legend className={ui.label}>Как вы запомнили?</legend>
+            <div className={css.actions}>
+              {CARD_GRADES.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={ui.button}
+                  onClick={() => perform({ kind: 'grade', grade: option.value })}
+                  disabled={disabled}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      )}
+      <div className={css.actions}>
+        {(session.mode !== 'cards' || !cardAnswer) && (
+          <button
+            type="button"
+            className={ui.button}
+            onClick={() => perform({ kind: 'reveal' })}
+            disabled={disabled}
+          >
+            Показать ответ
+          </button>
+        )}
+        <button
+          type="button"
+          className={ui.button}
+          onClick={() => perform({ kind: 'skip' })}
+          disabled={disabled}
+        >
+          Пропустить
+        </button>
       </div>
-      {answer.isError && (
+      {action.isError && (
         <p className={ui.error} role="alert">
-          {errorMessage(answer.error)} Попробуйте ещё раз.
+          {errorMessage(action.error)} Попробуйте ещё раз.
         </p>
       )}
       {result && (
-        <div className={css.feedback} role="status">
-          <span className={result.correct ? css.good : css.bad}>
-            {result.correct ? 'Верно' : 'Неверно'}
-            {result.delta !== 0 && ` (${result.delta > 0 ? '+' : ''}${result.delta})`} · прогресс{' '}
-            {result.progress}%
-          </span>
-          <button className={ui.primary} onClick={next} autoFocus>
-            Далее
-          </button>
+        <div className={css.stack} role="status">
+          <div className={css.feedback}>
+            <span
+              className={
+                result.outcome === 'answered' && 'correct' in result
+                  ? result.correct
+                    ? css.good
+                    : css.bad
+                  : undefined
+              }
+            >
+              {label} ({result.delta > 0 ? '+' : ''}
+              {result.delta}) · прогресс {result.progress}%
+            </span>
+            <button className={ui.primary} onClick={next} autoFocus>
+              Далее
+            </button>
+          </div>
+          {revealedAnswers && (
+            <p className={ui.muted} lang={answerLang}>
+              Ответ: {revealedAnswers.join(', ')}
+            </p>
+          )}
         </div>
       )}
     </section>
