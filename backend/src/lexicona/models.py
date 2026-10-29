@@ -108,8 +108,10 @@ class TrainingItem(Base):
     position: Mapped[int]
     prompt: Mapped[str] = mapped_column(String(200))
     options: Mapped[list[str]] = mapped_column(JSON)
-    correct_option: Mapped[int]
+    correct_option: Mapped[int | None]
     chosen_option: Mapped[int | None]
+    expected_answers: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    submitted_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_correct: Mapped[bool | None]
     delta: Mapped[int | None]
     answered_at: Mapped[datetime | None]

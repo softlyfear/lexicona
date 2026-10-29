@@ -1,5 +1,6 @@
 export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
 export type Direction = 'en_ru' | 'ru_en'
+export type TrainingMode = 'choice' | 'input'
 
 export interface User {
   id: string
@@ -37,7 +38,7 @@ export interface TrainingItem {
 
 export interface TrainingSession {
   id: string
-  mode: string
+  mode: TrainingMode
   direction: Direction
   items: TrainingItem[]
 }
@@ -46,6 +47,14 @@ export interface AnswerResult {
   correct: boolean
   correct_option: number
   chosen_option: number
+  delta: number
+  progress: number
+}
+
+export interface TextAnswerResult {
+  correct: boolean
+  submitted_text: string
+  expected_answers: string[]
   delta: number
   progress: number
 }
@@ -103,10 +112,12 @@ export const api = {
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),
 
-  startTraining: (direction: Direction, size: number) =>
-    request<TrainingSession>('POST', '/training/sessions', { mode: 'choice', direction, size }),
+  startTraining: (direction: Direction, size: number, mode: TrainingMode = 'choice') =>
+    request<TrainingSession>('POST', '/training/sessions', { mode, direction, size }),
   answer: (itemId: string, option: number) =>
     request<AnswerResult>('POST', `/training/items/${itemId}/answer`, { option }),
+  answerText: (itemId: string, text: string) =>
+    request<TextAnswerResult>('POST', `/training/items/${itemId}/answer`, { text }),
 }
 
 const MESSAGES: Record<string, string> = {
