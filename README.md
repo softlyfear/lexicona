@@ -44,7 +44,8 @@ GitHub Actions вызывает те же цели Makefile на push в main и
 текущий тикет — `.codex/TASKS.md`. После открытия доверенного проекта просмотрите
 и включите хук через `/hooks`. Хук форматирует файлы после `apply_patch`;
 после изменений через shell используйте `make fmt`. Полные проверки — `make check`.
-Модель и разрешения наследуются от ваших настроек Codex.
+Для архитектора и ревьюера задана GPT-6.1 Sol High, для четырёх исполнителей —
+GPT-6.1 Terra High. Модель основной сессии и разрешения остаются вашими.
 Форматы сверены с официальной документацией: [hooks](https://learn.chatgpt.com/docs/hooks)
 и [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents).
 

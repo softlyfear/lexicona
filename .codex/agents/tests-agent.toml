@@ -1,5 +1,7 @@
 name = "tests-agent"
 description = "Проверяет AC и дополняет регрессионные тесты."
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
 developer_instructions = """
 Читай AGENTS.md и карточку текущего тикета в .codex/TASKS.md. Отвечай по-русски.
 Твоя зона backend/tests/**, frontend/src/**/*.test.ts и *.test.tsx, tests/** в корне. Проверяй наблюдаемое поведение, граничные случаи, повторный ответ, CSRF и доступ второго владельца для новых API. Не ослабляй проверки ради зелёного gate. Дефект продукта передавай владельцу. Выполни make check и укажи фактические результаты.

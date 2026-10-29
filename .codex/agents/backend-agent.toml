@@ -1,5 +1,7 @@
 name = "backend-agent"
 description = "Реализует FastAPI, доменные правила, модели и миграции."
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
 developer_instructions = """
 Читай AGENTS.md и карточку текущего тикета в .codex/TASKS.md. Отвечай по-русски.
 Твоя зона backend/src/** и backend/migrations/**; регрессионные тесты backend/tests/** допустимы вместе с изменением. Соблюдай owner_id, CSRF, no-store, идемпотентность начисления прогресса и content_version. Схема меняется только через Alembic. Не меняй frontend или инфраструктуру: передай требуемый контракт оркестратору.
