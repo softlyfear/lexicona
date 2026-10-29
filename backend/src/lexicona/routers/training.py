@@ -1,5 +1,5 @@
 import random
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -19,7 +19,7 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice", "input"] = "choice"
+    mode: Literal["choice", "input", "cards"] = "choice"
     direction: Literal["en_ru", "ru_en"] = "en_ru"
     size: int = Field(default=10, ge=1, le=50)
 
@@ -56,6 +56,15 @@ class TextAnswerIn(BaseModel):
         return value
 
 
+Grade = Literal["again", "hard", "good", "easy"]
+
+
+class GradeAnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    grade: Grade
+
+
 class AnswerOut(BaseModel):
     correct: bool
     correct_option: int
@@ -67,6 +76,17 @@ class AnswerOut(BaseModel):
 class TextAnswerOut(BaseModel):
     correct: bool
     submitted_text: str
+    expected_answers: list[str]
+    delta: int
+    progress: int
+
+
+class RevealOut(BaseModel):
+    expected_answers: list[str]
+
+
+class GradeAnswerOut(BaseModel):
+    grade: Grade
     expected_answers: list[str]
     delta: int
     progress: int
@@ -165,9 +185,20 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     )
 
 
-def _answer_out(item: TrainingItem, word_progress: int) -> AnswerOut | TextAnswerOut:
-    assert item.is_correct is not None
+def _answer_out(
+    item: TrainingItem, word_progress: int
+) -> AnswerOut | TextAnswerOut | GradeAnswerOut:
     assert item.delta is not None
+    if item.session.mode == "cards":
+        assert item.grade is not None
+        assert item.expected_answers is not None
+        return GradeAnswerOut(
+            grade=cast(Grade, item.grade),
+            expected_answers=item.expected_answers,
+            delta=item.delta,
+            progress=word_progress,
+        )
+    assert item.is_correct is not None
     if item.session.mode == "input":
         assert item.submitted_text is not None
         assert item.expected_answers is not None
@@ -189,10 +220,34 @@ def _answer_out(item: TrainingItem, word_progress: int) -> AnswerOut | TextAnswe
     )
 
 
+@router.post("/items/{item_id}/reveal")
+async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut:
+    item = await db.scalar(
+        select(TrainingItem)
+        .join(TrainingSession)
+        .where(TrainingItem.id == item_id, TrainingSession.owner_id == auth.user.id)
+    )
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
+    if item.session.mode != "cards":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_reveal_for_mode")
+
+    if item.revealed_at is None:
+        await db.execute(
+            update(TrainingItem)
+            .where(TrainingItem.id == item.id, TrainingItem.revealed_at.is_(None))
+            .values(revealed_at=utcnow())
+        )
+        await db.commit()
+
+    assert item.expected_answers is not None
+    return RevealOut(expected_answers=item.expected_answers)
+
+
 @router.post("/items/{item_id}/answer")
 async def answer_item(
-    item_id: str, body: AnswerIn | TextAnswerIn, auth: CurrentAuth, db: Db
-) -> AnswerOut | TextAnswerOut:
+    item_id: str, body: AnswerIn | TextAnswerIn | GradeAnswerIn, auth: CurrentAuth, db: Db
+) -> AnswerOut | TextAnswerOut | GradeAnswerOut:
     item = await db.scalar(
         select(TrainingItem)
         .join(TrainingSession)
@@ -201,10 +256,14 @@ async def answer_item(
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
 
-    if (item.session.mode == "choice" and not isinstance(body, AnswerIn)) or (
-        item.session.mode == "input" and not isinstance(body, TextAnswerIn)
+    if (
+        (item.session.mode == "choice" and not isinstance(body, AnswerIn))
+        or (item.session.mode == "input" and not isinstance(body, TextAnswerIn))
+        or (item.session.mode == "cards" and not isinstance(body, GradeAnswerIn))
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
+    if item.session.mode == "cards" and item.revealed_at is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")
 
     word = await db.scalar(
         select(Word).where(Word.id == item.word_id, Word.owner_id == auth.user.id)
@@ -218,7 +277,8 @@ async def answer_item(
             kind = AnswerKind.CHOICE
             chosen_option = body.option
             submitted_text = None
-        else:
+            grade = None
+        elif isinstance(body, TextAnswerIn):
             assert item.expected_answers is not None
             correct = normalize(body.text) in {
                 normalize(answer) for answer in item.expected_answers
@@ -226,7 +286,20 @@ async def answer_item(
             kind = AnswerKind.TYPED
             chosen_option = None
             submitted_text = body.text
-        change = progress.delta(item.session.difficulty, kind, correct)
+            grade = None
+        else:
+            correct = None  # Card ratings are self-assessment, not objective answers.
+            kind = AnswerKind.CHOICE
+            chosen_option = None
+            submitted_text = None
+            grade = body.grade
+        change = (
+            0
+            if grade == "hard"
+            else progress.delta(
+                item.session.difficulty, kind, correct if correct is not None else grade != "again"
+            )
+        )
         # Check the version in the write transaction, not against a potentially stale read.
         current_version = (
             select(Word.content_version).where(Word.id == item.word_id).scalar_subquery()
@@ -238,6 +311,7 @@ async def answer_item(
             .values(
                 chosen_option=chosen_option,
                 submitted_text=submitted_text,
+                grade=grade,
                 is_correct=correct,
                 delta=case((current_version == item.word_content_version, change), else_=0),
                 answered_at=utcnow(),

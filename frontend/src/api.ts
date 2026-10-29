@@ -1,6 +1,7 @@
 export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
 export type Direction = 'en_ru' | 'ru_en'
-export type TrainingMode = 'choice' | 'input'
+export type TrainingMode = 'choice' | 'input' | 'cards'
+export type CardGrade = 'again' | 'hard' | 'good' | 'easy'
 
 export interface User {
   id: string
@@ -55,6 +56,16 @@ export interface TextAnswerResult {
   correct: boolean
   submitted_text: string
   expected_answers: string[]
+  delta: number
+  progress: number
+}
+
+export interface CardRevealResult {
+  expected_answers: string[]
+}
+
+export interface CardAnswerResult extends CardRevealResult {
+  grade: CardGrade
   delta: number
   progress: number
 }
@@ -118,6 +129,10 @@ export const api = {
     request<AnswerResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>
     request<TextAnswerResult>('POST', `/training/items/${itemId}/answer`, { text }),
+  revealCard: (itemId: string) =>
+    request<CardRevealResult>('POST', `/training/items/${itemId}/reveal`),
+  answerCard: (itemId: string, grade: CardGrade) =>
+    request<CardAnswerResult>('POST', `/training/items/${itemId}/answer`, { grade }),
 }
 
 const MESSAGES: Record<string, string> = {
