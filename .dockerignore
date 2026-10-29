@@ -1,0 +1,13 @@
+.git
+.local
+.claude
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/.*_cache
+backend/data
+.codex
+.agents
+.env
+.env.*
