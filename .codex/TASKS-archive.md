@@ -52,3 +52,31 @@
 - Прямой запуск Desktop wrapper не вызывает; уже запущенные сессии не перезагружаются.
   В AGENTS.md точные ID читаются из TOML, чтобы текст инструкции не устаревал.
 - GitHub не изменён: разрешение на force push по-прежнему не получено.
+
+## TRAIN-001 — письменный ответ EN→RU и RU→EN (2026-10-29)
+
+- Статус: done; попытка: 1; приёмка architect: ПРИНЯТО.
+- Результат: input-сессии от одного личного слова, поле ввода и Enter,
+  серверная обратная связь/допустимые ответы, error/retry без потери текста,
+  блок повторной отправки и итог занятия. Choice API/UI сохранены.
+- Ответы хранятся private snapshot; до ответа публично только id/prompt/пустые options.
+  Сервер использует normalize и TYPED-дельты с frozen difficulty, clamp 0–100.
+  CAS claim и запись прогресса в одной транзакции, content_version проверяется при записи;
+  повторные/параллельные ответы не начисляют повторно, смысловая правка даёт delta 0.
+- Миграция 0d31c9a7e210: snapshot/submitted_text, nullable correct_option;
+  прежние choice-записи сохраняются, downgrade с typed items отказывается терять данные.
+- Изменённые зоны: backend models/router/migration/tests, frontend api/training/tests,
+  README одна строка готовой функциональности; слои и scope соблюдены.
+- Реализация: backend-agent → frontend-agent → tests-agent, модели gpt-6.1-terra high.
+  Независимый train_review gpt-6.1-sol high: Ship;
+  architect gpt-6.1-sol high: ПРИНЯТО после чтения финального diff и тестов.
+- Подтверждённый полный make check от tests-agent: exit 0, 12 tooling,
+  64 backend, 10 frontend; Ruff/mypy/Prettier/oxlint/tsc/build зелёные.
+  Reviewer лично выполнил 24 API-теста и diff --check, успешно.
+  Architect повторно gate не запускал: подтверждённый результат относится к текущему diff.
+- AC проверены по реализации и регрессиям: оба направления, дополнительные переводы,
+  normalize, bounds, frozen settings, payload validation, snapshots после правок,
+  owner-scoping/CSRF/no-store, deleted item, retry/parallel, UI и choice-регрессии.
+- Ограничения: браузерная проверка на физических устройствах не выполнялась;
+  SRS, новые учебные режимы и hints/skip вне scope.
+- Коммит выполняет оркестратор; TRAIN-002 не начинать до этого коммита.

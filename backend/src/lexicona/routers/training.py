@@ -2,13 +2,14 @@ import random
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import case, func, select, update
 
 from lexicona import progress
 from lexicona.db import utcnow
 from lexicona.deps import CurrentAuth, Db
 from lexicona.models import TrainingItem, TrainingSession, Word
+from lexicona.normalize import normalize
 from lexicona.progress import AnswerKind
 
 router = APIRouter(prefix="/training", tags=["training"])
@@ -18,7 +19,7 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice"] = "choice"
+    mode: Literal["choice", "input"] = "choice"
     direction: Literal["en_ru", "ru_en"] = "en_ru"
     size: int = Field(default=10, ge=1, le=50)
 
@@ -37,13 +38,36 @@ class SessionOut(BaseModel):
 
 
 class AnswerIn(BaseModel):
-    option: int = Field(ge=0, lt=OPTION_COUNT)
+    model_config = ConfigDict(extra="forbid")
+
+    option: int = Field(ge=0, lt=OPTION_COUNT, strict=True)
+
+
+class TextAnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=200, strict=True)
+
+    @field_validator("text")
+    @classmethod
+    def valid_text(cls, value: str) -> str:
+        if not normalize(value):
+            raise ValueError("answer must not be blank")
+        return value
 
 
 class AnswerOut(BaseModel):
     correct: bool
     correct_option: int
     chosen_option: int
+    delta: int
+    progress: int
+
+
+class TextAnswerOut(BaseModel):
+    correct: bool
+    submitted_text: str
+    expected_answers: list[str]
     delta: int
     progress: int
 
@@ -102,10 +126,21 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     for target in targets:
         if len(session.items) == body.size:
             break
-        built = _build_item(target, pool, body.direction)
-        if built is None:
-            continue
-        prompt, options, correct = built
+        if body.mode == "choice":
+            built = _build_item(target, pool, body.direction)
+            if built is None:
+                continue
+            prompt, options, correct = built
+            expected_answers = None
+        else:
+            prompt = target.headword if body.direction == "en_ru" else target.translations[0].text
+            expected_answers = (
+                [translation.text for translation in target.translations]
+                if body.direction == "en_ru"
+                else [target.headword]
+            )
+            options = []
+            correct = None
         session.items.append(
             TrainingItem(
                 word_id=target.id,
@@ -114,6 +149,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 prompt=prompt,
                 options=options,
                 correct_option=correct,
+                expected_answers=expected_answers,
             )
         )
     if not session.items:
@@ -129,10 +165,21 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     )
 
 
-def _answer_out(item: TrainingItem, word_progress: int) -> AnswerOut:
-    assert item.chosen_option is not None
+def _answer_out(item: TrainingItem, word_progress: int) -> AnswerOut | TextAnswerOut:
     assert item.is_correct is not None
     assert item.delta is not None
+    if item.session.mode == "input":
+        assert item.submitted_text is not None
+        assert item.expected_answers is not None
+        return TextAnswerOut(
+            correct=item.is_correct,
+            submitted_text=item.submitted_text,
+            expected_answers=item.expected_answers,
+            delta=item.delta,
+            progress=word_progress,
+        )
+    assert item.correct_option is not None
+    assert item.chosen_option is not None
     return AnswerOut(
         correct=item.is_correct,
         correct_option=item.correct_option,
@@ -143,7 +190,9 @@ def _answer_out(item: TrainingItem, word_progress: int) -> AnswerOut:
 
 
 @router.post("/items/{item_id}/answer")
-async def answer_item(item_id: str, body: AnswerIn, auth: CurrentAuth, db: Db) -> AnswerOut:
+async def answer_item(
+    item_id: str, body: AnswerIn | TextAnswerIn, auth: CurrentAuth, db: Db
+) -> AnswerOut | TextAnswerOut:
     item = await db.scalar(
         select(TrainingItem)
         .join(TrainingSession)
@@ -152,29 +201,52 @@ async def answer_item(item_id: str, body: AnswerIn, auth: CurrentAuth, db: Db) -
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
 
-    word = await db.get(Word, item.word_id)
-    assert word is not None  # items are deleted together with their word
+    if (item.session.mode == "choice" and not isinstance(body, AnswerIn)) or (
+        item.session.mode == "input" and not isinstance(body, TextAnswerIn)
+    ):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
+
+    word = await db.scalar(
+        select(Word).where(Word.id == item.word_id, Word.owner_id == auth.user.id)
+    )
+    if word is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
 
     if item.answered_at is None:
-        correct = body.option == item.correct_option
-        # An answer to a question about since-edited content teaches nothing about the new one.
-        change = (
-            progress.delta(item.session.difficulty, AnswerKind.CHOICE, correct)
-            if word.content_version == item.word_content_version
-            else 0
+        if isinstance(body, AnswerIn):
+            correct = body.option == item.correct_option
+            kind = AnswerKind.CHOICE
+            chosen_option = body.option
+            submitted_text = None
+        else:
+            assert item.expected_answers is not None
+            correct = normalize(body.text) in {
+                normalize(answer) for answer in item.expected_answers
+            }
+            kind = AnswerKind.TYPED
+            chosen_option = None
+            submitted_text = body.text
+        change = progress.delta(item.session.difficulty, kind, correct)
+        # Check the version in the write transaction, not against a potentially stale read.
+        current_version = (
+            select(Word.content_version).where(Word.id == item.word_id).scalar_subquery()
         )
         # Conditional update: of two concurrent answers only one is recorded.
         claimed = await db.execute(
             update(TrainingItem)
             .where(TrainingItem.id == item.id, TrainingItem.answered_at.is_(None))
             .values(
-                chosen_option=body.option, is_correct=correct, delta=change, answered_at=utcnow()
+                chosen_option=chosen_option,
+                submitted_text=submitted_text,
+                is_correct=correct,
+                delta=case((current_version == item.word_content_version, change), else_=0),
+                answered_at=utcnow(),
             )
         )
         if claimed.rowcount == 1 and change:  # type: ignore[attr-defined]
             await db.execute(
                 update(Word)
-                .where(Word.id == word.id)
+                .where(Word.id == word.id, Word.content_version == item.word_content_version)
                 .values(
                     progress=func.max(
                         progress.MIN_PROGRESS,

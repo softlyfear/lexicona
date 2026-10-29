@@ -28,6 +28,7 @@ async def correct_option(app: FastAPI, item_id: str) -> int:
     async with database.sessions() as db:
         item = await db.get(TrainingItem, item_id)
         assert item is not None
+        assert item.correct_option is not None
         return item.correct_option
 
 

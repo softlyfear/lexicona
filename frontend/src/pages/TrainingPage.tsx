@@ -1,27 +1,44 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
-import { api, errorMessage, type AnswerResult, type Direction, type TrainingSession } from '../api'
+import { useEffect, useState, type FormEvent } from 'react'
+import {
+  ApiError,
+  api,
+  errorMessage,
+  type AnswerResult,
+  type Direction,
+  type TextAnswerResult,
+  type TrainingMode,
+  type TrainingSession,
+} from '../api'
 import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import css from './pages.module.css'
 
-const DIRECTIONS: { value: Direction; label: string }[] = [
-  { value: 'en_ru', label: 'Поиск перевода: EN → RU' },
-  { value: 'ru_en', label: 'Поиск слова: RU → EN' },
+const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
+  { mode: 'choice', direction: 'en_ru', label: 'Поиск перевода: EN → RU' },
+  { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
+  { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
+  { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
 ]
 const SIZES = [5, 10, 20, 30]
 
 export function TrainingPage() {
   const [session, setSession] = useState<TrainingSession | null>(null)
+  if (session?.mode === 'input')
+    return <InputRun session={session} onFinish={() => setSession(null)} />
   if (session) return <Run session={session} onFinish={() => setSession(null)} />
   return <Setup onStart={setSession} />
 }
 
 function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
   const [direction, setDirection] = useState<Direction>('en_ru')
+  const [mode, setMode] = useState<TrainingMode>('choice')
   const [size, setSize] = useState(10)
   const start = useMutation({
-    mutationFn: () => api.startTraining(direction, size),
+    mutationFn: () =>
+      mode === 'choice'
+        ? api.startTraining(direction, size)
+        : api.startTraining(direction, size, mode),
     onSuccess: onStart,
   })
 
@@ -31,13 +48,17 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
       <div className={`${ui.card} ${css.form}`}>
         <fieldset className={css.choices}>
           <legend className={ui.label}>Режим</legend>
-          {DIRECTIONS.map((d) => (
-            <label key={d.value} className={css.choice}>
+          {MODES.map((d) => (
+            <label key={`${d.mode}-${d.direction}`} className={css.choice}>
               <input
                 type="radio"
                 name="direction"
-                checked={direction === d.value}
-                onChange={() => setDirection(d.value)}
+                checked={mode === d.mode && direction === d.direction}
+                onChange={() => {
+                  start.reset()
+                  setMode(d.mode)
+                  setDirection(d.direction)
+                }}
               />
               {d.label}
             </label>
@@ -62,7 +83,11 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
         <p className={ui.muted}>Сначала идут слова с наименьшим прогрессом.</p>
         {start.isError && (
           <p className={ui.error} role="alert">
-            {errorMessage(start.error)}
+            {mode === 'input' &&
+            start.error instanceof ApiError &&
+            start.error.message === 'not_enough_words'
+              ? 'Добавьте хотя бы одно слово в словарь.'
+              : errorMessage(start.error)}
           </p>
         )}
         <div>
@@ -71,6 +96,124 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
           </button>
         </div>
       </div>
+    </section>
+  )
+}
+
+function InputRun({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
+  const queryClient = useQueryClient()
+  const [index, setIndex] = useState(0)
+  const [text, setText] = useState('')
+  const [results, setResults] = useState<TextAnswerResult[]>([])
+  const item = session.items[index]
+  const result = results[index] as TextAnswerResult | undefined
+  const done = index >= session.items.length
+  const answer = useMutation({
+    mutationFn: (value: string) => api.answerText(item.id, value),
+    onSuccess: (data) => {
+      setText(data.submitted_text)
+      setResults((prev) => [...prev, data])
+    },
+  })
+
+  useEffect(() => {
+    return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
+  }, [queryClient])
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!result && !answer.isPending && !/^\s*\.?\s*$/u.test(text)) answer.mutate(text)
+  }
+
+  function next() {
+    answer.reset()
+    setText('')
+    setIndex((i) => i + 1)
+  }
+
+  if (done) {
+    const correct = results.filter((r) => r.correct).length
+    return (
+      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
+        <h1 className={css.title}>Готово</h1>
+        <p className={css.score}>
+          {correct} из {results.length}
+        </p>
+        <div className={css.actions}>
+          <button className={ui.primary} onClick={onFinish} autoFocus>
+            Ещё занятие
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
+  const answerLang = promptLang === 'en' ? 'ru' : 'en'
+  return (
+    <section className={css.stack}>
+      <div className={css.toolbar}>
+        <span className={ui.muted}>
+          {index + 1} / {session.items.length}
+        </span>
+        <button className={ui.ghost} onClick={onFinish}>
+          Завершить
+        </button>
+      </div>
+      <div className={`${ui.card} ${css.question}`}>
+        <span className={css.prompt} lang={promptLang}>
+          {item.prompt}
+        </span>
+        <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
+      </div>
+      <form key={item.id} className={css.form} onSubmit={submit}>
+        <label className={ui.field}>
+          <span className={ui.label}>
+            {session.direction === 'en_ru' ? 'Введите перевод' : 'Введите слово'}
+          </span>
+          <input
+            className={ui.input}
+            type="text"
+            lang={answerLang}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            maxLength={200}
+            disabled={!!result || answer.isPending}
+            autoComplete="off"
+            autoFocus
+          />
+        </label>
+        <div>
+          <button
+            className={ui.primary}
+            type="submit"
+            disabled={!!result || answer.isPending || /^\s*\.?\s*$/u.test(text)}
+          >
+            Проверить
+          </button>
+        </div>
+      </form>
+      {answer.isError && (
+        <p className={ui.error} role="alert">
+          {errorMessage(answer.error)} Попробуйте ещё раз.
+        </p>
+      )}
+      {result && (
+        <div className={css.stack} role="status">
+          <div className={css.feedback}>
+            <span className={result.correct ? css.good : css.bad}>
+              {result.correct ? 'Верно' : 'Неверно'} ({result.delta > 0 ? '+' : ''}
+              {result.delta}) · прогресс {result.progress}%
+            </span>
+            <button className={ui.primary} onClick={next} autoFocus>
+              Далее
+            </button>
+          </div>
+          <p className={ui.muted} lang={answerLang}>
+            Ответ: {result.expected_answers.join(', ')}
+          </p>
+        </div>
+      )}
     </section>
   )
 }
