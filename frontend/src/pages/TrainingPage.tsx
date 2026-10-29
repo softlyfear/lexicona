@@ -5,6 +5,7 @@ import {
   api,
   errorMessage,
   type AnswerResult,
+  type CardGrade,
   type Direction,
   type TextAnswerResult,
   type TrainingMode,
@@ -19,11 +20,21 @@ const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
   { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
+  { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
+  { mode: 'cards', direction: 'ru_en', label: 'Карточки: RU → EN' },
 ]
 const SIZES = [5, 10, 20, 30]
+const CARD_GRADES: { value: CardGrade; label: string }[] = [
+  { value: 'again', label: 'Повторить' },
+  { value: 'hard', label: 'Трудно' },
+  { value: 'good', label: 'Хорошо' },
+  { value: 'easy', label: 'Легко' },
+]
 
 export function TrainingPage() {
   const [session, setSession] = useState<TrainingSession | null>(null)
+  if (session?.mode === 'cards')
+    return <CardsRun session={session} onFinish={() => setSession(null)} />
   if (session?.mode === 'input')
     return <InputRun session={session} onFinish={() => setSession(null)} />
   if (session) return <Run session={session} onFinish={() => setSession(null)} />
@@ -83,7 +94,7 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
         <p className={ui.muted}>Сначала идут слова с наименьшим прогрессом.</p>
         {start.isError && (
           <p className={ui.error} role="alert">
-            {mode === 'input' &&
+            {mode !== 'choice' &&
             start.error instanceof ApiError &&
             start.error.message === 'not_enough_words'
               ? 'Добавьте хотя бы одно слово в словарь.'
@@ -96,6 +107,120 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
           </button>
         </div>
       </div>
+    </section>
+  )
+}
+
+function CardsRun({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
+  const queryClient = useQueryClient()
+  const [index, setIndex] = useState(0)
+  const item = session.items[index]
+  const done = index >= session.items.length
+  const reveal = useMutation({ mutationFn: () => api.revealCard(item.id) })
+  const answer = useMutation({ mutationFn: (grade: CardGrade) => api.answerCard(item.id, grade) })
+
+  useEffect(() => {
+    return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
+  }, [queryClient])
+
+  function grade(value: CardGrade) {
+    if (reveal.data && !answer.data && !answer.isPending) answer.mutate(value)
+  }
+
+  function next() {
+    reveal.reset()
+    answer.reset()
+    setIndex((i) => i + 1)
+  }
+
+  if (done) {
+    return (
+      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
+        <h1 className={css.title}>Готово</h1>
+        <p>Оценено карточек: {index}</p>
+        <div className={css.actions}>
+          <button className={ui.primary} onClick={onFinish} autoFocus>
+            Ещё занятие
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  const promptLang = session.direction === 'en_ru' ? 'en' : 'ru'
+  const answerLang = promptLang === 'en' ? 'ru' : 'en'
+  return (
+    <section className={css.stack}>
+      <div className={css.toolbar}>
+        <span className={ui.muted}>
+          {index + 1} / {session.items.length}
+        </span>
+        <button className={ui.ghost} onClick={onFinish}>
+          Завершить
+        </button>
+      </div>
+      <div className={`${ui.card} ${css.question}`}>
+        <span className={css.prompt} lang={promptLang}>
+          {item.prompt}
+        </span>
+        <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
+      </div>
+      {!reveal.data && (
+        <div>
+          <button
+            className={ui.primary}
+            onClick={() => reveal.mutate()}
+            disabled={reveal.isPending}
+          >
+            Показать ответ
+          </button>
+        </div>
+      )}
+      {reveal.isError && (
+        <p className={ui.error} role="alert">
+          {errorMessage(reveal.error)} Попробуйте ещё раз.
+        </p>
+      )}
+      {reveal.data && (
+        <div className={css.stack}>
+          <p className={ui.muted} lang={answerLang}>
+            Ответ: {(answer.data?.expected_answers ?? reveal.data.expected_answers).join(', ')}
+          </p>
+          <fieldset className={css.choices}>
+            <legend className={ui.label}>Как вы запомнили?</legend>
+            <div className={css.actions}>
+              {CARD_GRADES.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={ui.button}
+                  onClick={() => grade(option.value)}
+                  disabled={!!answer.data || answer.isPending}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      )}
+      {answer.isError && (
+        <p className={ui.error} role="alert">
+          {errorMessage(answer.error)} Попробуйте ещё раз.
+        </p>
+      )}
+      {answer.data && (
+        <div className={css.feedback} role="status">
+          <span>
+            {CARD_GRADES.find((option) => option.value === answer.data.grade)?.label} (
+            {answer.data.delta > 0 ? '+' : ''}
+            {answer.data.delta}) · прогресс {answer.data.progress}%
+          </span>
+          <button className={ui.primary} onClick={next} autoFocus>
+            Далее
+          </button>
+        </div>
+      )}
     </section>
   )
 }

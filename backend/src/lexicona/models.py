@@ -112,6 +112,8 @@ class TrainingItem(Base):
     chosen_option: Mapped[int | None]
     expected_answers: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     submitted_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    revealed_at: Mapped[datetime | None]
+    grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
     is_correct: Mapped[bool | None]
     delta: Mapped[int | None]
     answered_at: Mapped[datetime | None]
