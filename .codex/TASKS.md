@@ -1,6 +1,6 @@
 # Активные задачи
 
-Открытых тикетов нет. SETUP-001 принят; протокол в TASKS-archive.md.
+Открытых тикетов нет. SETUP-003 принят; протокол в TASKS-archive.md.
 
 Один тикет — законченный вертикальный срез.
 Статусы: planned → implementation → review → acceptance → done.
