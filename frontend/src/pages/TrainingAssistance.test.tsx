@@ -11,6 +11,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      listTags: () => Promise.resolve([]),
       answer: vi.fn(),
       answerText: vi.fn(),
       answerCard: vi.fn(),

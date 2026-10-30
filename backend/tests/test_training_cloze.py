@@ -121,7 +121,7 @@ async def test_no_eligible_and_other_owner_only(alice: Client, bob: Client) -> N
     assert (await start(bob)).status_code == 201
 
 
-async def test_size_and_progress_order_use_only_eligible_words(app: FastAPI, alice: Client) -> None:
+async def test_size_uses_only_eligible_words(app: FastAPI, alice: Client) -> None:
     fast = await add_word(alice, "cat", "кот", example_en="a cat sleeps")
     slow = await add_word(alice, "dog", "пёс", example_en="a dog sleeps")
     await add_word(alice, "cow", "корова", example_en="many cows sleep")
@@ -133,7 +133,7 @@ async def test_size_and_progress_order_use_only_eligible_words(app: FastAPI, ali
     assert len(items) == 1
     assert items[0]["prompt"] == "a ____ sleeps"
     result = await alice.post(f"/api/training/items/{items[0]['id']}/reveal")
-    assert result.json()["expected_answers"] == ["dog"]
+    assert result.json()["expected_answers"] in (["cat"], ["dog"])
     words = {entry["id"]: entry["progress"] for entry in (await alice.get("/api/words")).json()}
     assert words[fast["id"]] == 20 and words[slow["id"]] == 5
 

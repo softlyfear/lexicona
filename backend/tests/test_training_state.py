@@ -18,10 +18,17 @@ async def set_state(client: Client, word_id: str, excluded: bool) -> Any:
     return await client.patch(f"/api/words/{word_id}/training", json={"is_excluded": excluded})
 
 
-async def start(client: Client, mode: str = "input") -> dict[str, Any]:
+async def start(client: Client, mode: str = "input", progress: int | None = None) -> dict[str, Any]:
     direction = "en_en" if mode == "cloze" else "en_ru"
     response = await client.post(
-        "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 1}
+        "/api/training/sessions",
+        json={
+            "mode": mode,
+            "direction": direction,
+            "size": 1,
+            "progress_min": progress,
+            "progress_max": progress,
+        },
     )
     assert response.status_code == 201, response.text
     return response.json()["items"][0]  # type: ignore[no-any-return]
@@ -85,7 +92,7 @@ async def test_all_modes_keep_progress_above_100(
         for headword, translation in [("dog", "собака"), ("fox", "лиса"), ("cow", "корова")]:
             added = await add_word(alice, headword, translation)
             await set_progress(app, added["id"], initial + 10)
-    item = await start(alice, mode)
+    item = await start(alice, mode, initial)
     payload: dict[str, Any]
     if mode == "choice":
         database: Database = app.state.db
@@ -116,7 +123,7 @@ async def test_exclusion_invalidates_open_item_without_leaking(
         for en, ru in [("dog", "собака"), ("fox", "лиса"), ("cow", "корова")]:
             other = await add_word(alice, en, ru)
             await set_progress(app, other["id"], 60)
-    item = await start(alice, mode)
+    item = await start(alice, mode, 50)
     base = f"/api/training/items/{item['id']}"
     if mode == "cards" and action == "answer":
         assert (await alice.post(f"{base}/reveal")).json()["outcome"] == "revealed"

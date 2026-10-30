@@ -10,6 +10,12 @@ export type WordSort =
   | 'progress_asc'
   | 'progress_desc'
 export type WordTrainingFilter = 'active' | 'excluded' | 'all'
+export type TrainingSize = number | 'all'
+export interface TrainingFilters {
+  tag_ids?: string[]
+  progress_min?: number | null
+  progress_max?: number | null
+}
 
 export interface User {
   id: string
@@ -223,8 +229,13 @@ export const api = {
   setWordTraining: (id: string, isExcluded: boolean) =>
     request<Word>('PATCH', `/words/${id}/training`, { is_excluded: isExcluded }),
 
-  startTraining: (direction: Direction, size: number, mode: TrainingMode = 'choice') =>
-    request<TrainingSession>('POST', '/training/sessions', { mode, direction, size }),
+  startTraining: (
+    direction: Direction,
+    size: TrainingSize,
+    mode: TrainingMode = 'choice',
+    filters?: TrainingFilters,
+  ) =>
+    request<TrainingSession>('POST', '/training/sessions', { mode, direction, size, ...filters }),
   answer: (itemId: string, option: number) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>
@@ -245,6 +256,8 @@ const MESSAGES: Record<string, string> = {
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',
   tag_not_found: 'Один из выбранных тегов недоступен. Снимите его и повторите поиск.',
+  no_matching_words:
+    'Нет подходящих слов. Измените или очистите фильтры либо добавьте слова в словарь.',
 }
 
 export function errorMessage(error: unknown): string {

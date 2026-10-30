@@ -54,7 +54,7 @@ async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob
         assert response.headers["cache-control"] == "no-store"
         items = response.json()["items"]
         assert len(items) == min(size, 155)
-        assert [item["prompt"] for item in items] == [f"word{i}" for i in range(min(size, 155))]
+        assert {item["prompt"] for item in items} <= {f"word{i}" for i in range(155)}
         assert len({item["id"] for item in items}) == len(items)
     response = await bob.post("/api/training/sessions", json={"mode": "input", "size": 500})
     assert response.status_code == 201 and len(response.json()["items"]) == 4
@@ -63,8 +63,8 @@ async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob
     assert response.status_code == 403 and response.headers["cache-control"] == "no-store"
 
 
-async def test_500_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bob: Client) -> None:
-    await seed(app, alice, 500)
+async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bob: Client) -> None:
+    await seed(app, alice, 501)
     await seed(app, bob, 2)
     for mode, direction in [
         ("input", "en_ru"),
@@ -76,12 +76,12 @@ async def test_500_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
         ("cloze", "en_en"),
     ]:
         response = await alice.post(
-            "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 500}
+            "/api/training/sessions", json={"mode": mode, "direction": direction, "size": "all"}
         )
         assert response.status_code == 201, (mode, direction, response.text)
         items = response.json()["items"]
-        assert len(items) == 500
-        assert len({item["id"] for item in items}) == 500
+        assert len(items) == 501
+        assert len({item["id"] for item in items}) == 501
         database: Database = app.state.db
         async with database.sessions() as db:
             word_ids = list(
@@ -91,9 +91,9 @@ async def test_500_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
                     )
                 )
             )
-        assert len(word_ids) == len(set(word_ids)) == 500
+        assert len(word_ids) == len(set(word_ids)) == 501
         if mode != "cloze":
-            assert len({item["prompt"] for item in items}) == 500
+            assert len({item["prompt"] for item in items}) == 501
         assert all(set(item) == {"id", "prompt", "options"} for item in items)
         assert all(len(item["options"]) == (4 if mode == "choice" else 0) for item in items)
 

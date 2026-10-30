@@ -1,8 +1,15 @@
 import random
-from typing import Literal, Self, cast
+from typing import Annotated, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
@@ -10,7 +17,7 @@ from lexicona import progress
 from lexicona.cloze import mask_example
 from lexicona.db import utcnow
 from lexicona.deps import CurrentAuth, Db
-from lexicona.models import TrainingItem, TrainingSession, Word
+from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordTag
 from lexicona.normalize import normalize
 from lexicona.progress import AnswerKind
 
@@ -23,12 +30,23 @@ _rng = random.SystemRandom()
 class SessionIn(BaseModel):
     mode: Literal["choice", "input", "cards", "cloze"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
-    size: int = Field(default=10, ge=1, le=500, strict=True)
+    size: Annotated[int, Field(ge=1, le=500, strict=True)] | Literal["all"] = 10
+    tag_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=32, strict=True)]] = (
+        Field(default_factory=list, max_length=20)
+    )
+    progress_min: Annotated[int, Field(ge=0, strict=True)] | None = None
+    progress_max: Annotated[int, Field(ge=0, strict=True)] | None = None
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
         if (self.mode == "cloze") != (self.direction == "en_en"):
             raise ValueError("invalid mode and direction combination")
+        if (
+            self.progress_min is not None
+            and self.progress_max is not None
+            and self.progress_max < self.progress_min
+        ):
+            raise ValueError("progress_max must be at least progress_min")
         return self
 
 
@@ -180,13 +198,40 @@ def _build_item(
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
+    tag_ids = set(body.tag_ids)
+    if tag_ids:
+        owned = (
+            await db.scalars(
+                select(Tag.id).where(Tag.owner_id == auth.user.id, Tag.id.in_(tag_ids))
+            )
+        ).all()
+        if len(owned) != len(tag_ids):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "tag_not_found")
+
     pool = list(
         await db.scalars(
             select(Word).where(Word.owner_id == auth.user.id, Word.is_excluded.is_(False))
         )
     )
-    # Least-known words first; random order among equals.
-    targets = sorted(_rng.sample(pool, len(pool)), key=lambda word: word.progress)
+    matching_ids: set[str] | None = None
+    if tag_ids:
+        rows = await db.execute(
+            select(WordTag.word_id)
+            .where(WordTag.owner_id == auth.user.id, WordTag.tag_id.in_(tag_ids))
+            .group_by(WordTag.word_id)
+            .having(func.count(WordTag.tag_id) == len(tag_ids))
+        )
+        matching_ids = set(rows.scalars())
+    filtered = [
+        word
+        for word in pool
+        if (matching_ids is None or word.id in matching_ids)
+        and (body.progress_min is None or word.progress >= body.progress_min)
+        and (body.progress_max is None or word.progress <= body.progress_max)
+    ]
+    if not filtered and (tag_ids or body.progress_min is not None or body.progress_max is not None):
+        raise HTTPException(status.HTTP_409_CONFLICT, "no_matching_words")
+    targets = _rng.sample(filtered, len(filtered))
 
     session = TrainingSession(
         owner_id=auth.user.id,
@@ -195,7 +240,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         difficulty=auth.user.difficulty,
     )
     for target in targets:
-        if len(session.items) == body.size:
+        if body.size != "all" and len(session.items) == body.size:
             break
         if body.mode == "choice":
             built = _build_item(target, pool, body.direction)

@@ -8,7 +8,10 @@ import { TrainingPage } from './TrainingPage'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
-  return { ...actual, api: { startTraining: vi.fn(), answer: vi.fn() } }
+  return {
+    ...actual,
+    api: { startTraining: vi.fn(), listTags: () => Promise.resolve([]), answer: vi.fn() },
+  }
 })
 
 function renderPage() {

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ApiError,
@@ -9,6 +9,7 @@ import {
   type TerminalResult,
   type TrainingMode,
   type TrainingSession,
+  type TrainingSize,
 } from '../api'
 import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
@@ -34,7 +35,7 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 export function TrainingPage() {
   const [started, setStarted] = useState<{
     session: TrainingSession
-    requestedSize: number
+    requestedSize: TrainingSize
   } | null>(null)
   if (started)
     return (
@@ -50,19 +51,41 @@ export function TrainingPage() {
 function Setup({
   onStart,
 }: {
-  onStart: (session: TrainingSession, requestedSize: number) => void
+  onStart: (session: TrainingSession, requestedSize: TrainingSize) => void
 }) {
   const [direction, setDirection] = useState<Direction>('en_ru')
   const [mode, setMode] = useState<TrainingMode>('choice')
   const [sizeText, setSizeText] = useState('10')
+  const [sizeMode, setSizeMode] = useState<'number' | 'all'>('number')
+  const [tagIds, setTagIds] = useState<string[]>([])
+  const [minimum, setMinimum] = useState('')
+  const [maximum, setMaximum] = useState('')
+  const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
+  const parseBound = (value: string) =>
+    value === ''
+      ? null
+      : /^\d+$/u.test(value) && Number.isSafeInteger(Number(value))
+        ? Number(value)
+        : undefined
+  const min = parseBound(minimum)
+  const max = parseBound(maximum)
+  const validBounds =
+    min !== undefined && max !== undefined && (min === null || max === null || min <= max)
   const size = Number(sizeText)
   const validSize = /^\d+$/u.test(sizeText) && Number.isInteger(size) && size >= 1 && size <= 500
   const starting = useRef(false)
   const start = useMutation({
-    mutationFn: (requestedSize: number) =>
-      mode === 'choice'
+    mutationFn: (requestedSize: TrainingSize) => {
+      if (tagIds.length || min !== null || max !== null)
+        return api.startTraining(direction, requestedSize, mode, {
+          tag_ids: tagIds,
+          progress_min: min,
+          progress_max: max,
+        })
+      return mode === 'choice'
         ? api.startTraining(direction, requestedSize)
-        : api.startTraining(direction, requestedSize, mode),
+        : api.startTraining(direction, requestedSize, mode)
+    },
     onSuccess: onStart,
     onSettled: () => {
       starting.current = false
@@ -71,9 +94,9 @@ function Setup({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!validSize || starting.current) return
+    if ((sizeMode === 'number' && !validSize) || !validBounds || starting.current) return
     starting.current = true
-    start.mutate(size)
+    start.mutate(sizeMode === 'all' ? 'all' : size)
   }
 
   return (
@@ -100,13 +123,34 @@ function Setup({
         </fieldset>
         <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Слов в занятии</legend>
+          <label className={css.choice}>
+            <input
+              type="radio"
+              name="size-mode"
+              checked={sizeMode === 'all'}
+              onChange={() => setSizeMode('all')}
+            />
+            Все подходящие слова
+          </label>
+          <label className={css.choice}>
+            <input
+              type="radio"
+              name="size-mode"
+              checked={sizeMode === 'number'}
+              onChange={() => setSizeMode('number')}
+            />
+            Заданное число слов
+          </label>
           <div className={css.actions}>
             {SIZES.map((n) => (
               <button
                 key={n}
                 type="button"
-                className={validSize && n === size ? ui.primary : ui.button}
-                aria-pressed={validSize && n === size}
+                disabled={sizeMode === 'all'}
+                className={
+                  sizeMode === 'number' && validSize && n === size ? ui.primary : ui.button
+                }
+                aria-pressed={sizeMode === 'number' && validSize && n === size}
                 onClick={() => setSizeText(String(n))}
               >
                 {n}
@@ -120,16 +164,101 @@ function Setup({
               type="text"
               inputMode="numeric"
               value={sizeText}
+              disabled={sizeMode === 'all'}
               onChange={(event) => setSizeText(event.target.value)}
-              aria-invalid={!validSize}
+              aria-invalid={sizeMode === 'number' && !validSize}
               aria-describedby="training-size-hint"
             />
           </label>
-          <p id="training-size-hint" className={validSize ? ui.muted : ui.error}>
+          <p
+            id="training-size-hint"
+            className={sizeMode === 'all' || validSize ? ui.muted : ui.error}
+          >
             Введите целое число от 1 до 500.
           </p>
         </fieldset>
-        <p className={ui.muted}>Сначала идут слова с наименьшим прогрессом.</p>
+        <fieldset className={css.choices} disabled={start.isPending}>
+          <legend className={ui.label}>Фильтры слов</legend>
+          <p className={ui.muted}>
+            Теги: все выбранные, до 20. Прогресс включительно; пустая граница не ограничивает выбор.
+          </p>
+          {tags.isLoading && (
+            <p role="status" className={ui.muted}>
+              Загружаем теги…
+            </p>
+          )}
+          {tags.isError && (
+            <p role="alert" className={ui.error}>
+              {errorMessage(tags.error)} Не удалось загрузить теги; можно начать без них.
+            </p>
+          )}
+          <div className={css.tagList}>
+            {tags.data?.map((tag) => (
+              <label className={css.tag} key={tag.id}>
+                <input
+                  type="checkbox"
+                  checked={tagIds.includes(tag.id)}
+                  disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                  onChange={(event) =>
+                    setTagIds((ids) =>
+                      event.target.checked ? [...ids, tag.id] : ids.filter((id) => id !== tag.id),
+                    )
+                  }
+                />
+                {tag.name}
+              </label>
+            ))}
+          </div>
+          <div className={css.trainingBounds}>
+            <label className={ui.field}>
+              <span className={ui.label}>Прогресс от, %</span>
+              <input
+                className={ui.input}
+                type="text"
+                inputMode="numeric"
+                value={minimum}
+                onChange={(event) => setMinimum(event.target.value)}
+                aria-invalid={!validBounds}
+                aria-describedby="training-progress-hint"
+              />
+            </label>
+            <label className={ui.field}>
+              <span className={ui.label}>Прогресс до, %</span>
+              <input
+                className={ui.input}
+                type="text"
+                inputMode="numeric"
+                value={maximum}
+                onChange={(event) => setMaximum(event.target.value)}
+                aria-invalid={!validBounds}
+                aria-describedby="training-progress-hint"
+              />
+            </label>
+          </div>
+          <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
+            Введите целые неотрицательные числа, которые можно точно представить; верхняя граница не
+            меньше нижней.
+          </p>
+          <div>
+            <button
+              type="button"
+              className={ui.button}
+              onClick={() => {
+                setTagIds([])
+                setMinimum('')
+                setMaximum('')
+              }}
+            >
+              Очистить фильтры
+            </button>
+          </div>
+        </fieldset>
+        <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
+        {mode === 'choice' && (
+          <p className={ui.muted}>
+            Вопросы — по фильтру; варианты ответа — из всего активного словаря.
+          </p>
+        )}
         {mode === 'cloze' && (
           <p className={ui.muted}>
             Подходят английские примеры, где слово или выражение встречается ровно один раз целиком.
@@ -142,11 +271,16 @@ function Setup({
             start.error instanceof ApiError &&
             start.error.message === 'not_enough_words'
               ? 'Добавьте хотя бы одно слово в словарь.'
-              : errorMessage(start.error)}
+              : errorMessage(start.error)}{' '}
+            <a href="/">Перейти в словарь</a>
           </p>
         )}
         <div>
-          <button className={ui.primary} type="submit" disabled={start.isPending || !validSize}>
+          <button
+            className={ui.primary}
+            type="submit"
+            disabled={start.isPending || (sizeMode === 'number' && !validSize) || !validBounds}
+          >
             Начать
           </button>
         </div>
@@ -168,7 +302,7 @@ function Run({
   onFinish,
 }: {
   session: TrainingSession
-  requestedSize: number
+  requestedSize: TrainingSize
   onFinish: () => void
 }) {
   const queryClient = useQueryClient()
@@ -322,7 +456,10 @@ function Run({
           Завершить
         </button>
       </div>
-      {session.items.length < requestedSize && (
+      {requestedSize === 'all' && (
+        <p className={ui.muted}>Все подходящие слова: {session.items.length}</p>
+      )}
+      {typeof requestedSize === 'number' && session.items.length < requestedSize && (
         <p className={ui.muted}>
           Доступно {session.items.length} из {requestedSize} запрошенных слов
         </p>

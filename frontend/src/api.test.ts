@@ -113,6 +113,24 @@ describe('api', () => {
     expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
   })
 
+  it('sends all and training filters without changing the old request contract', async () => {
+    const fetchMock = mockFetch(201, { id: 's', items: [] })
+    await api.startTraining('en_ru', 'all', 'choice', {
+      tag_ids: ['a', 'b'],
+      progress_min: 100,
+      progress_max: 158,
+    })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({
+      mode: 'choice',
+      direction: 'en_ru',
+      size: 'all',
+      tag_ids: ['a', 'b'],
+      progress_min: 100,
+      progress_max: 158,
+    })
+  })
+
   it('sends reveal and skip mutations with CSRF and no payload', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { outcome: 'skipped', delta: 0, progress: 5 })

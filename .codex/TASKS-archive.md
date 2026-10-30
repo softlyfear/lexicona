@@ -462,6 +462,169 @@
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
 
+## TRAIN-007 — все подходящие слова, теги, диапазон и случайный порядок
+
+Статус: done (принят, ожидает root archive/commit). Попытка: 1.
+Architect: gpt-6.1-sol, reasoning high.
+Цель: запускать занятие по всем пригодным словам либо заданному числу, с AND-фильтром
+личных тегов и включительным диапазоном процентов; выбирать/упорядочивать случайно.
+Основание: новое прямое уточнение пользователя от 2026-10-30; оно заменяет least-known
+default и прежнее ограничение только числового размера, сохраняя принятую policy прогресса.
+
+### Наблюдаемые AC
+
+1. Настройка размера имеет явный выбор «Все подходящие слова» либо число. Числовые
+   presets и свободный integer 1..500/default10 сохранены; all не зависит от старого
+   невалидного текста размера. Режим/направление работают для choice/input/cards/cloze.
+   UI объясняет случайный порядок, убирает текст о наименьшем прогрессе.
+2. На старте можно выбрать до 20 личных тегов по AND («все выбранные») и нижнюю/верхнюю
+   границу прогресса включительно. Пустая граница не ограничивает соответствующую сторону;
+   пустой список тегов не ограничивает теги. 0, 100, 101, 158 и выше допустимы;
+   min=max отбирает точное значение. Отрицательные/дробные/нецелые и max<min объясняются
+   до отправки; сервер проверяет независимо. Очистка фильтров возвращает весь активный пул.
+3. Targets принадлежат owner, активны, удовлетворяют всем тегам/границам и mode eligibility.
+   Порядок и выбор подмножества случайные среди всего пригодного пула, без сортировки
+   по progress или приоритета первой страницы. В числовом режиме результат до N уникальных
+   слов, all содержит каждое пригодное слово ровно один раз, включая пул >500.
+   Нет скрытого среза до 500, автодублирования или исключения progress>=100.
+4. Для choice targets строго из фильтра, а distractors из всего активного личного словаря,
+   включая слова вне выбранных тегов/диапазона. Это явно объясняется в настройках choice;
+   маленькая выбранная группа из 1–2 слов пригодна при достаточном общем активном пуле.
+   Никаких чужих/исключённых/выдуманных вариантов; действующие правила неоднозначности,
+   повторов и скрытого правильного ответа сохранены. Здесь ещё 4 options; переход на6
+   отдельно в TRAIN-005. Cloze пропускает примеры, не прошедшие прежнюю mask eligibility.
+5. Пустой/непригодный пул возвращает понятную ошибку, без пустой успешной сессии.
+   UI сохраняет настройки и даёт изменить фильтры/перейти в словарь. Числовое сокращение
+   объясняет «Доступно X из N», all показывает фактическое X как все подходящие, без
+   сравнения X с500/фиктивного requestedSize. Pending блокирует настройки/двойной старт;
+   ошибка tags-list явная и не блокирует запуск без тегов, приватный cache очищается
+   прежним logout. В настройках доступны labels/keyboard и mobile без overflow.
+6. Фильтры применяются только при старте: созданные items неизменны после снятия тега
+   или изменения progress за пределы выбранного диапазона, если учебные версии прежние.
+   Ответ, replay/CAS, смысловая правка, исключение/возврат и snapshot difficulty работают
+   по ранее принятым правилам; не проверять текущие теги/диапазон повторно при ответе.
+7. Чужой/неизвестный tag ID одинаково даёт404, чужие слова/теги не попадают в targets
+   или options. POST sessions требует CSRF; неавторизованный401, no-store сохраняется.
+   Старый POST с числовым size или без новых полей и ранее выданные items совместимы.
+
+### Контракт API и алгоритма
+
+POST /api/training/sessions, прежние mode/direction и ответ SessionOut неизменны:
+{id, mode, direction, items:[{id,prompt,options}]}; правильных ответов в нём нет.
+
+Дополнительный/расширенный request:
+- size: строгий JSON integer1..500 либо точный string literal "all", default10.
+  "3", "ALL", null, bool, float (включая3.0), 0/501 →422. "all" не ограничивается500.
+  Пример: {mode:"input",direction:"en_ru",size:"all",tag_ids:["id1","id2"],
+  progress_min:100,progress_max:158}.
+- tag_ids: string[] default[], максимум20 элементов до дедупликации, ID длиной1..32;
+  null/нестроковый/пустой/слишком длинный элемент →422. Повтор ID идемпотентен.
+  Каждый уникальный ID проверять по owner до формирования сессии; чужой/неизвестный
+  одинаково404 tag_not_found. Никаких tag names/client word IDs в этом endpoint.
+- progress_min / progress_max: строгий JSON integer>=0 либо null/omitted (нет границы).
+  При обеих границах max>=min, иначе422. Нового продуктового upper bound, в частности100,
+  нет; не допускать переполнения SQL integer binding для больших границ: допустимы
+  сравнения Python int с уже загруженными progress. UI не округляет непредставимое
+  целое молча и показывает ошибку, если число нельзя передать точно.
+- Пул distractors — все Word с owner_id auth.user.id и is_excluded=false; targets
+  дополнительно AND tag_ids и включительный progress range. Фильтрация не должна
+  размножать слова через join. Перемешать пригодные targets до числового отсечения.
+  Если выборка содержит непригодные choice/cloze targets, они не занимают места:
+  добрать до N из остальных либо вернуть весь пригодный остаток.
+- При отсутствии совпавших targets из-за заданных тегов/границ:409 no_matching_words.
+  При отсутствии пригодных choice вариантов прежний409 not_enough_words;
+  cloze —409 no_eligible_cloze_examples. Без фильтров сохранить прежние409.
+  Любая ошибка оставляет БД без частично созданной сессии/items. Item snapshots и
+  difficulty создаются в одной транзакции; all не требует очередей/нового процесса.
+- GET /api/tags и query key ['tags'] использовать повторно; настройки только в памяти
+  Setup, никаких storage/нового URL-контракта для тренировки. Входные параметры не
+  обязаны храниться в отдельной schema/config: материализованные items фиксируют отбор.
+  Новая миграция/смена схемы для этого среза не требуется.
+- Frontend api.startTraining расширить совместимым способом: размер number|'all',
+  необязательный объект {tag_ids,progress_min,progress_max} после прежних аргументов;
+  прежние вызовы без фильтров сохраняются. Fetch только api.ts.
+  started/requestedSize сохраняет number|'all'; all отображает session.items.length.
+  Choices UI объясняет: «Вопросы — по фильтру; варианты ответа — из всего активного словаря».
+- Случайность — обычная серверная uniform shuffle/sample без security/anti-cheat обещаний.
+  Полный all ограничен реальным личным словарём, без нового защитного cap под видом «все»;
+  не добавлять paginated UI загрузку вместо полной сессии/не менять стек.
+  При необходимости ускорить формирование/запись батчами внутри той же транзакции.
+
+### Владельцы и границы
+
+- backend-agent: backend/src/lexicona/routers/training.py и небольшой helper отбора при
+  необходимости; backend/tests/test_training_filters.py (новый), test_training_size.py,
+  test_training.py — обновить прежние ожидания least-known. Модели/миграции/прогресс
+  и обработчики уже выданных items не менять без найденной конкретной необходимости.
+- frontend-agent после контракта: frontend/src/api.ts, api.test.ts,
+  pages/TrainingPage.tsx, pages/pages.module.css и TrainingSize/TrainingFilters tests.
+  Только необходимые mock listTags в остальных training tests; не менять учебную механику.
+- tests-agent после реализации: backend/tests/test_training_filters.py,
+  test_training_size.py/test_training.py и frontend/src/pages/TrainingFilters.test.tsx,
+  TrainingSize.test.tsx, api.test.ts; дополнительные регрессии по фактическим рискам.
+  Production находки возвращать владельцам. README кратко обновляет root по результату.
+- code-reviewer: весь diff/AC/доказательства; architect: PROJECT/TASKS/archive.
+  Devops не нужен; чужие правки не отменять, Git/ветки только root.
+
+Вне scope:6 options, новые учебные режимы/SRS, фильтры подборок/избранного,
+сохранение настроек между reload, счётчик preview отдельным endpoint, новые зависимости.
+Очередь voices/always6/lookup и аудит оставшегося согласованного MVP сохраняются.
+
+### Цепочка и проверки
+
+backend-agent → frontend-agent → tests-agent → code-reviewer → architect → root archive/commit.
+- API validation matrix size/all/tag IDs/range (0,100,101,158,min=max,одна граница,
+  оба отсутствуют), owner404 и CSRF401/403/no-store; range/token errors не создают items.
+- AND2+range+excluded/owner смешанный пул; повтор tag IDs не дублирует targets.
+  Choice1–2 filtered targets использует только active-own distractors вне фильтра;
+  неоднозначность/исключение/чужой пул не обходятся. Cloze пропускает непригодное.
+- Реальный пул501+ уникальных слов: all возвращает все без500 cap; числовой500 сохраняет
+  лимит. Проверить все7 существующих mode/direction комбинаций, реальные Word IDs
+  items без повторов и privacy полей; записать длительность самого тяжёлого прогона.
+- Случайный порядок проверить детерминированным RNG substitute с известной перестановкой:
+  среди неодинаковых progress правильный набор и порядок без сортировки least-known.
+  Не использовать flaky утверждение «два случайных запуска обязательно различаются».
+- После старта снять тег/изменить progress, ответить и replay: snapshot продолжает
+  действовать; смысловая правка/исключение сохраняет прежние регрессии иCAS.
+- UI all↔number/presets, диапазон/ошибки, tag filter/clear/error-list, pending/double submit,
+  error keeps settings, фактический счётчик all и numeric-shortfall; удалить старый текст.
+  Browser desktop/mobile с настоящим API на tempDB: all+range+AND, число, ошибка/clear,
+  отсутствие overflow/pageerror. Недоступную проверку явно отметить.
+
+Команды: cd backend && uv run --locked pytest tests/test_training_filters.py
+tests/test_training_size.py tests/test_training.py; cd frontend && npm test --
+src/pages/TrainingFilters.test.tsx src/pages/TrainingSize.test.tsx (и фактические api tests).
+После финального кода/tests — один make check с exit code/числами и привязкой к diff.
+Reviewer/architect используют подтверждённый gate, без повторного полного прогона.
+
+Результаты: реализованы size all/число, AND теги, включительный диапазон и случайный отбор.
+Подтверждён полный `make check` tests_next: exit 0, tooling 12 / backend 269 /
+frontend 93; Ruff/format/mypy/Prettier/lint/typecheck/build и diff --check зелёные.
+Дополнены матрица включительных границ/huge ints, отсутствие частичных сессий при
+ошибках и UI all с невалидным size/range. Реальные 501 item во всех7комбинациях
+проверены без500cap/дублей; отдельный backend-прогон занял0,59с тела теста.
+Root настоящий Chromium156/tempSQLite/uvicorn/SPA: all поверх невалидного size,
+личный тег+100..158 включительно, точный158, реальныеN/Y, skip→summary и mobile390
+безoverflow/pageerror — PASS. Скриншоты /tmp/lexicona-training-filter-*.png.
+Продуктовые файлы после gate не менялись; физические устройства не проверялись.
+Независимый review_next: Ship, AC1–7 выполнены, подтверждённых дефектов нет. Прочитан
+весь diff21файла; проверены uniform target selection, all>500, full active distractors,
+owner/AND/range/huge ints, backwards compatibility и snapshot/CAS. Gate12/269/93 и
+browser PASS подтверждены, скриншоты просмотрены; diff --check чистый.
+Приёмка architect: ПРИНЯТО. AC1–7 сопоставлены с конечными production/test изменениями,
+новыми файлами TrainingFilters, независимым Ship и подтверждённым gate 12/269/93.
+Проверены strict validation и совместимый size, AND/owner, включительные границы/huge ints,
+случайное подмножество до numeric limit с добором пригодных items, реальный all501 во всех
+7 сочетаниях, full active-own distractors, отсутствие новых проверок filters при ответе,
+privacy/CAS и UI all/ошибки/pending. Просмотрены desktop/mobile screenshots; browser PASS
+подтверждён root/reviewer. Команда architect git diff --check → exit 0; make check не
+повторялся. После gate меняется только протокол; код/tests при приёмке не менялись.
+Блокеров нет, физические устройства не проверены. Handoff root: архивировать и коммитить
+TRAIN-007; после коммита открыть SPEECH-001 по очереди. Git выполняет только root.
+
+- Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
+- Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
 ## WORDS-003 — личные теги в редакторе и фильтре словаря
 
 Статус: done (принят, ожидает root archive/commit). Попытка: 1.

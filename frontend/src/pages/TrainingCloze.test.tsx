@@ -10,7 +10,13 @@ vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
   return {
     ...actual,
-    api: { startTraining: vi.fn(), answerText: vi.fn(), revealAnswer: vi.fn(), skipItem: vi.fn() },
+    api: {
+      startTraining: vi.fn(),
+      listTags: () => Promise.resolve([]),
+      answerText: vi.fn(),
+      revealAnswer: vi.fn(),
+      skipItem: vi.fn(),
+    },
   }
 })
 vi.mock('../speech', () => ({ canSpeak: true, speak: vi.fn() }))

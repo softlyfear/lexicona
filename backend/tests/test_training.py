@@ -1,12 +1,14 @@
 import asyncio
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
 from lexicona.db import Database
 from lexicona.models import TrainingItem
 from lexicona.normalize import normalize
+from lexicona.routers import training
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 
@@ -74,12 +76,15 @@ async def test_distractors_never_share_a_meaning_with_the_target(alice: Client) 
                 assert "кот" not in item["options"]
 
 
-async def test_least_known_words_come_first(app: FastAPI, alice: Client) -> None:
+async def test_random_order_is_not_sorted_by_progress(
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     words = await seed(alice)
     for en, value in [("cat", 90), ("dog", 80), ("cow", 70), ("fox", 0), ("owl", 10)]:
         await set_progress(app, words[en]["id"], value)
-    session = await start(alice, size=2)
-    assert [item["prompt"] for item in session["items"]] == ["fox", "owl"]
+    monkeypatch.setattr(training._rng, "sample", lambda population, k: list(reversed(population)))
+    session = await start(alice, mode="input", size=2)
+    assert [item["prompt"] for item in session["items"]] == ["owl", "fox"]
 
 
 async def test_correct_and_wrong_answers_move_progress(app: FastAPI, alice: Client) -> None:
