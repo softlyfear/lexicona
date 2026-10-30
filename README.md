@@ -55,11 +55,14 @@ npm run dev
 
 ```sh
 make install    # воспроизводимая установка из lock-файлов
-make check      # хук: тесты; backend: ruff/mypy/pytest; frontend: формат/lint/types/test/build
+make check      # tooling: тесты; backend: ruff/mypy/pytest; frontend: формат/lint/test/build (с проверкой типов)
 make fmt        # исправление форматирования
 ```
 
 GitHub Actions вызывает те же цели Makefile на push в main и pull request.
+Для отдельной проверки типов доступна команда `npm run typecheck` из `frontend/`.
+Итоговый `make check` запускает назначенный владелец после всех правок кода и тестов;
+независимый ревьюер использует подтверждённый результат для того же кода.
 
 Правила и конвейер Codex — [AGENTS.md](AGENTS.md), роли — `.codex/agents/`,
 текущий тикет — `.codex/TASKS.md`. После открытия доверенного проекта просмотрите

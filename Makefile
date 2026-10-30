@@ -25,7 +25,6 @@ check-backend:
 check-frontend:
 	cd frontend && npm run format:check
 	cd frontend && npm run lint
-	cd frontend && npm run typecheck
 	cd frontend && npm test
 	cd frontend && npm run build
 
