@@ -74,6 +74,29 @@ describe('api', () => {
     expect(errorMessage(error)).toBe('Неверный логин или пароль.')
   })
 
+  it('sends untrimmed passwords with CSRF and accepts a rotated session', async () => {
+    setCsrfToken('old-csrf')
+    const session = {
+      user: { id: 'u', login: 'alice', is_admin: false, difficulty: 'medium' },
+      csrf_token: 'new-csrf',
+    }
+    const fetchMock = mockFetch(200, session)
+    await expect(api.changePassword(' old ', '😀😀😀😀😀😀😀😀😀😀😀😀')).resolves.toEqual(session)
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/auth/change-password')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'old-csrf' })
+    expect(init.body).toBe(
+      JSON.stringify({ current_password: ' old ', new_password: '😀😀😀😀😀😀😀😀😀😀😀😀' }),
+    )
+  })
+
+  it('rejects a malformed session response after password change', async () => {
+    mockFetch(200, { user: { id: 'u' } })
+    await expect(api.changePassword('old', 'new password')).rejects.toThrow(
+      'invalid_session_response',
+    )
+  })
+
   it('handles empty 204 responses', async () => {
     mockFetch(204)
     await expect(api.deleteWord('id')).resolves.toBeUndefined()

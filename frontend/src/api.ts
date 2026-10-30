@@ -130,10 +130,15 @@ export function setCsrfToken(token: string) {
   csrfToken = token
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  csrfOverride?: string,
+): Promise<T> {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (method !== 'GET') headers['X-CSRF-Token'] = csrfToken
+  if (method !== 'GET') headers['X-CSRF-Token'] = csrfOverride ?? csrfToken
   const response = await fetch(`/api${path}`, {
     method,
     headers,
@@ -154,11 +159,43 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (response.status === 204 ? undefined : await response.json()) as T
 }
 
+function validSession(value: unknown): value is Session {
+  if (!value || typeof value !== 'object' || !('csrf_token' in value) || !('user' in value))
+    return false
+  const user = value.user
+  return (
+    typeof value.csrf_token === 'string' &&
+    value.csrf_token.length > 0 &&
+    !!user &&
+    typeof user === 'object' &&
+    'id' in user &&
+    typeof user.id === 'string' &&
+    'login' in user &&
+    typeof user.login === 'string' &&
+    'is_admin' in user &&
+    typeof user.is_admin === 'boolean' &&
+    'difficulty' in user &&
+    ['very_easy', 'easy', 'medium', 'hard', 'very_hard'].includes(String(user.difficulty))
+  )
+}
+
+async function sessionRequest(method: string, path: string, body?: unknown): Promise<Session> {
+  const result = await request<unknown>(method, path, body)
+  if (!validSession(result)) throw new Error('invalid_session_response')
+  return result
+}
+
 export const api = {
-  me: () => request<Session>('GET', '/auth/me'),
+  me: () => sessionRequest('GET', '/auth/me'),
   login: (login: string, password: string) =>
-    request<Session>('POST', '/auth/login', { login, password }),
+    sessionRequest('POST', '/auth/login', { login, password }),
   logout: () => request<void>('POST', '/auth/logout'),
+  logoutWithCsrf: (csrf: string) => request<void>('POST', '/auth/logout', undefined, csrf),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    sessionRequest('POST', '/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
   updateSettings: (difficulty: Difficulty) =>
     request<User>('PUT', '/auth/settings', { difficulty }),
 
@@ -189,6 +226,7 @@ export const api = {
 
 const MESSAGES: Record<string, string> = {
   invalid_credentials: 'Неверный логин или пароль.',
+  invalid_current_password: 'Неверный текущий пароль.',
   too_many_attempts: 'Слишком много попыток. Попробуйте через 15 минут.',
   not_enough_words: 'Нужно хотя бы 4 слова с разными переводами.',
   no_eligible_cloze_examples:

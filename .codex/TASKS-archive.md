@@ -462,6 +462,168 @@
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
 
+## ACCOUNT-001 — профиль, смена пароля и проценты в настройках
+
+- Цель: login в шапке открывает личные настройки, где видны аккаунт/сложность и доступна
+  самостоятельная смена пароля; все учебные дельты подписаны знаком %.
+- Статус: done; попытка: 2; приёмка architect: ПРИНЯТО.
+- Источник: manual-feedback-2026-10-29.md и разделы 6.2–6.3/7.1 приватного ТЗ.
+
+### AC
+
+1. Login в шапке — доступная клавиатурой ссылка на существующий /settings. Экран явно
+   показывает текущий login, настройки сложности и форму смены пароля. Дополнительный
+   профильный маршрут, email, аватар, редактирование login и открытая регистрация не нужны.
+2. Дельты во всех пяти строках сложности подписаны %, например «выбор ±4% · ввод +8%/−4%».
+   Сами таблица дельт и действие настройки только на будущие занятия не меняются.
+3. Смена пароля доступна только авторизованному владельцу текущего аккаунта с правильным
+   X-CSRF-Token и текущим паролем. Новый пароль — строго строка 12..128 Unicode-символов,
+   включая пробелы; ничего не trim/normalize. Прежний login/пароль, чужие ID и лишние поля
+   не позволяют сменить чужой пароль. Ошибки не меняют hash/сессии.
+4. Успешная смена атомарно меняет hash, отзывает ВСЕ прежние сессии этого пользователя
+   (включая прежнюю текущую), создаёт одну новую текущую с новым cookie token и CSRF.
+   Пользователь продолжает работу; старый пароль больше не входит, новый входит.
+   Прежние cookies не авторизуют, прежний CSRF с новой cookie отвергается; сессии
+   другого пользователя, его пароль/данные остаются действующими.
+5. Защита конкуренции: CAS по фактически проверенному старому hash и ещё действующей
+   сессии в write path; две конкурирующие смены не могут обе победить/создать сессии.
+   Проигравший не устанавливает/не очищает cookie победителя. Проверка/хеширование Argon2
+   не блокируют event loop; до вычисления не держать write-lock/длинную транзакцию.
+   Login, проверивший старый hash до смены, не может записать новую авторизацию после
+   смены на основании устаревшей проверки (запись сессии также привязана к hash).
+6. Форма содержит current/new/confirmation, password inputs и корректные autocomplete.
+   Confirm проверяется клиентом, Enter отправляет один запрос; pending блокирует повтор.
+   Client считает длину Unicode code points согласованно с сервером, а не UTF-16 units;
+   нельзя отвергать допустимые emoji/Unicode через неподходящий maxlength.
+7. Success показывается только после ответа: frontend вызывает rememberSession с новым
+   SessionOut, очищает все поля паролей и сообщает об отзыве остальных сессий.
+   Следующая CSRF-мутация работает. Неверный текущий пароль объясняется без выхода
+   из аккаунта; ошибка сохраняет форму для исправления. Пароли/tokens не попадают в URL,
+   logs, localStorage/sessionStorage; body запроса — только через api.ts.
+8. Сетевой/JSON-сбой после возможного commit не выдаётся за успех и не вызывает скрытого
+   повторения смены пароля. Для согласования cookie/CSRF можно перечитать /auth/me и
+   rememberSession; иначе явно нужен повторный вход. Перечитывание сессии не доказывает,
+   что пароль изменился. Возвращённый после выхода/смены аккаунта старый ответ не должен
+   восстанавливать старую учётку ни в cache, ни после reload через оставшуюся HttpOnly-cookie.
+   Одной очистки query cache недостаточно: поздняя ротация требует серверного cleanup и
+   сохраняющегося после reload запрета автоматического восстановления при его сбое.
+9. Endpoint всегда no-store, strict validation/owner/CSRF и конкуренция покрыты API-тестами;
+   link/form/Unicode/feedback/rememberSession покрыты UI-тестами. Финальный make check зелёный.
+
+### API и сессии
+
+- POST /api/auth/change-password: strict payload {current_password:string,new_password:string},
+  extra forbid. current_password — 1..256 символов (совместимо с прежним login), new_password
+  — 12..128; без strip_whitespace/нормализации. Не принимать user_id/login/confirmation.
+- Успех HTTP 200 со стандартным SessionOut {user,csrf_token}; cookie как при login:
+  SESSION_COOKIE, HttpOnly, SameSite=Lax, Path=/, Secure из AppSettings, lifetime прежний.
+  В БД token только в виде hash; CSRF/cookie генерируются заново.
+- Неверный current_password: HTTP 400 {detail:"invalid_current_password"}, без Set-Cookie
+  и без отзыва сессий. Это не 401, потому что global onError(401) вызывает forgetSession.
+  Отсутствующая/отозванная сессия и проигранный CAS после её отзыва — 401 not_authenticated,
+  без Set-Cookie; неверный CSRF — 403, некорректный body — 422.
+- Failed password checks ограничить отдельным throttle по auth.user.id, используя текущий
+  одно-процессный подход LoginThrottle; не смешивать счётчик с login. После порога 429
+  too_many_attempts, успех сбрасывает счётчик. Никаких новых Redis/очередей.
+- В короткой write-транзакции проверяются старый hash и живая исходная session; при CAS
+  успехе delete AuthSession по user_id и insert новой записи. Не создавать миграцию:
+  текущие User/AuthSession уже содержат нужные поля. Проверить конкуренцию с logout
+  и login на старом hash; обычные login/logout/settings контракты сохраняются.
+- api.changePassword(currentPassword,newPassword): Promise<Session>. Форма находится на
+  SettingsPage; onSuccess обновляет csrf и session через rememberSession, не ручным
+  setQueryData только user. Pending difficulty/password мутаций координировать, чтобы
+  поздняя запись старого user не подменила свежие настройки/новую CSRF-сессию.
+
+### Исправление AC8 в попытке 2 — поздняя cookie и перезагрузка
+
+- Объединить только auth-операции login/logout/change-password последовательным каналом
+  в session.ts; не строить общий framework запросов. Logout/переход к другой учётке
+  сразу меняет revision и очищает локальные данные, но новый login отправляется после
+  завершения прежней ротации/её cleanup. В очередь включается обработка ответа, не только
+  fetch: новый login не должен обогнать cleanup и затем быть стёрт поздним logout.
+- При выходе/инвалидации из-за поздней ротации сохранить sessionStorage boolean
+  require-explicit-login (один служебный признак, без пароля/токена/CSRF/слов/user ID).
+  При этом признаке loadSession после reload не делает автоматический /me restore и
+  оставляет экран явного входа. Удалять признак может только актуальный успешный explicit
+  login после предшествующих auth-операций; rememberSession от /me/change-password и
+  запоздалый callback не имеют права его снимать.
+- Успешный change-password, ставший stale по revision/user, не принимать локально.
+  Пока auth-канал удерживается, через api.ts отправить POST /auth/logout с CSRF именно
+  этого позднего SessionOut: браузер уже применил его cookie. CSRF override передаётся
+  только в заголовок конкретного cleanup-запроса; не записывать его как токен другой
+  активной учётки. Успешный cleanup реально отзывает позднюю сессию, 401 означает, что
+  она уже не действительна. После cleanup cache остаётся очищенным, служебный признак
+  сохраняется до явного входа.
+- При сетевом сбое cleanup, потерянном/нечитаемом body после Set-Cookie или неуспешном
+  согласовании не обещать отзыв и не разрешать auto-restore: признак остаётся после
+  reload. /me в рамках recovery сам по себе не доказывает намерение войти и не снимает
+  блокировку. Явный новый login позже устанавливает свою cookie/CSRF и только затем
+  снимает признак. Не пытаться удалить HttpOnly-cookie JavaScript-кодом.
+- Регрессии обязаны моделировать cookie-side effect позднего ответа, а не только порядок
+  setQueryData: Alice change commit/response delay → logout → попытка login Bob → поздний
+  Alice response/cleanup → Bob login. Порядок запросов не допускает Bob до cleanup;
+  после успеха Bob действует и reload не возвращает Alice. Отдельно cleanup network failure
+  и потерянный body: remount/reload с сохранённым sessionStorage не восстанавливает Alice,
+  explicit login разрешён и снимает признак только после успеха. Проверить stale login
+  callback и /me, чтобы они также не обходили этот запрет.
+
+### Владельцы, цепочка и проверки
+
+1. architect: TASKS.md/PROJECT.md, контракт и приёмка после Ship.
+2. backend-agent: backend/src/lexicona/routers/auth.py, при необходимости security.py/deps.py,
+   соответствующие backend/tests/**; endpoint/CAS/revocation/login-guard/throttle.
+3. frontend-agent: frontend/src/{api,session}.ts, components/Layout.tsx,
+   pages/{SettingsPage,LoginPage}.tsx, при необходимости CSS и тесты; ссылка, профиль/форма,
+   знаки %, auth-координация, cleanup и безопасный session update после reload.
+4. tests-agent: backend/tests/**, frontend/src/**/*.test.ts(x); AC и make check финального diff.
+5. code-reviewer: весь diff, секреты/CSRF/owner/CAS/rotation/late responses + gate → Ship.
+6. architect: ПРИНЯТО / НА ДОРАБОТКУ; root архивирует и коммитит один законченный срез.
+- Backend: правильный/неверный current, границы нового пароля и Unicode с пробелами,
+  strict/extra/anon/CSRF/no-store, 2+ сессии владельца и другой owner, новый/старый login,
+  свежая CSRF-мутация, повтор/параллельные смены, logout и stale-login race, throttle.
+- UI: login link→settings, профиль и все %, invalid confirmation/length без запроса,
+  Enter/pending/repeat, wrong current без logout, success clear+rememberSession,
+  network uncertainty/recovery и отсутствие позднего восстановления другого аккаунта
+  с учётом cookie/reload/cleanup failure и persistent explicit-login guard.
+- Команды: целевые pytest/vitest, затем make check и git diff --check.
+- Вне scope: регистрация/invites/recovery, удаление аккаунта, каталог активных сессий,
+  email/avatar/login change, теги/TTS/варианты/lookup. Остальной MVP остаётся в работе.
+- Полный `make check` tests-agent: exit 0 — tooling 12, backend 248, frontend 70;
+  Ruff/mypy/Prettier/oxlint/tsc/build и `git diff --check` зелёные. Добавлена регрессия
+  позднего /auth/me при reconciliation после смены аккаунта; прочие AC покрыты,
+  включая детерминированные Argon2/logout/stale-login гонки и CAS.
+- Root live HTTP smoke: exit 0 на временной мигрированной SQLite и реальном uvicorn/SPA;
+  Unicode+пробелы, неверный current, strict/CSRF, cookie/CSRF rotation, отзыв 2+ сессий,
+  другой владелец, старый/новый login и две параллельные смены (200/401, loser без
+  Set-Cookie) подтверждены. Продуктовая БД не использовалась. Ревью/приёмка: ожидаются.
+- Ревью попытки 1: No-Ship, P2 против AC8. Задержанный успешный change-password Alice
+  после logout/login Bob устанавливает валидную Alice cookie; очистка только cache
+  допускает восстановление Alice после reload через /auth/me. Reviewer воспроизвёл
+  на временной SQLite с cookie jars; прочий diff принят, лично 19 backend/10 UI passed.
+  Нужен реальный отзыв поздней сессии/координация auth-операций и регрессия reload.
+- Попытка 2: общий auth-канал сериализует запросы и обработку login/logout/password;
+  поздняя сессия реально отзывается, служебный boolean требует явного входа при
+  неуспехе cleanup и не содержит слов/паролей/токенов. Cookie-модель покрывает reload.
+  Новый `make check` tests-agent exit 0: tooling 12, backend 248, frontend 75;
+  Ruff/mypy/Prettier/oxlint/tsc/build и diff --check зелёные.
+  Root повторил live HTTP smoke с воспроизведением позднего Alice Set-Cookie,
+  реальным POST/logout с его CSRF: обе Alice cookie jars получили 401, Bob session
+  сохранился, явный вход Bob и fresh /me после имитации reload вернули Bob. Exit 0.
+  Ручного браузерного прогона нет. Повторное ревью/приёмка ожидаются.
+- Независимый reviewer попытки 2: Ship; P2 устранён, новых замечаний нет, AC выполнены.
+  Лично 15 UI/session-тестов passed, diff --check успешен; подтверждён gate 12/248/75.
+- Приёмка architect: ПРИНЯТО. Прочитаны конечный diff и новые API/UI/session-регрессии;
+  AC 1–9 выполнены. CAS/rotation/revocation, строгий Unicode payload, проценты и профиль
+  согласованы с контрактом. Finding AC8 закрыт общим auth-каналом, реальным cleanup поздней
+  сессии и persistent explicit-login guard; cookie-модель покрывает reload и сетевой отказ.
+  Приняты независимый Ship, новый make check 12/248/75 и реальный расширенный HTTP smoke;
+  gate без изменений не повторялся. Лично git diff --check — exit 0.
+  Ограничение: физического браузерного прогона нет; продуктовая БД не менялась.
+  Передано root для архива и коммита; WORDS-003 открывать после коммита. Общий MVP в работе.
+
+- Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
+- Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
 ## TRAIN-006 — большие занятия и собственное число слов
 
 - Цель: пользователь начинает занятие выбранного размера вплоть до 500 слов и видит

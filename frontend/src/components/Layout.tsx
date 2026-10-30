@@ -1,7 +1,6 @@
-import { useMutation } from '@tanstack/react-query'
 import { NavLink, Outlet } from 'react-router'
-import { api, type User } from '../api'
-import { forgetSession } from '../session'
+import { type User } from '../api'
+import { logoutSession } from '../session'
 import css from './Layout.module.css'
 import ui from './ui.module.css'
 
@@ -12,8 +11,6 @@ const LINKS = [
 ]
 
 export function Layout({ user }: { user: User }) {
-  const logout = useMutation({ mutationFn: api.logout, onSettled: forgetSession })
-
   return (
     <>
       <header className={css.header}>
@@ -32,13 +29,10 @@ export function Layout({ user }: { user: User }) {
             ))}
           </nav>
           <div className={css.user}>
-            {user.login}
-            <button
-              type="button"
-              className={ui.ghost}
-              onClick={() => logout.mutate()}
-              disabled={logout.isPending}
-            >
+            <NavLink to="/settings" className={css.link}>
+              {user.login}
+            </NavLink>
+            <button type="button" className={ui.ghost} onClick={() => void logoutSession()}>
               Выйти
             </button>
           </div>
