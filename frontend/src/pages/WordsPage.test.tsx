@@ -12,6 +12,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       listWords: vi.fn(),
+      listTags: vi.fn(),
       createWord: vi.fn(),
       updateWord: vi.fn(),
       deleteWord: vi.fn(),
@@ -32,6 +33,7 @@ const word = (id: string, headword: string): Word => ({
   note: null,
   created_at: '',
   updated_at: '',
+  tags: [],
 })
 
 function Navigation() {
@@ -65,6 +67,7 @@ function params() {
 describe('сортировка словаря', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    vi.mocked(api.listTags).mockResolvedValue([])
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
   })
 
@@ -75,19 +78,19 @@ describe('сортировка словаря', () => {
     expect(screen.getByRole('searchbox', { name: 'Поиск' })).toHaveValue('cat')
     const select = screen.getByRole('combobox', { name: 'Сортировка' })
     expect(select).toHaveValue('progress_asc')
-    expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_asc', 'active')
+    expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_asc', 'active', [])
     await user.selectOptions(select, 'headword_desc')
     expect(params().get('q')).toBe('cat')
     expect(params().get('sort')).toBe('headword_desc')
     await waitFor(() =>
-      expect(api.listWords).toHaveBeenCalledWith('cat', 'headword_desc', 'active'),
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'headword_desc', 'active', []),
     )
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск' }))
     await user.type(screen.getByRole('searchbox', { name: 'Поиск' }), 'dog')
     expect(params().get('q')).toBe('dog')
     expect(params().get('sort')).toBe('headword_desc')
     await waitFor(() =>
-      expect(api.listWords).toHaveBeenCalledWith('dog', 'headword_desc', 'active'),
+      expect(api.listWords).toHaveBeenCalledWith('dog', 'headword_desc', 'active', []),
     )
   })
 
@@ -102,7 +105,9 @@ describe('сортировка словаря', () => {
     await user.click(screen.getByRole('button', { name: 'Назад' }))
     expect(select).toHaveValue('created_asc')
     expect(screen.getByRole('searchbox', { name: 'Поиск' })).toHaveValue('cat')
-    await waitFor(() => expect(api.listWords).toHaveBeenCalledWith('cat', 'created_asc', 'active'))
+    await waitFor(() =>
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'created_asc', 'active', []),
+    )
     await user.click(screen.getByRole('button', { name: 'Вперёд' }))
     expect(select).toHaveValue('headword_asc')
     expect(params().get('q')).toBe('cat')
@@ -129,7 +134,7 @@ describe('сортировка словаря', () => {
     expect(await screen.findByText('cat')).toBeInTheDocument()
     const select = screen.getByRole('combobox', { name: 'Сортировка' })
     expect(select).toHaveValue('created_desc')
-    expect(api.listWords).toHaveBeenCalledWith('cat', 'created_desc', 'active')
+    expect(api.listWords).toHaveBeenCalledWith('cat', 'created_desc', 'active', [])
     expect(within(select).getAllByRole('option')).toHaveLength(6)
     for (const value of [
       'created_asc',
@@ -140,7 +145,7 @@ describe('сортировка словаря', () => {
       'created_desc',
     ]) {
       await user.selectOptions(select, value)
-      await waitFor(() => expect(api.listWords).toHaveBeenCalledWith('cat', value, 'active'))
+      await waitFor(() => expect(api.listWords).toHaveBeenCalledWith('cat', value, 'active', []))
       expect(params().get('q')).toBe('cat')
     }
     expect(params().has('sort')).toBe(false)
@@ -185,7 +190,9 @@ describe('сортировка словаря', () => {
     )
     const user = userEvent.setup()
     renderPage('/?q=pet')
-    await waitFor(() => expect(api.listWords).toHaveBeenCalledWith('pet', 'created_desc', 'active'))
+    await waitFor(() =>
+      expect(api.listWords).toHaveBeenCalledWith('pet', 'created_desc', 'active', []),
+    )
     await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'created_asc')
     expect(await screen.findByText('dog')).toBeInTheDocument()
     await act(async () => resolveOld([word('1', 'cat')]))
@@ -211,16 +218,18 @@ describe('сортировка словаря', () => {
     await screen.findByText('cat')
     const filter = screen.getByRole('combobox', { name: 'Обучение' })
     expect(filter).toHaveValue('active')
-    expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'active')
+    expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'active', [])
     await user.selectOptions(filter, 'excluded')
     expect(params().get('q')).toBe('cat')
     expect(params().get('sort')).toBe('progress_desc')
     expect(params().get('training')).toBe('excluded')
     await waitFor(() =>
-      expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'excluded'),
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'excluded', []),
     )
     await user.selectOptions(filter, 'all')
-    await waitFor(() => expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'all'))
+    await waitFor(() =>
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'all', []),
+    )
     await user.click(screen.getByRole('button', { name: 'Назад' }))
     expect(filter).toHaveValue('excluded')
     await user.click(screen.getByRole('button', { name: 'Вперёд' }))
@@ -334,6 +343,125 @@ describe('сортировка словаря', () => {
     await user.click(screen.getByRole('button', { name: 'Добавить' }))
     expect(await screen.findByText('cats')).toBeInTheDocument()
     expect(params().toString()).toBe('q=cat&sort=progress_desc&training=all')
-    expect(api.listWords).toHaveBeenLastCalledWith('cat', 'progress_desc', 'all')
+    expect(api.listWords).toHaveBeenLastCalledWith('cat', 'progress_desc', 'all', [])
+  })
+
+  it('совмещает фильтр всех тегов с URL и историей и позволяет снять пустой результат', async () => {
+    vi.mocked(api.listTags).mockResolvedValue([
+      { id: 'b', name: 'Работа' },
+      { id: 'a', name: 'Дом' },
+    ])
+    vi.mocked(api.listWords).mockImplementation(async (_q, _sort, _training, ids) =>
+      ids?.length ? [] : [word('1', 'cat')],
+    )
+    const user = userEvent.setup()
+    renderPage('/?q=cat&sort=progress_desc&training=all')
+    await screen.findByText('cat')
+    await user.click(await screen.findByRole('checkbox', { name: 'Работа' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Дом' }))
+    expect(params().getAll('tag_id')).toEqual(['a', 'b'])
+    await waitFor(() =>
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'all', ['a', 'b']),
+    )
+    expect(await screen.findByText('Ничего не найдено.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('checkbox', { name: 'Дом' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Работа' })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Вперёд' }))
+    expect(screen.getByRole('checkbox', { name: 'Дом' })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Снять фильтр тегов' }))
+    expect(params().getAll('tag_id')).toEqual([])
+    expect(params().get('q')).toBe('cat')
+    expect(params().get('sort')).toBe('progress_desc')
+    expect(params().get('training')).toBe('all')
+  })
+
+  it('выбирает, создаёт и снимает теги слова без дубликатов и обновляет справочник', async () => {
+    vi.mocked(api.listTags).mockResolvedValue([{ id: '1', name: 'Работа' }])
+    vi.mocked(api.createWord).mockResolvedValue(word('3', 'cats'))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('cat')
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    await user.type(screen.getByLabelText('Слово или выражение (EN)'), 'cats')
+    await user.type(
+      screen.getByLabelText('Переводы — по одному в строке, первый основной'),
+      'кошки',
+    )
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Выбрать существующий тег' }),
+      'Работа',
+    )
+    const input = screen.getByRole('textbox', { name: 'Новый тег' })
+    await user.type(input, '  работа  ')
+    await user.click(screen.getByRole('button', { name: 'Добавить тег' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('уже выбран')
+    await user.clear(input)
+    await user.type(input, ' Дом{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Снять тег «Работа»' }))
+    await user.click(screen.getByRole('button', { name: 'Добавить' }))
+    await waitFor(() =>
+      expect(api.createWord).toHaveBeenCalledWith(expect.objectContaining({ tags: ['Дом'] })),
+    )
+    await waitFor(() => expect(api.listTags).toHaveBeenCalledTimes(2))
+  })
+
+  it('разрешает ручной тег при ошибке справочника и сохраняет его в черновике при ошибке', async () => {
+    vi.mocked(api.listTags).mockRejectedValue(new TypeError('offline'))
+    vi.mocked(api.createWord).mockRejectedValue(new TypeError('offline'))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('cat')
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    expect(await screen.findByText(/Можно ввести тег вручную/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Слово или выражение (EN)'), 'cats')
+    await user.type(
+      screen.getByLabelText('Переводы — по одному в строке, первый основной'),
+      'кошки',
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Новый тег' }), 'Работа{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Добавить' }))
+    await waitFor(() =>
+      expect(api.createWord).toHaveBeenCalledWith(expect.objectContaining({ tags: ['Работа'] })),
+    )
+    expect(screen.getByRole('button', { name: 'Снять тег «Работа»' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Слово или выражение (EN)')).toHaveValue('cats')
+  })
+
+  it('показывает теги слова и сохраняет снятие всех тегов при редактировании', async () => {
+    const tagged = { ...word('1', 'cat'), tags: [{ id: 't', name: 'Дом' }] }
+    vi.mocked(api.listTags).mockResolvedValue(tagged.tags)
+    vi.mocked(api.listWords).mockResolvedValue([tagged])
+    vi.mocked(api.updateWord).mockResolvedValue({ ...tagged, tags: [] })
+    const user = userEvent.setup()
+    renderPage()
+    const row = (await screen.findByText('cat')).closest('li')!
+    expect(within(row).getByText('Дом')).toBeInTheDocument()
+    await user.click(within(row).getByRole('button', { name: 'Изменить «cat»' }))
+    await user.click(screen.getByRole('button', { name: 'Снять тег «Дом»' }))
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() =>
+      expect(api.updateWord).toHaveBeenCalledWith('1', expect.objectContaining({ tags: [] })),
+    )
+  })
+
+  it('объясняет ограничения длины и количества тегов', async () => {
+    const tagged = {
+      ...word('1', 'cat'),
+      tags: Array.from({ length: 20 }, (_, i) => ({ id: String(i), name: `tag${i}` })),
+    }
+    vi.mocked(api.listWords).mockResolvedValue([tagged])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('cat')
+    await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
+    const input = screen.getByRole('textbox', { name: 'Новый тег' })
+    await user.type(input, 'x'.repeat(81))
+    await user.click(screen.getByRole('button', { name: 'Добавить тег' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('от 1 до 80')
+    await user.clear(input)
+    await user.type(input, 'новый')
+    await user.click(screen.getByRole('button', { name: 'Добавить тег' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('не больше 20')
   })
 })

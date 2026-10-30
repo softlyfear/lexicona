@@ -9,12 +9,22 @@
 - React SPA: TanStack Query, react-router, CSS Modules; сеть только через api.ts.
 - Словарь сортируется сервером по allowlist: дата добавления, normalized_headword или
   progress в обе стороны; равенства — id ASC. Поиск q и sort хранятся в URL,
-  фильтр training выбирает active/excluded/all; query key ['words', q, sort, training]
+  фильтр training выбирает active/excluded/all; теги фильтруются по AND через повторяемые
+  tag_id в API/URL; query key ['words', q, sort, training, tagIds] с sorted/unique ID
   разделяет выдачи, invalidation ['words'] обновляет все порядки и области.
 - Один процесс отдаёт API и собранный frontend. Docker + Caddy — целевая поставка.
 - Прогресс — целое >=0 без верхнего clamp 100; content_version защищает от устаревших
   вопросов, повторный ответ
   не должен повторно начислять прогресс. Правильный ответ решает сервер.
+
+Личные tags принадлежат owner и уникальны по NFC/casefold/схлопнутым пробелам,
+без подмены ё/е и пунктуации; до 20 тегов на слово, имя 1..80 code points.
+WordIn.tags содержит имена, WordOut.tags — id/name; PUT без tags сохраняет связи,
+[] снимает все, GET /tags даёт личный справочник. Составные owner-FK word_tags
+и additive migration a71b3c9d8201 защищают данные; downgrade при непустых тегах отказывает
+без потерь. Правка тегов косметическая для обеих версий и прогресса. GET /tags имеет
+query key ['tags']; сохранение слова инвалидирует words и tags. New-редактор сохраняет
+изолированный вид, включая поля тегов; нормализация Unicode согласована с backend.
 
 Профиль и смена пароля находятся на /settings, login в шапке ведёт туда. Смена через
 POST /auth/change-password требует current_password и CSRF; новый пароль — 12..128

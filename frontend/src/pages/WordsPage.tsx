@@ -41,11 +41,13 @@ export function WordsPage() {
     TRAINING_OPTIONS.find((option) => option.value === searchParams.get('training'))?.value ??
     'active'
   const query = useDeferredValue(search.trim())
+  const tagIds = [...new Set(searchParams.getAll('tag_id'))].sort()
   const [editing, setEditing] = useState<Editing>(null)
 
+  const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
   const words = useQuery({
-    queryKey: ['words', query, sort, training],
-    queryFn: () => api.listWords(query, sort, training),
+    queryKey: ['words', query, sort, training, tagIds],
+    queryFn: () => api.listWords(query, sort, training, tagIds),
     placeholderData: keepPreviousData,
   })
 
@@ -54,7 +56,10 @@ export function WordsPage() {
       editing?.kind === 'edit' ? api.updateWord(editing.word.id, input) : api.createWord(input),
     onSuccess: () => {
       setEditing(null)
-      return queryClient.invalidateQueries({ queryKey: ['words'] })
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['words'] }),
+        queryClient.invalidateQueries({ queryKey: ['tags'] }),
+      ])
     },
   })
 
@@ -93,11 +98,27 @@ export function WordsPage() {
       remove.mutate(word.id)
   }
 
+  function updateTags(ids: string[]) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('tag_id')
+      for (const id of [...new Set(ids)].sort()) next.append('tag_id', id)
+      return next
+    })
+  }
+
+  const tagFormProps = {
+    availableTags: tags.data ?? [],
+    tagsLoading: tags.isLoading,
+    tagsError: tags.isError ? errorMessage(tags.error) : null,
+  }
+
   if (editing?.kind === 'new') {
     return (
       <section className={css.stack}>
         <h1 className={css.title}>Добавить слово</h1>
         <WordForm
+          {...tagFormProps}
           pending={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
           onSubmit={(input) => save.mutate(input)}
@@ -158,8 +179,47 @@ export function WordsPage() {
         </label>
       </div>
 
+      <fieldset className={css.tagField}>
+        <legend className={ui.label}>Теги: все выбранные</legend>
+        {tags.isLoading && (
+          <p role="status" className={ui.muted}>
+            Загружаем теги…
+          </p>
+        )}
+        {tags.isError && (
+          <p role="alert" className={ui.error}>
+            {errorMessage(tags.error)} Не удалось загрузить теги.
+          </p>
+        )}
+        <div className={css.tagList}>
+          {tags.data?.map((tag) => (
+            <label className={css.tag} key={tag.id}>
+              <input
+                type="checkbox"
+                checked={tagIds.includes(tag.id)}
+                disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                onChange={(event) =>
+                  updateTags(
+                    event.target.checked
+                      ? [...tagIds, tag.id]
+                      : tagIds.filter((id) => id !== tag.id),
+                  )
+                }
+              />
+              {tag.name}
+            </label>
+          ))}
+        </div>
+        {tagIds.length > 0 && (
+          <button type="button" className={ui.button} onClick={() => updateTags([])}>
+            Снять фильтр тегов
+          </button>
+        )}
+      </fieldset>
+
       {editing !== null && (
         <WordForm
+          {...tagFormProps}
           key={editing.word.id}
           word={editing.word}
           pending={save.isPending}
@@ -191,7 +251,7 @@ export function WordsPage() {
       )}
       {words.data?.length === 0 && (
         <p className={ui.muted}>
-          {query
+          {query || tagIds.length > 0
             ? 'Ничего не найдено.'
             : training === 'excluded'
               ? 'Нет исключённых слов.'
@@ -211,6 +271,15 @@ export function WordsPage() {
                 <SpeakButton text={word.headword} lang="en-US" />
               </div>
               <div lang="ru">{word.translations.join(', ')}</div>
+              {word.tags.length > 0 && (
+                <div className={css.tagList} aria-label="Теги слова">
+                  {word.tags.map((tag) => (
+                    <span className={css.tag} key={tag.id}>
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
               {word.example_en && (
                 <div className={`${ui.muted} ${css.example}`} lang="en">
                   {word.example_en}

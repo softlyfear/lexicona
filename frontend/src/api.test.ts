@@ -40,13 +40,14 @@ describe('api', () => {
 
   it('sends search and sort parameters to the dictionary endpoint', async () => {
     const fetchMock = mockFetch(200, [])
-    await api.listWords('ёж cat', 'progress_desc', 'excluded')
+    await api.listWords('ёж cat', 'progress_desc', 'excluded', ['a', 'b'])
     const [path] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const url = new URL(path, 'http://test')
     expect(url.pathname).toBe('/api/words')
     expect(url.searchParams.get('q')).toBe('ёж cat')
     expect(url.searchParams.get('sort')).toBe('progress_desc')
     expect(url.searchParams.get('training')).toBe('excluded')
+    expect(url.searchParams.getAll('tag_id')).toEqual(['a', 'b'])
     await api.listWords('')
     const [defaultPath] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
     expect(new URL(defaultPath, 'http://test').searchParams.get('sort')).toBe('created_desc')

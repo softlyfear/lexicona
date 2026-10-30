@@ -5,6 +5,8 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     String,
     Text,
     UniqueConstraint,
@@ -51,7 +53,10 @@ class AuthSession(Base):
 
 class Word(Base):
     __tablename__ = "words"
-    __table_args__ = (CheckConstraint("progress >= 0", name="progress_range"),)
+    __table_args__ = (
+        CheckConstraint("progress >= 0", name="progress_range"),
+        Index("ix_words_owner_id_id", "owner_id", "id", unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -74,6 +79,36 @@ class Word(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "normalized_name"),
+        UniqueConstraint("owner_id", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(80))
+    normalized_name: Mapped[str] = mapped_column(Text)
+
+
+class WordTag(Base):
+    __tablename__ = "word_tags"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "word_id"], ["words.owner_id", "words.id"], ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "tag_id"], ["tags.owner_id", "tags.id"], ondelete="CASCADE"
+        ),
+        UniqueConstraint("word_id", "tag_id"),
+    )
+
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    word_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tag_id: Mapped[str] = mapped_column(String(32), primary_key=True)
 
 
 class WordTranslation(Base):

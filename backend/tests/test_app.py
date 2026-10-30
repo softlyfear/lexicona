@@ -66,3 +66,63 @@ def test_admin_cli(
     monkeypatch.setattr("getpass.getpass", lambda _prompt: "short")
     with pytest.raises(SystemExit):
         admin(["create-user", "bob"])
+
+
+def test_tags_upgrade_and_guarded_downgrade(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "tags-migration.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "d90b58c2a113")
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2020-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO words (id, owner_id, headword, normalized_headword, progress, "
+            "is_excluded, training_version, content_version, created_at, updated_at) "
+            "VALUES ('w', 'u', 'word', 'word', 123, 1, 3, 4, '2020-01-01', '2020-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO word_translations (id, word_id, position, text, normalized_text) "
+            "VALUES ('tr', 'w', 0, 'слово', 'слово')"
+        )
+        conn.execute(
+            "INSERT INTO training_sessions (id, owner_id, mode, direction, difficulty, created_at) "
+            "VALUES ('s', 'u', 'choice', 'en_ru', 'medium', '2020-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO training_items (id, session_id, word_id, word_content_version, "
+            "word_training_version, position, prompt, options, correct_option) "
+            "VALUES ('i', 's', 'w', 4, 3, 0, 'word', '[\"слово\", \"другое\"]', 0)"
+        )
+        queries = (
+            "SELECT * FROM users",
+            "SELECT * FROM words",
+            "SELECT * FROM word_translations",
+            "SELECT * FROM training_sessions",
+            "SELECT * FROM training_items",
+        )
+        before = [conn.execute(query).fetchall() for query in queries]
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as conn:
+        assert [conn.execute(query).fetchall() for query in queries] == before
+        assert conn.execute("SELECT * FROM tags").fetchall() == []
+        assert conn.execute("SELECT * FROM word_tags").fetchall() == []
+        assert conn.execute(
+            "SELECT progress, is_excluded, training_version, content_version FROM words"
+        ).fetchone() == (123, 1, 3, 4)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        conn.execute("INSERT INTO tags VALUES ('t', 'u', 'Name', 'name')")
+        conn.execute("INSERT INTO word_tags VALUES ('u', 'w', 't')")
+    with pytest.raises(RuntimeError, match="Cannot downgrade"):
+        command.downgrade(config, "d90b58c2a113")
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "a71b3c9d8201",
+        )
+        assert conn.execute("SELECT * FROM word_tags").fetchall() == [("u", "w", "t")]
+        conn.execute("DELETE FROM word_tags")
+        conn.execute("DELETE FROM tags")
+    command.downgrade(config, "d90b58c2a113")

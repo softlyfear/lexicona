@@ -30,14 +30,21 @@ export interface WordInput {
   example_en: string | null
   example_ru: string | null
   note: string | null
+  tags?: string[]
 }
 
-export interface Word extends WordInput {
+export interface Tag {
+  id: string
+  name: string
+}
+
+export interface Word extends Omit<WordInput, 'tags'> {
   id: string
   progress: number
   is_excluded: boolean
   created_at: string
   updated_at: string
+  tags: Tag[]
 }
 
 export interface TrainingItem {
@@ -203,7 +210,13 @@ export const api = {
     q: string,
     sort: WordSort = 'created_desc',
     training: WordTrainingFilter = 'active',
-  ) => request<Word[]>('GET', `/words?${new URLSearchParams({ q, sort, training })}`),
+    tagIds: string[] = [],
+  ) => {
+    const params = new URLSearchParams({ q, sort, training })
+    for (const id of tagIds) params.append('tag_id', id)
+    return request<Word[]>('GET', `/words?${params}`)
+  },
+  listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),
@@ -231,6 +244,7 @@ const MESSAGES: Record<string, string> = {
   not_enough_words: 'Нужно хотя бы 4 слова с разными переводами.',
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',
+  tag_not_found: 'Один из выбранных тегов недоступен. Снимите его и повторите поиск.',
 }
 
 export function errorMessage(error: unknown): string {

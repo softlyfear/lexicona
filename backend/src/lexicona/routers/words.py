@@ -15,8 +15,9 @@ from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.deps import CurrentAuth, Db
-from lexicona.models import Word, WordTranslation
+from lexicona.models import Tag, Word, WordTag, WordTranslation
 from lexicona.normalize import normalize
+from lexicona.tags import TagOut, replace_tags, tag_key, tag_name, tags_for_words
 
 router = APIRouter(prefix="/words", tags=["words"])
 
@@ -42,6 +43,17 @@ class WordIn(BaseModel):
     example_en: Annotated[Text2000 | None, Blank] = None
     example_ru: Annotated[Text2000 | None, Blank] = None
     note: Annotated[Text4000 | None, Blank] = None
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def valid_tags(cls, value: list[str]) -> list[str]:
+        names = [tag_name(name) for name in value]
+        if any(not name or len(name) > 80 for name in names):
+            raise ValueError("tag names must contain 1..80 characters")
+        if len({tag_key(name) for name in names}) != len(names):
+            raise ValueError("tags must be unique")
+        return names
 
     @field_validator("translations")
     @classmethod
@@ -53,6 +65,7 @@ class WordIn(BaseModel):
 
 class WordOut(BaseModel):
     id: str
+    tags: list[TagOut]
     headword: str
     translations: list[str]
     transcription: str | None
@@ -65,9 +78,10 @@ class WordOut(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def of(cls, word: Word) -> WordOut:
+    def of(cls, word: Word, tags: list[TagOut]) -> WordOut:
         return cls(
             id=word.id,
+            tags=tags,
             headword=word.headword,
             translations=[t.text for t in word.translations],
             transcription=word.transcription,
@@ -115,8 +129,32 @@ async def list_words(
     q: Annotated[str, Query(max_length=200)] = "",
     sort: WordSort = "created_desc",
     training: Literal["active", "excluded", "all"] = "active",
+    tag_id: Annotated[
+        list[Annotated[str, Query(min_length=1, max_length=32)]] | None, Query(max_length=20)
+    ] = None,
 ) -> list[WordOut]:
     query = select(Word).where(Word.owner_id == auth.user.id)
+    ids = set(tag_id or [])
+    if ids:
+        count = len(
+            (
+                await db.scalars(
+                    select(Tag.id).where(Tag.owner_id == auth.user.id, Tag.id.in_(ids))
+                )
+            ).all()
+        )
+        if count != len(ids):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "tag_not_found")
+        for selected_id in ids:
+            query = query.where(
+                select(WordTag.word_id)
+                .where(
+                    WordTag.owner_id == auth.user.id,
+                    WordTag.word_id == Word.id,
+                    WordTag.tag_id == selected_id,
+                )
+                .exists()
+            )
     if training != "all":
         query = query.where(Word.is_excluded.is_(training == "excluded"))
     if needle := normalize(q):
@@ -135,8 +173,9 @@ async def list_words(
         "progress_asc": Word.progress.asc(),
         "progress_desc": Word.progress.desc(),
     }
-    words = await db.scalars(query.order_by(ordering[sort], Word.id.asc()))
-    return [WordOut.of(word) for word in words]
+    words = (await db.scalars(query.order_by(ordering[sort], Word.id.asc()))).all()
+    word_tags = await tags_for_words(db, auth.user.id, [word.id for word in words])
+    return [WordOut.of(word, word_tags.get(word.id, [])) for word in words]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -144,13 +183,20 @@ async def create_word(body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
     word = Word(owner_id=auth.user.id)
     _fill(word, body)
     db.add(word)
+    await db.flush()
+    await replace_tags(db, auth.user.id, word.id, body.tags)
     await db.commit()
-    return WordOut.of(word)
+    return await word_out(db, auth.user.id, word)
+
+
+async def word_out(db: AsyncSession, owner_id: str, word: Word) -> WordOut:
+    tags = await tags_for_words(db, owner_id, [word.id])
+    return WordOut.of(word, tags.get(word.id, []))
 
 
 @router.get("/{word_id}")
 async def get_word(word_id: str, auth: CurrentAuth, db: Db) -> WordOut:
-    return WordOut.of(await owned_word(db, auth.user.id, word_id))
+    return await word_out(db, auth.user.id, await owned_word(db, auth.user.id, word_id))
 
 
 class TrainingStateIn(BaseModel):
@@ -174,7 +220,7 @@ async def set_training_state(
     )
     await db.commit()
     await db.refresh(word)
-    return WordOut.of(word)
+    return await word_out(db, auth.user.id, word)
 
 
 @router.put("/{word_id}")
@@ -187,8 +233,10 @@ async def update_word(word_id: str, body: WordIn, auth: CurrentAuth, db: Db) -> 
         # A different word or meaning is a new thing to learn.
         word.progress = 0
         word.content_version += 1
+    if "tags" in body.model_fields_set:
+        await replace_tags(db, auth.user.id, word.id, body.tags)
     await db.commit()
-    return WordOut.of(word)
+    return await word_out(db, auth.user.id, word)
 
 
 @router.delete("/{word_id}", status_code=status.HTTP_204_NO_CONTENT)
