@@ -462,6 +462,188 @@
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
 
+## SPEECH-001 — голоса браузера и автоозвучка prompt
+
+Статус: done (принят, ожидает root archive/commit). Попытка: 2.
+Architect: gpt-6.1-sol, reasoning high.
+Цель: выбирать EN-акцент/EN и RU голоса, проверять звучание и управлять озвучкой;
+автоматически читать публичный учебный prompt после «Начать»/«Далее».
+Основание: spec §10/17.7/23.4, approved-training и новые прямые замечания пользователя.
+Автоозвучка по умолчанию включена; EN-US — preference, не обещание наличия голоса.
+
+### Наблюдаемые AC
+
+1. В /settings доступны вариант английского (EN-US default, EN-GB и доступные EN-locales),
+   отдельные EN/RU голоса из getVoices(), скорость «Обычная»1.0/«Медленная»0.75,
+   переключатель автоозвучки default on. Выбор голоса показывает name/lang и
+   локальный/сетевой сервис по localService, а также фактически используемый fallback.
+   «Проверить EN»/«Проверить RU» читают фиксированные неперсональные примеры правильного
+   языка, «Остановить» прекращает текущую/ожидающую речь. Смена preference сама не говорит.
+2. Выбор сохраняется для этого browser+account и восстанавливается после reload;
+   аккаунт B не наследует preferences/status/utterance A. Storage содержит только version,
+   locale/voiceURI/rate/autoPrompt, без слов/prompts/паролей/cookie/CSRF/результатов.
+   Блокировка/quota/corrupt storage даёт безопасные defaults/in-memory режим с объяснением,
+   не ломает auth/словарь. UI прямо пишет, что эти настройки локальны этому браузеру.
+3. Голоса могут появиться поздно: getVoices и voiceschanged обновляют список без reload.
+   Первичное ожидание ограничено2с, затем явно «Голоса не найдены»; listener продолжает
+   принимать последующие изменения списка, но просроченный запрос не оживает сам.
+   Порядок выбора: сохранённый URI, если доступен и соответствует языку → exact locale
+   → доступный голос того же primary language → понятное отсутствие голоса.
+   Исчезнувший voiceURI не удаляется молча; fallback объясняется. English никогда
+   не читается RU голосом и наоборот; неизвестный/пустой lang не подходит.
+4. Единый adapter использует speechSynthesis/SpeechSynthesisUtterance, сохраняет ссылку
+   на текущую utterance и управляет loading/speaking/end/error. Новый запрос сначала
+   отменяет прежний, очередь не растёт; stop и cancel очищают pending wait/timers.
+   Нет API/голоса, exception/not-allowed/error и watchdog объясняются, ручной retry доступен.
+   Watchdog ограничен, но зависит от длины текста и скорости: длинный masked example
+   не обрывается фиксированным коротким таймером. Старые events не меняют новый статус.
+5. После успешного «Начать» один раз озвучивается первый item.prompt; после «Далее»
+   (включая существующий keyboard shortcut) — только следующий item.prompt.
+   EN→RU/cards/input/choice читают EN prompt; RU→EN — RU prompt; cloze — только серверный
+   masked EN prompt. Не читать options, скрытый ответ/оборот, translations из иной
+   записи или полученный reveal/answer; речь не вызывает backend reveal/answer/skip.
+   Отключение auto сохраняет ручную озвучку; render/re-render/reveal/error/network retry
+   сами не повторяют речь. Последнее «Далее» к итогам ничего не озвучивает.
+6. Речь/ожидание отменяется при смене route, завершении/выходе из занятия, смене item,
+   начале ответа/reveal/skip, скрытии документа, logout/401 и смене пользователя.
+   Возврат во вкладку не возобновляет речь автоматически. Поздний ответ start, voiceschanged
+   или event старой utterance после cancel/route/user switch не запускает старый prompt.
+   React StrictMode не удваивает речь. TTS failure не изменяет прогресс/результат и
+   не блокирует текстовый ответ/дальнейший переход; ошибка слышимости не ошибка знания.
+7. Все ручные SpeakButton используют те же preferences/adapter/status и имеют доступное
+   имя с языком. В словаре EN читает только headword; у каждого RU-перевода есть своя
+   кнопка, общая RU-кнопка при наличии читает только основной перевод. Не включать IPA,
+   теги/заметки. Ошибка/отсутствие API видны с объяснением, а не исчезнувшей функцией.
+   Settings/training/words дают stop и доступный status/error без блокировки прочих действий,
+   keyboard и узкий экран работают. Не обещать, что сетевой voice полностью локальный.
+8. Реальные browser и mock проверки записаны отдельно от физической слышимости.
+   При отсутствии системных голосов приложение честно показывает это состояние.
+   Android/iOS/Firefox и качество речи отмечаются «не проверено», если нет реального
+   устройства/браузера; автоматический speech fake не выдаётся за успешный физический звук.
+
+### Контракты adapter, хранения и жизненного цикла
+
+HTTP API, схема/миграции, backend и учебные snapshots остаются прежними.
+Новых passive/listening режимов и начислений за TTS здесь нет.
+
+- SpeechPreferences v1: {enLocale:"en-US" default, enVoiceURI:null|string,
+  ruVoiceURI:null|string, rate:1|0.75 default1, autoPrompt:boolean defaulttrue}.
+  ru locale фиксированный ru-RU. При смене EN accent очистить выбранный EN URI,
+  чтобы explicit voice прежнего акцента не перекрывал новый выбор. Explicit EN голос
+  может иметь другой EN locale; UI показывает реальный lang и не называет его US.
+- localStorage key lexicona:speech:v1:<user.id>, данные проверяются по allowlist/types;
+  чтение только текущего owner. Удаление чужих/общих ключей не требуется.
+  Error storage не выходит из try/catch и не сохраняет текст в запасной store.
+  Account-scoped controller сбрасывается/отвязывается на logout/switch; допустим
+  лёгкий React provider/hook или subscription, без библиотеки/нового framework.
+- Adapter обеспечивает voice list subscription + ready/loading/unavailable,
+  speak(publicText, language:en|ru), cancel/stop и observation текущего status/error.
+  Можно сохранить прежний speak(text, lang) wrapper или мигрировать все usages;
+  один источник выбора voice и очереди обязателен. Language match по primary subtag,
+  case-insensitive (en-* / ru-*), URI ищется только среди допустимого языка.
+  Fallback exact locale → default того же языка → первый того же языка;
+  системный произвольный голос без подходящего языка не используется.
+- Voices wait <=2000ms на запрос. Пустой список после timeout не запускает речь позднее;
+  следующий явный retry создаёт новый запрос. Для ожидания/utterance generation token
+  и account/route/item scope отменяют все отложенные продолжения.
+- Длительность watchdog от вызова speak: например clamp(20с,
+  15с + codePointLength(text)/(8*rate) секунд, 10мин). Для prompt до2000 символов
+  при0.75 получается несколько минут, не20с. Подтвердить fake timers для длинного текста.
+  start/end/error/throw/watchdog завершают соответствующий запрос ровно один раз;
+  intentional cancel — спокойный статус, timeout/error — объяснение + manual retry.
+- Авто разрешено только цепочкой принятого user gesture «Начать»/«Далее» текущей сессии,
+  без общего autoplay effect на render. Start требует async API: браузер может отказать
+  после потери transient activation; показать отказ и ручную кнопку, не применять silent
+  priming/обход, не обещать гарантированный autoplay. Scope проверяется и после API/wait.
+  Для Next можно говорить следующий публичный item прямо в обработчике жеста.
+- Синхронная отмена при forgetSession/logout до ожидания сетевого cleanup обязательна;
+  auth revision/CAS/security flow не переписывать. App/route cleanup и visibilitychange
+  дополняют её. Не делать dependency cycle session↔speech; speech не вызывает auth/API.
+  Вся речь на странице проходит один controller, смена Settings preference cancels active.
+- Озвучивание использует text только в памяти; не отправлять внешние fetch-запросы.
+  Browser/OS может использовать удалённый движок: UI объясняет localService и отсутствие
+  гарантии офлайн. Volume1/pitch1; никаких платных API/своего TTS backend.
+  Фразы проверки: EN "Hello. This is an English voice test.", RU "Проверка русского голоса."
+
+### Владельцы и границы файлов
+
+- frontend-agent: frontend/src/speech.ts; небольшой speech hook/provider/status component
+  в frontend/src при необходимости, components/ui.tsx (SpeakButton/status),
+  pages/SettingsPage.tsx, TrainingPage.tsx, WordsPage.tsx, pages/pages.module.css;
+  App.tsx/components/Layout.tsx для scope, session.ts только минимальная cancel integration.
+  Сохранять password/difficulty flows. API/backend/зависимости менять не требуется.
+- Тесты frontend-agent: speech.test.ts и необходимые tests Settings/Training/Words;
+  tests-agent после реализации дополняет speech.test.ts, SettingsPage.test.tsx,
+  TrainingSpeech.test.tsx (новый), session.test.tsx и существующие регрессии.
+  Production находки возвращать владельцу, совместные файлы менять последовательно.
+- code-reviewer проверяет весь diff, auth/scope/privacy и доказательства gate;
+  architect меняет только TASKS/PROJECT/archive. Root ведёт browser smoke и README.
+  Git/ветки только root, чужие правки не отменять. Backend/devops роли не нужны.
+
+Вне scope: серверное хранение/синхронизация speech preferences, аудиофайлы/загрузка,
+passive/listening/matching, новое SRS, изменение ответов/прогресса или количества choices.
+
+### Цепочка и проверки
+
+frontend-agent → tests-agent → code-reviewer → architect → root archive/commit.
+- Adapter fake voices/events: initial empty→voiceschanged, 2с timeout→late update без
+  stale playback, EN-US/EN-GB/explicit URI/fallback, исчезновение голоса/нет RU или EN,
+  no API/getVoices throw/speak throw/not-allowed/end/error; cancel при новом запросе,
+  ignore stale events, watchdog короткий и длинный при0.75, сохранённая utterance reference.
+- Storage valid/corrupt/blocked, только preference fields, изоляция A/B и defaults auto on.
+  Settings test sample EN/RU/rate/stop/localService, язык кнопки и отсутствие ложного success.
+- Auto current prompt один раз после Start/Next, default on/off/manual retry, async отказ;
+  RU→EN не читает EN hidden answer, cloze читает masked prompt; reveal/answer не создают
+  авто и не вызываются TTS. Нет прогресса/штрафа/перехода при error/cancel.
+- Route/hidden/finish/item change/forgetSession/logout/401/user switch и запоздалый start:
+  cancel немедленно, прошлые scope не возвращаются; StrictMode/re-render без double speak.
+  Существующие session/password tests сохраняются; words EN/каждый RU/общий primary.
+- Один финальный make check, подтверждённые exit code/числа для конечного diff.
+  Целевые команды: cd frontend && npm test -- src/speech.test.ts
+  src/pages/TrainingSpeech.test.tsx src/pages/SettingsPage.test.tsx src/session.test.tsx
+  (и фактические изменённые tests). Reviewer/architect успешный gate не повторяют без причины.
+- Browser smoke на tempDB/SPA: настройки/тест/stop, авто Start/Next/public prompt,
+  unavailable/no-voice UI, desktop/mobile без overflow/pageerror. Fake speech в browser
+  подтверждает UI/events/тексты, отдельный native getVoices — только доступность API/голосов.
+  Root baseline до реализации: Chromium156.0.8078.4 supported=true, voices=[] после3с;
+  будущий native smoke должен честно проверить no-voice UI. Физический звук этим не проверен.
+  Матрица: Desktop Chrome fake/native — записать результат; Desktop Firefox, Android Chrome,
+  iOS Safari/PWA на физических устройствах — «не проверено», если недоступны.
+  Это ограничение слышимости не блокирует независимую реализацию fallback/text flow.
+
+Результаты попытки 1: frontend реализован; целевые speech tests 13 passed. Make check
+tests-agent — exit 0: tooling12/backend269/frontend106 (15 файлов), статика и build зелёные;
+git diff --check — exit 0. Root browser Chrome156.0.8078.4 fake — PASS: preferences/reload,
+EN-GB/rate0.75/RU, auto Start/Next public prompt, cloze masked, auto off/manual retry,
+stop/route cancel, отсутствие terminal API от ошибки TTS, mobile390 без overflow/pageerror.
+Native getVoices=[] — корректные no-voice UI и retry; физическая слышимость не проверена.
+Firefox/Android/iOS — не проверено. Ревью попытки 1: No-Ship, P2 — переход из списка
+слов в изолированный редактор скрывает Stop, сохраняя текущую/ожидающую речь.
+Воспроизведено reviewer в Chromium fake: active=true, cancel count не меняется.
+Возврат frontend: cancelSpeech в startEditing без добавления controls в редактор;
+tests-agent дополняет регрессию и повторяет gate для исправленного diff.
+Попытка 2: cancelSpeech в общем startEditing отменяет active/pending для new/edit.
+WordsSpeech.test.tsx — 4 passed; итоговый make check — exit 0, tooling12/backend269/
+frontend110 (16 файлов), все статические проверки и build прошли; diff --check — exit 0.
+Root повторный browser smoke с проверкой editor cancel и остальными сценариями — PASS.
+Стенд: Ubuntu26.04.1, Chromium156.0.8078.4; native voices=[], fake подтверждает только
+логику/UI. Независимый review_next попытки 2: Ship, блокирующих дефектов нет.
+Приёмка architect: ПРИНЯТО. AC1–8 проверены по конечному diff и трём новым tests:
+preferences/EN-US/языковой fallback/rate/localService, account storage, bounded wait/
+watchdog/stale events, public Start/Next/RU/cloze, ручные RU/EN controls, cancel lifecycle.
+Исправление первого No-Ship подтверждено cancelSpeech в startEditing и четырьмя
+регрессиями new/edit × active/pending; изолированный new-редактор сохранён.
+Подтверждён текущий gate попытки 2 — 12/269/110, exit 0; после него код/tests не менялись.
+Просмотрены settings-mobile и native-no-voice screenshots, browser fake/native PASS
+подтверждён root/reviewer. Личный git diff --check — exit 0; gate повторно не запускался.
+Backend/API/учебный прогресс не менялись. Блокеров нет; Firefox/Android/iOS/физический
+звук остаются «не проверено», mocks не доказывают слышимость или качество речи.
+Handoff root: архивировать/коммитить SPEECH-001, обновить manual app; затем открыть
+TRAIN-005 с совместимостью старых4-option snapshots. Git выполняет только root.
+
+- Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
+- Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
 ## TRAIN-007 — все подходящие слова, теги, диапазон и случайный порядок
 
 Статус: done (принят, ожидает root archive/commit). Попытка: 1.

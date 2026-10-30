@@ -1,4 +1,6 @@
-import { NavLink, Outlet } from 'react-router'
+import { useEffect } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router'
+import { cancelSpeech, setSpeechOwner } from '../speech'
 import { type User } from '../api'
 import { logoutSession } from '../session'
 import css from './Layout.module.css'
@@ -11,6 +13,19 @@ const LINKS = [
 ]
 
 export function Layout({ user }: { user: User }) {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    setSpeechOwner(user.id)
+    const hide = () => {
+      if (document.hidden) cancelSpeech()
+    }
+    document.addEventListener('visibilitychange', hide)
+    return () => {
+      document.removeEventListener('visibilitychange', hide)
+      setSpeechOwner(null)
+    }
+  }, [user.id])
+  useEffect(() => () => cancelSpeech(), [pathname])
   return (
     <>
       <header className={css.header}>

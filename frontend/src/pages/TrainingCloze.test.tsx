@@ -19,7 +19,12 @@ vi.mock('../api', async (original) => {
     },
   }
 })
-vi.mock('../speech', () => ({ canSpeak: true, speak: vi.fn() }))
+vi.mock('../speech', () => ({
+  speak: vi.fn(),
+  cancelSpeech: vi.fn(),
+  speechGeneration: () => 0,
+  useSpeech: () => ({ preferences: { autoPrompt: true }, status: '' }),
+}))
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -66,8 +71,8 @@ describe('слово в примере', () => {
     expect(screen.queryByText('cat')).not.toBeInTheDocument()
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
     expect(api.startTraining).toHaveBeenCalledWith('en_en', 10, 'cloze')
-    await user.click(screen.getByRole('button', { name: 'Произнести «The ____ sleeps.»' }))
-    expect(speak).toHaveBeenCalledWith('The ____ sleeps.', 'en-US')
+    await user.click(screen.getByRole('button', { name: 'Произнести EN «The ____ sleeps.»' }))
+    expect(speak).toHaveBeenCalledWith('The ____ sleeps.', 'en')
     const input = screen.getByRole('textbox', { name: 'Введите пропущенное выражение' })
     expect(input).toHaveAttribute('lang', 'en')
     await user.type(input, 'cat{Enter}')

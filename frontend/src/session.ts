@@ -1,4 +1,5 @@
 import { QueryCache, QueryClient, MutationCache, useQuery } from '@tanstack/react-query'
+import { cancelSpeech } from './speech'
 import { ApiError, api, setCsrfToken, type Session } from './api'
 
 const SESSION_KEY = ['session']
@@ -77,12 +78,15 @@ export function useSession() {
 
 export function rememberSession(session: Session) {
   if (requiresExplicitLogin()) return
+  const current = queryClient.getQueryData<Session | null>(SESSION_KEY)
+  if (current && current.user.id !== session.user.id) cancelSpeech()
   sessionRevision += 1
   setCsrfToken(session.csrf_token)
   queryClient.setQueryData(SESSION_KEY, session)
 }
 
 export function forgetSession() {
+  cancelSpeech()
   requireExplicitLogin()
   sessionRevision += 1
   setCsrfToken('')

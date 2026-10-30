@@ -2,6 +2,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { ApiError, api, errorMessage, type Difficulty, type Session, type User } from '../api'
 import ui from '../components/ui.module.css'
+import { SpeechStatus } from '../components/ui'
+import { selectVoice, speak, updateSpeechPreferences, useSpeech } from '../speech'
 import {
   changePasswordSession,
   forgetSession,
@@ -156,6 +158,7 @@ export function SettingsPage({ user }: { user: User }) {
           </p>
         )}
       </div>
+      <SpeechSettings />
       <form className={`${ui.card} ${css.form}`} onSubmit={submitPassword} noValidate>
         <h2>Смена пароля</h2>
         <fieldset className={css.choices} disabled={busy}>
@@ -206,6 +209,134 @@ export function SettingsPage({ user }: { user: User }) {
           </button>
         </div>
       </form>
+    </section>
+  )
+}
+
+function SpeechSettings() {
+  const { preferences, voices, voiceState, storageError } = useSpeech()
+  const locales = [
+    ...new Set([
+      'en-US',
+      'en-GB',
+      ...voices.filter((v) => v.lang.toLowerCase().split('-')[0] === 'en').map((v) => v.lang),
+    ]),
+  ]
+  const describe = (v: SpeechSynthesisVoice) =>
+    `${v.name} (${v.lang}, ${v.localService ? 'локальный' : 'сетевой'})`
+  return (
+    <section className={`${ui.card} ${css.form}`} aria-labelledby="speech-heading">
+      <h2 id="speech-heading">Озвучивание</h2>
+      <p className={ui.muted}>
+        Настройки действуют только для этого аккаунта в этом браузере. Сетевой голос может
+        передавать текст внешнему сервису.
+      </p>
+      {storageError && (
+        <p role="alert" className={ui.error}>
+          Не удалось прочитать или сохранить настройки браузера; они действуют только до закрытия
+          страницы.
+        </p>
+      )}
+      <label className={ui.field}>
+        <span className={ui.label}>Вариант английского</span>
+        <select
+          className={ui.input}
+          value={preferences.enLocale}
+          onChange={(e) => updateSpeechPreferences({ enLocale: e.target.value, enVoiceURI: null })}
+        >
+          {!locales.includes(preferences.enLocale) && (
+            <option value={preferences.enLocale}>{preferences.enLocale}</option>
+          )}
+          {locales.map((locale) => (
+            <option key={locale} value={locale}>
+              {locale === 'en-US'
+                ? 'Американский (en-US)'
+                : locale === 'en-GB'
+                  ? 'Британский (en-GB)'
+                  : locale}
+            </option>
+          ))}
+        </select>
+      </label>
+      {(['en', 'ru'] as const).map((lang) => {
+        const uri = lang === 'en' ? preferences.enVoiceURI : preferences.ruVoiceURI
+        const available = voices.filter((v) => v.lang.toLowerCase().split('-')[0] === lang)
+        const selected = selectVoice(voices, lang, preferences)
+        return (
+          <div key={lang} className={css.form}>
+            <label className={ui.field}>
+              <span className={ui.label}>Голос {lang.toUpperCase()}</span>
+              <select
+                className={ui.input}
+                value={uri ?? ''}
+                onChange={(e) =>
+                  updateSpeechPreferences(
+                    lang === 'en'
+                      ? { enVoiceURI: e.target.value || null }
+                      : { ruVoiceURI: e.target.value || null },
+                  )
+                }
+              >
+                <option value="">Автоматически</option>
+                {uri && !available.some((v) => v.voiceURI === uri) && (
+                  <option value={uri}>Сохранённый голос недоступен</option>
+                )}
+                {available.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>
+                    {describe(v)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className={ui.muted}>
+              {selected
+                ? `${uri && selected.voiceURI !== uri ? 'Запрошенный голос недоступен. ' : ''}Используется: ${describe(selected)}`
+                : voiceState === 'loading'
+                  ? 'Ожидание голосов…'
+                  : `Подходящий ${lang.toUpperCase()} голос не найден.`}
+            </p>
+            <div>
+              <button
+                type="button"
+                className={ui.button}
+                onClick={() =>
+                  speak(
+                    lang === 'en'
+                      ? 'Hello. This is an English voice test.'
+                      : 'Проверка русского голоса.',
+                    lang,
+                  )
+                }
+              >
+                Проверить {lang.toUpperCase()}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+      {voiceState === 'unavailable' && voices.length === 0 && <p>Голоса не найдены.</p>}
+      <label className={ui.field}>
+        <span className={ui.label}>Скорость</span>
+        <select
+          className={ui.input}
+          value={preferences.rate}
+          onChange={(e) =>
+            updateSpeechPreferences({ rate: Number(e.target.value) === 0.75 ? 0.75 : 1 })
+          }
+        >
+          <option value="1">Обычная</option>
+          <option value="0.75">Медленная</option>
+        </select>
+      </label>
+      <label className={css.choice}>
+        <input
+          type="checkbox"
+          checked={preferences.autoPrompt}
+          onChange={(e) => updateSpeechPreferences({ autoPrompt: e.target.checked })}
+        />{' '}
+        Автоматически озвучивать задание
+      </label>
+      <SpeechStatus />
     </section>
   )
 }

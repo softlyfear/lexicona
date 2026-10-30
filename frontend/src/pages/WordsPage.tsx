@@ -10,8 +10,9 @@ import {
   type WordTrainingFilter,
 } from '../api'
 import { WordForm } from '../components/WordForm'
-import { ProgressBar, SpeakButton } from '../components/ui'
+import { ProgressBar, SpeakButton, SpeechStatus } from '../components/ui'
 import ui from '../components/ui.module.css'
+import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
 
 type Editing = { kind: 'new' } | { kind: 'edit'; word: Word } | null
@@ -75,6 +76,7 @@ export function WordsPage() {
   })
 
   function startEditing(next: Editing) {
+    cancelSpeech()
     save.reset()
     setEditing(next)
   }
@@ -147,6 +149,7 @@ export function WordsPage() {
         )}
       </div>
 
+      <SpeechStatus />
       <div className={css.filters}>
         <label className={`${ui.field} ${css.sort}`}>
           <span className={ui.label}>Сортировка</span>
@@ -270,7 +273,15 @@ export function WordsPage() {
                 {word.transcription && <span className={ui.muted}>{word.transcription}</span>}
                 <SpeakButton text={word.headword} lang="en-US" />
               </div>
-              <div lang="ru">{word.translations.join(', ')}</div>
+              <div lang="ru">
+                {word.translations.map((translation, i) => (
+                  <span key={`${translation}-${i}`}>
+                    {i > 0 && ', '}
+                    {translation}
+                    <SpeakButton text={translation} lang="ru-RU" />
+                  </span>
+                ))}
+              </div>
               {word.tags.length > 0 && (
                 <div className={css.tagList} aria-label="Теги слова">
                   {word.tags.map((tag) => (

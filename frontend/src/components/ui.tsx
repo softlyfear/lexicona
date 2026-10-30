@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { canSpeak, speak } from '../speech'
+import { cancelSpeech, speak, useSpeech } from '../speech'
 import ui from './ui.module.css'
 
 export function ProgressBar({ value }: { value: number }) {
@@ -24,16 +24,27 @@ export function SpeakButton({
   lang,
   ...props
 }: { text: string; lang: 'en-US' | 'ru-RU' } & ComponentProps<'button'>) {
-  if (!canSpeak) return null
   return (
     <button
       type="button"
       className={ui.ghost}
-      onClick={() => speak(text, lang)}
-      aria-label={`Произнести «${text}»`}
+      onClick={() => speak(text, lang === 'en-US' ? 'en' : 'ru')}
+      aria-label={`Произнести ${lang === 'en-US' ? 'EN' : 'RU'} «${text}»`}
       {...props}
     >
       🔊
     </button>
+  )
+}
+
+export function SpeechStatus() {
+  const { status } = useSpeech()
+  return (
+    <div>
+      <button type="button" className={ui.button} onClick={cancelSpeech}>
+        Остановить речь
+      </button>
+      {status && <p role="status">{status}</p>}
+    </div>
   )
 }

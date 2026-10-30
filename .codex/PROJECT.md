@@ -17,6 +17,17 @@
   вопросов, повторный ответ
   не должен повторно начислять прогресс. Правильный ответ решает сервер.
 
+Один speech.ts controller с useSyncExternalStore использует voiceschanged/ожидание2с,
+language-only fallback, generation token отмены и length/rate watchdog (20с..10мин).
+Preferences локальны в lexicona:speech:v1:<user.id> (locale, EN/RU voiceURI, rate1/.75,
+autoPrompt default on); EN-US default, недоступность/фактическая замена явно показаны.
+Start/Next озвучивают только публичный prompt текущего item, RU→EN — русский,
+cloze — masked EN. Ошибка/отказ не меняет обучение; route/hidden/logout/user switch
+отменяет pending/active речь; открытие new/edit редактора тоже отменяет речь, сохраняя
+изолированный new-редактор. Ручные RU-кнопки читают отдельные переводы, EN — headword.
+Backend/схема прежние; voice localService и ограничения
+слышимости объясняются, fake/browser проверки отделяются от физических устройств.
+
 Личные tags принадлежат owner и уникальны по NFC/casefold/схлопнутым пробелам,
 без подмены ё/е и пунктуации; до 20 тегов на слово, имя 1..80 code points.
 WordIn.tags содержит имена, WordOut.tags — id/name; PUT без tags сохраняет связи,

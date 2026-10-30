@@ -11,8 +11,9 @@ import {
   type TrainingSession,
   type TrainingSize,
 } from '../api'
-import { SpeakButton } from '../components/ui'
+import { SpeakButton, SpeechStatus } from '../components/ui'
 import ui from '../components/ui.module.css'
+import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
 import css from './pages.module.css'
 
 const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
@@ -33,6 +34,15 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 ]
 
 export function TrainingPage() {
+  const { preferences } = useSpeech()
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+      cancelSpeech()
+    }
+  }, [])
   const [started, setStarted] = useState<{
     session: TrainingSession
     requestedSize: TrainingSize
@@ -45,7 +55,16 @@ export function TrainingPage() {
         onFinish={() => setStarted(null)}
       />
     )
-  return <Setup onStart={(session, requestedSize) => setStarted({ session, requestedSize })} />
+  return (
+    <Setup
+      onStart={(session, requestedSize) => {
+        if (!active.current) return
+        setStarted({ session, requestedSize })
+        if (preferences.autoPrompt && session.items[0])
+          speak(session.items[0].prompt, session.direction === 'ru_en' ? 'ru' : 'en')
+      }}
+    />
+  )
 }
 
 function Setup({
@@ -74,6 +93,7 @@ function Setup({
   const size = Number(sizeText)
   const validSize = /^\d+$/u.test(sizeText) && Number.isInteger(size) && size >= 1 && size <= 500
   const starting = useRef(false)
+  const startScope = useRef(0)
   const start = useMutation({
     mutationFn: (requestedSize: TrainingSize) => {
       if (tagIds.length || min !== null || max !== null)
@@ -86,7 +106,9 @@ function Setup({
         ? api.startTraining(direction, requestedSize)
         : api.startTraining(direction, requestedSize, mode)
     },
-    onSuccess: onStart,
+    onSuccess: (session, size) => {
+      if (startScope.current === speechGeneration()) onStart(session, size)
+    },
     onSettled: () => {
       starting.current = false
     },
@@ -95,6 +117,8 @@ function Setup({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if ((sizeMode === 'number' && !validSize) || !validBounds || starting.current) return
+    cancelSpeech()
+    startScope.current = speechGeneration()
     starting.current = true
     start.mutate(sizeMode === 'all' ? 'all' : size)
   }
@@ -306,6 +330,7 @@ function Run({
   onFinish: () => void
 }) {
   const queryClient = useQueryClient()
+  const { preferences } = useSpeech()
   const [index, setIndex] = useState(0)
   const [text, setText] = useState('')
   const [revealed, setRevealed] = useState<string[] | null>(null)
@@ -349,11 +374,16 @@ function Run({
 
   function perform(value: Action) {
     if (locked.current || result) return
+    cancelSpeech()
     locked.current = true
     action.mutate(value)
   }
 
   function next() {
+    cancelSpeech()
+    const nextItem = session.items[index + 1]
+    if (preferences.autoPrompt && nextItem)
+      speak(nextItem.prompt, session.direction === 'ru_en' ? 'ru' : 'en')
     locked.current = false
     action.reset()
     setText('')
@@ -452,7 +482,14 @@ function Run({
         <span className={ui.muted}>
           {index + 1} / {session.items.length}
         </span>
-        <button className={ui.ghost} onClick={onFinish} disabled={busy}>
+        <button
+          className={ui.ghost}
+          onClick={() => {
+            cancelSpeech()
+            onFinish()
+          }}
+          disabled={busy}
+        >
           Завершить
         </button>
       </div>
@@ -473,6 +510,7 @@ function Run({
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
       </div>
+      <SpeechStatus />
       {session.mode === 'choice' && (
         <div className={css.options} role="group" aria-label="Варианты ответа">
           {item.options.map((option, i) => {
