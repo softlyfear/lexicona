@@ -1,4 +1,4 @@
-"""Visible training progress of a word: an integer 0-100.
+"""Visible training progress of a word: a non-negative integer.
 
 It is not CEFR and not a probability of knowing the word. Each answer moves it by a
 fixed number of points that depends on the user's difficulty and the exercise kind.
@@ -7,7 +7,6 @@ fixed number of points that depends on the user's difficulty and the exercise ki
 from enum import StrEnum
 
 MIN_PROGRESS = 0
-MAX_PROGRESS = 100
 
 
 class Difficulty(StrEnum):
@@ -47,4 +46,4 @@ def delta(difficulty: Difficulty, kind: AnswerKind, correct: bool) -> int:
 
 
 def apply(progress: int, change: int) -> int:
-    return max(MIN_PROGRESS, min(MAX_PROGRESS, progress + change))
+    return max(MIN_PROGRESS, progress + change)

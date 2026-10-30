@@ -208,6 +208,7 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
     const assisted = results.filter((r) => r.outcome === 'assisted').length
     const skipped = results.filter((r) => r.outcome === 'skipped').length
     const graded = results.filter((r) => r.outcome === 'answered' && 'grade' in r).length
+    const unavailable = results.filter((r) => r.outcome === 'unavailable').length
     return (
       <section className={`${ui.card} ${css.stack} ${css.summary}`}>
         <h1 className={css.title}>Готово</h1>
@@ -227,6 +228,7 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
           </>
         )}
         <p>Пропущено: {skipped}</p>
+        <p>Недоступно: {unavailable}</p>
         <div className={css.actions}>
           <button className={ui.primary} onClick={onFinish} autoFocus>
             Ещё занятие
@@ -241,15 +243,19 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
   const busy = action.isPending
   const disabled = busy || !!result
   const cardAnswer =
-    revealed ??
-    (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null)
+    result?.outcome === 'unavailable'
+      ? null
+      : (revealed ??
+        (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null))
   const revealedAnswers =
     result?.outcome === 'assisted' || (result?.outcome === 'answered' && 'submitted_text' in result)
       ? result.expected_answers
       : null
   let label = ''
   if (result) {
-    if (result.outcome === 'skipped') label = 'Пропущено'
+    if (result.outcome === 'unavailable')
+      label = 'Задание недоступно: слово исключалось из обучения'
+    else if (result.outcome === 'skipped') label = 'Пропущено'
     else if (result.outcome === 'assisted') label = 'С помощью'
     else if ('grade' in result)
       label = CARD_GRADES.find((option) => option.value === result.grade)?.label ?? ''

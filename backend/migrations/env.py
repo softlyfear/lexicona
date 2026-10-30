@@ -18,13 +18,29 @@ def _url() -> str:
 
 
 def _migrate(connection: Connection) -> None:
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        render_as_batch=True,  # SQLite cannot ALTER most things in place
-    )
-    with context.begin_transaction():
-        context.run_migrations()
+    # Batch recreation of a referenced SQLite table would otherwise cascade-delete
+    # its children. Change the pragma outside any transaction, then lock writers and
+    # run every migration plus the FK check atomically on this private connection.
+    connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    connection.commit()
+    try:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,  # SQLite cannot ALTER most things in place
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
+            raise RuntimeError("Migration would leave invalid foreign keys")
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        connection.commit()
 
 
 async def _run_online() -> None:

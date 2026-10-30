@@ -32,9 +32,9 @@ def test_interrupted_passive_listening_is_not_a_penalty() -> None:
 
 @pytest.mark.parametrize(
     ("before", "change", "after"),
-    [(0, -10, 0), (3, -4, 0), (50, 8, 58), (96, 10, 100), (100, 20, 100), (100, -2, 98)],
+    [(0, -10, 0), (3, -4, 0), (50, 8, 58), (96, 10, 106), (100, 20, 120), (100, -2, 98)],
 )
-def test_apply_clamps_to_range(before: int, change: int, after: int) -> None:
+def test_apply_floors_at_zero(before: int, change: int, after: int) -> None:
     assert apply(before, change) == after
 
 

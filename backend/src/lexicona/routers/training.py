@@ -3,7 +3,8 @@ from typing import Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import Select, case, func, select, update
+from sqlalchemy import Select, case, func, or_, select, true, update
+from sqlalchemy.sql.selectable import Exists
 
 from lexicona import progress
 from lexicona.cloze import mask_example
@@ -120,8 +121,21 @@ class SkippedOut(BaseModel):
     progress: int
 
 
+class UnavailableOut(BaseModel):
+    outcome: Literal["unavailable"] = "unavailable"
+    reason: Literal["training_state_changed"] = "training_state_changed"
+    delta: Literal[0] = 0
+    progress: int
+
+
 TerminalOut = (
-    AnswerOut | TextAnswerOut | GradeAnswerOut | ChoiceAssistedOut | AssistedOut | SkippedOut
+    AnswerOut
+    | TextAnswerOut
+    | GradeAnswerOut
+    | ChoiceAssistedOut
+    | AssistedOut
+    | SkippedOut
+    | UnavailableOut
 )
 
 
@@ -166,7 +180,11 @@ def _build_item(
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
-    pool = list(await db.scalars(select(Word).where(Word.owner_id == auth.user.id)))
+    pool = list(
+        await db.scalars(
+            select(Word).where(Word.owner_id == auth.user.id, Word.is_excluded.is_(False))
+        )
+    )
     # Least-known words first; random order among equals.
     targets = sorted(_rng.sample(pool, len(pool)), key=lambda word: word.progress)
 
@@ -206,6 +224,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             TrainingItem(
                 word_id=target.id,
                 word_content_version=target.content_version,
+                word_training_version=target.training_version,
                 position=len(session.items),
                 prompt=prompt,
                 options=options,
@@ -229,6 +248,8 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 
 def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
     assert item.delta is not None
+    if item.outcome == "unavailable":
+        return UnavailableOut(progress=word_progress)
     if item.outcome == "skipped":
         return SkippedOut(progress=word_progress)
     if item.outcome == "assisted":
@@ -295,6 +316,19 @@ def _owned_sessions(auth: CurrentAuth) -> Select[str]:
     return select(TrainingSession.id).where(TrainingSession.owner_id == auth.user.id)
 
 
+def _eligible(auth: CurrentAuth) -> Exists:
+    return (
+        select(Word.id)
+        .where(
+            Word.id == TrainingItem.word_id,
+            Word.owner_id == auth.user.id,
+            Word.is_excluded.is_(False),
+            Word.training_version == TrainingItem.word_training_version,
+        )
+        .exists()
+    )
+
+
 @router.post("/items/{item_id}/reveal")
 async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | TerminalOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
@@ -302,16 +336,25 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | Te
     if item.outcome is not None:
         return _answer_out(item, word.progress)
 
+    eligible = _eligible(auth)
+    now = utcnow()
     if item.session.mode == "cards":
         await db.execute(
             update(TrainingItem)
             .where(
                 TrainingItem.id == item.id,
                 TrainingItem.session_id.in_(_owned_sessions(auth)),
-                TrainingItem.revealed_at.is_(None),
                 TrainingItem.outcome.is_(None),
             )
-            .values(revealed_at=utcnow())
+            .values(
+                revealed_at=case(
+                    (eligible, func.coalesce(TrainingItem.revealed_at, now)),
+                    else_=TrainingItem.revealed_at,
+                ),
+                outcome=case((eligible, None), else_="unavailable"),
+                delta=case((eligible, None), else_=0),
+                answered_at=case((eligible, None), else_=now),
+            )
         )
     else:
         await db.execute(
@@ -321,7 +364,9 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | Te
                 TrainingItem.session_id.in_(_owned_sessions(auth)),
                 TrainingItem.outcome.is_(None),
             )
-            .values(outcome="assisted", delta=0, answered_at=utcnow())
+            .values(
+                outcome=case((eligible, "assisted"), else_="unavailable"), delta=0, answered_at=now
+            )
         )
     await db.commit()
     await db.refresh(item)
@@ -344,7 +389,11 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
                 TrainingItem.session_id.in_(_owned_sessions(auth)),
                 TrainingItem.outcome.is_(None),
             )
-            .values(outcome="skipped", delta=0, answered_at=utcnow())
+            .values(
+                outcome=case((_eligible(auth), "skipped"), else_="unavailable"),
+                delta=0,
+                answered_at=utcnow(),
+            )
         )
         await db.commit()
         await db.refresh(item)
@@ -366,9 +415,6 @@ async def answer_item(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
     if item.outcome is not None:
         return _answer_out(item, word.progress)
-    if item.session.mode == "cards" and item.revealed_at is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")
-
     if item.answered_at is None:
         if isinstance(body, AnswerIn):
             correct = body.option == item.correct_option
@@ -404,6 +450,12 @@ async def answer_item(
             .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
             .scalar_subquery()
         )
+        eligible = _eligible(auth)
+        card_ready = (
+            or_(~eligible, TrainingItem.revealed_at.is_not(None))
+            if item.session.mode == "cards"
+            else true()
+        )
         # Conditional update: of two concurrent answers only one is recorded.
         claimed = await db.execute(
             update(TrainingItem)
@@ -411,14 +463,17 @@ async def answer_item(
                 TrainingItem.id == item.id,
                 TrainingItem.session_id.in_(_owned_sessions(auth)),
                 TrainingItem.outcome.is_(None),
+                card_ready,
             )
             .values(
-                chosen_option=chosen_option,
-                submitted_text=submitted_text,
-                grade=grade,
-                is_correct=correct,
-                delta=case((current_version == item.word_content_version, change), else_=0),
-                outcome="answered",
+                chosen_option=case((eligible, chosen_option), else_=None),
+                submitted_text=case((eligible, submitted_text), else_=None),
+                grade=case((eligible, grade), else_=None),
+                is_correct=case((eligible, correct), else_=None),
+                delta=case(
+                    (eligible & (current_version == item.word_content_version), change), else_=0
+                ),
+                outcome=case((eligible, "answered"), else_="unavailable"),
                 answered_at=utcnow(),
             )
         )
@@ -428,18 +483,17 @@ async def answer_item(
                 .where(
                     Word.id == word.id,
                     Word.owner_id == auth.user.id,
+                    Word.is_excluded.is_(False),
+                    Word.training_version == item.word_training_version,
                     Word.content_version == item.word_content_version,
                 )
-                .values(
-                    progress=func.max(
-                        progress.MIN_PROGRESS,
-                        func.min(progress.MAX_PROGRESS, Word.progress + change),
-                    )
-                )
+                .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
             )
         await db.commit()
         await db.refresh(item)
         await db.refresh(word)
 
+    if item.outcome is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")
     # A repeated or concurrent answer returns the recorded result without changing anything.
     return _answer_out(item, word.progress)

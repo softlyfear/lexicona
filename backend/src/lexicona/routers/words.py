@@ -2,8 +2,16 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints, field_validator
-from sqlalchemy import ColumnElement, or_, select
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    field_validator,
+)
+from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.deps import CurrentAuth, Db
@@ -52,6 +60,7 @@ class WordOut(BaseModel):
     example_ru: str | None
     note: str | None
     progress: int
+    is_excluded: bool
     created_at: datetime
     updated_at: datetime
 
@@ -66,6 +75,7 @@ class WordOut(BaseModel):
             example_ru=word.example_ru,
             note=word.note,
             progress=word.progress,
+            is_excluded=word.is_excluded,
             created_at=word.created_at,
             updated_at=word.updated_at,
         )
@@ -104,8 +114,11 @@ async def list_words(
     db: Db,
     q: Annotated[str, Query(max_length=200)] = "",
     sort: WordSort = "created_desc",
+    training: Literal["active", "excluded", "all"] = "active",
 ) -> list[WordOut]:
     query = select(Word).where(Word.owner_id == auth.user.id)
+    if training != "all":
+        query = query.where(Word.is_excluded.is_(training == "excluded"))
     if needle := normalize(q):
         pattern = "%" + needle.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
         query = query.where(
@@ -138,6 +151,30 @@ async def create_word(body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
 @router.get("/{word_id}")
 async def get_word(word_id: str, auth: CurrentAuth, db: Db) -> WordOut:
     return WordOut.of(await owned_word(db, auth.user.id, word_id))
+
+
+class TrainingStateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_excluded: StrictBool
+
+
+@router.patch("/{word_id}/training")
+async def set_training_state(
+    word_id: str, body: TrainingStateIn, auth: CurrentAuth, db: Db
+) -> WordOut:
+    word = await owned_word(db, auth.user.id, word_id)
+    await db.execute(
+        update(Word)
+        .where(
+            Word.id == word_id,
+            Word.owner_id == auth.user.id,
+            Word.is_excluded.is_not(body.is_excluded),
+        )
+        .values(is_excluded=body.is_excluded, training_version=Word.training_version + 1)
+    )
+    await db.commit()
+    await db.refresh(word)
+    return WordOut.of(word)
 
 
 @router.put("/{word_id}")

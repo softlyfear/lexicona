@@ -40,15 +40,31 @@ describe('api', () => {
 
   it('sends search and sort parameters to the dictionary endpoint', async () => {
     const fetchMock = mockFetch(200, [])
-    await api.listWords('ёж cat', 'progress_desc')
+    await api.listWords('ёж cat', 'progress_desc', 'excluded')
     const [path] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const url = new URL(path, 'http://test')
     expect(url.pathname).toBe('/api/words')
     expect(url.searchParams.get('q')).toBe('ёж cat')
     expect(url.searchParams.get('sort')).toBe('progress_desc')
+    expect(url.searchParams.get('training')).toBe('excluded')
     await api.listWords('')
     const [defaultPath] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
     expect(new URL(defaultPath, 'http://test').searchParams.get('sort')).toBe('created_desc')
+    expect(new URL(defaultPath, 'http://test').searchParams.get('training')).toBe('active')
+  })
+
+  it('updates word training state with CSRF and strict boolean body', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, { id: 'word', is_excluded: true })
+    await api.setWordTraining('word', true)
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/words/word/training')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers).toMatchObject({
+      'X-CSRF-Token': 'secret',
+      'Content-Type': 'application/json',
+    })
+    expect(init.body).toBe(JSON.stringify({ is_excluded: true }))
   })
 
   it('turns error responses into ApiError with the server detail', async () => {

@@ -461,3 +461,149 @@
 
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
+## WORDS-002 — ручное исключение из обучения и прогресс выше 100%
+
+- Цель: слова остаются в словаре после 100%; пользователь вручную исключает/возвращает
+  слово, а последующая практика может увеличивать реальный процент выше 100.
+- Статус: done; попытка: 1; приёмка architect: ПРИНЯТО.
+- Источник: прямое решение пользователя, .local/requirements/manual-feedback-2026-10-29.md.
+  Новая policy заменяет прежний верхний clamp, не добавляет автоархивирование.
+
+### AC
+
+1. Прогресс — целое >=0 без верхнего clamp 100; положительный ответ при 98/100/150
+   даёт полную дельту сложности, отрицательный уменьшает до минимум 0. Все текущие
+   режимы используют одну policy; snapshot difficulty, meaning reset, CAS и нулевая
+   дельта помощи/пропуска сохранены. Достижение 100 ничего не удаляет и не исключает.
+2. У слова отдельный обратимый is_excluded, default false. «Исключить из обучения» и
+   «Вернуть в обучение» сохраняют слово, переводы, прогресс и content_version. Только
+   фактическая смена состояния увеличивает отдельный training_version; повтор того же
+   запроса идемпотентен. Обычное редактирование не переключает этот флаг.
+3. Словарь фильтруется по active/excluded/all; поиск и шесть сортировок работают внутри
+   выбранной области. Фильтр сохраняется в URL и query key; есть понятный статус и
+   доступная кнопка возврата, включая error/retry. Исключённое слово можно прочитать,
+   отредактировать и удалить обычным явным действием; исключение не является delete.
+4. Все новые занятия используют только активные личные слова и для targets, и для
+   distractors. На уже открытый item исключение действует без штрафа: первый запрос
+   answer/reveal/skip к недоступному item закрывает unavailable с delta 0, без correct,
+   grade и раскрытия ответа. Возврат слова не оживляет старый item: snapshot training_version
+   должен совпадать. Новая сессия после возврата работает с сохранённым прогрессом.
+5. Терминальный результат, принятый до исключения, сохраняется при replay; начисление
+   не повторяется. Гонки ответа/раскрытия/пропуска с исключением сериализуются по записи:
+   если ответ принят первым — одна обычная дельта; если исключение первым — нулевая
+   unavailable. Eligibility/version проверяются в write path, а не только до CAS.
+   После exclude→return старые items не начисляют даже при одновременных запросах.
+6. UI показывает фактический процент, например 158%; заливка и aria-valuenow ProgressBar
+   ограничены 0..100, aria-valuetext сообщает реальный прогресс. В тренировке unavailable
+   отображается как «Задание недоступно: слово исключалось из обучения», с «Далее»;
+   недоступные отдельно считаются в итоге, не попадают в correct/incorrect/graded.
+7. Новый endpoint и фильтр соблюдают owner_id/404, CSRF на мутации и no-store; чужое
+   слово невозможно исключить/вернуть и использовать через старый item. Некорректные
+   body/фильтр дают 422. Миграция сохраняет все существующие слова и дочерние записи.
+8. Policy-specific unit/API/UI-тесты и документы согласованы с новой policy; конечный
+   make check зелёный для финального diff. Остальная очередь и автономный режим продолжаются.
+
+### API и схема
+
+- WordOut дополнить is_excluded:boolean; WordIn не даёт управлять прогрессом/версией/флагом.
+  PATCH /api/words/{word_id}/training с {is_excluded:boolean}, strict boolean и extra forbid,
+  возвращает актуальный WordOut. Изменение флага и training_version — атомарное обновление
+  с owner_id и условием фактической смены состояния; повтор не увеличивает версию.
+- GET /api/words: training=active|excluded|all, default active. Существующие q/sort и
+  формат списка сохраняются; GET /words/{id} возвращает и собственное исключённое слово.
+- api.listWords(q, sort='created_desc', training='active'); query key
+  ['words',q,sort,training], общая invalidation ['words']. URL-параметр training, default
+  active можно опускать; неизвестное значение URL безопасно трактуется UI как active.
+- Word: is_excluded boolean NOT NULL default false; training_version integer NOT NULL
+  default 1. TrainingItem: word_training_version integer NOT NULL default 1, snapshot
+  при создании. Существующие items получают 1, outcome сохраняется. Word.progress
+  check заменяется на progress>=0. TrainingItem.outcome расширяется до String(16).
+- TerminalOut добавить {outcome:"unavailable", reason:"training_state_changed",
+  delta:0, progress:int}; в БД outcome unavailable, answered_at заполнен,
+  is_correct/chosen_option/submitted_text/grade NULL. Reason постоянен для этой категории.
+  Существующие answer/reveal/skip возвращают фактический канонический TerminalOut;
+  карточный reveal остаётся нетерминальным только для доступного item. У уже закрытого
+  item приоритет сохранённого результата. Строгая валидация answer по режиму сохраняется.
+- Для начисления одновременно требуются owner_id, !is_excluded, совпадение
+  word_training_version и content_version, CAS незавершённого item. Несовпадение
+  content_version без смены training_version сохраняет прежний meaning-edit контракт
+  (snapshot answer с delta 0), не превращается автоматически в unavailable.
+- Изменение схемы только Alembic; в SQLite пересоздание words НЕ должно каскадно удалить
+  word_translations/training_items при включённом foreign_keys. Способ безопасного
+  изменения FK/транзакции обосновать и проверить на непустой БД; PRAGMA foreign_key_check
+  после upgrade пуст. Downgrade отказывается без потерь, если progress>100, есть excluded,
+  training_version!=1 или unavailable (иначе старые items могут снова стать пригодными).
+  При безопасных данных downgrade/upgrade возможен без потери связей и результатов.
+- Продуктовую БД в этом срезе не мигрировать: проверки на временной копии. Для реального
+  обновления документировать резервную копию SQLite через backup API с учётом WAL;
+  не подменять её копированием только основного файла работающей БД.
+
+### Владельцы, цепочка и проверки
+
+1. architect: TASKS.md/PROJECT.md, контракт и приёмка после Ship.
+2. backend-agent: backend/src/lexicona/{models,progress}.py, routers/{words,training}.py,
+   backend/migrations/**, соответствующие backend/tests/**. Реализовать policy, состояние,
+   write-path eligibility/CAS, безопасную миграцию и передать точный контракт frontend.
+3. frontend-agent: frontend/src/api.ts, pages/{WordsPage,TrainingPage}.tsx,
+   components/ui.tsx, при необходимости CSS и соответствующие тесты; фильтр/кнопки,
+   реальный процент и доступная шкала, unavailable/summary/loading/error/retry.
+4. Оркестратор: AGENTS.md/README.md — заменить устаревшие правила 0–100 и описать ручное
+   исключение, новую policy и порядок backup/миграции. PROJECT.md обновляет architect
+   после реализации, исторические архивы и исходные старые требования не переписывать.
+5. tests-agent: backend/tests/** и frontend/src/**/*.test.ts(x); AC/регрессии и make check.
+6. code-reviewer: весь diff, миграция/сохранение связей/гонки и подтверждённый gate → Ship.
+7. architect: ПРИНЯТО / НА ДОРАБОТКУ; оркестратор архивирует и делает один коммит задачи.
+- Тесты: progress>100/нижняя0 во всех правилах; owner/CSRF/no-store/strict/filter+q+sort;
+  pool targets/distractors; exclude/return/repeat без resetprogress, старые items до/после
+  возврата, терминальный replay и mixed races; новые занятия после возврата; meaning edit;
+  карточный reveal→exclude→grade, cloze snapshot; миграция с users/words/translations/
+  sessions/open+answered items и FK-check; safe downgrade и отказ на новых данных.
+- UI: active/excluded/all+URL, исключение/возврат и ошибка, 158% с bar100/aria,
+  unavailable→next→summary; целевые pytest/vitest, затем make check и git diff --check.
+- Вне scope: SRS/автоматический архив, изменение difficulty/delta table, теги/профиль/TTS,
+  число вариантов, размер занятий и lookup. Их карточки открываются после этого среза.
+- Backend gate: `make check-backend` exit 0, Ruff/mypy и 213 тестов.
+- Frontend gate: `make check-frontend` exit 0, формат/lint/types/build и 47 тестов.
+- Оркестратор: live HTTP smoke exit 0 на отдельной временной SQLite с миграциями,
+  реальном uvicorn и собранном SPA. Прогресс 112%/120%, отсутствие автоисключения,
+  exclude/return, старые items/cards, replay, pool, фильтры/сортировка, строгий payload,
+  два владельца/CSRF/404 и гонка ответа с исключением проверены. Продуктовая БД не
+  использовалась; ручного браузерного прогона не было.
+- Общий `make check` tests-agent: exit 0 — tooling 12, backend 216, frontend 47;
+  Ruff/mypy/Prettier/oxlint/tsc/build и `git diff --check` зелёные. Дополнены гонки
+  reveal/skip с исключением и параллельные answer/reveal/skip после exclude→return:
+  один результат, нулевая дельта, отсутствие утечки. Ревью/приёмка: ожидаются.
+- Независимый reviewer: Ship, AC выполнены, замечаний нет. Лично 49 backend- и 14
+  UI-тестов passed, diff --check. На отдельной временной SQLite намеренно провалил
+  foreign_key_check и подтвердил полный откат схемы, Alembic-версии и данных.
+  Подтверждён общий gate 12/216/47.
+- Приёмка architect: ПРИНЯТО. Прочитаны весь конечный diff, миграция d90b58c2a113 и
+  новые API/UI-регрессии. AC 1–8 и контракты выполнены: progress>=0, ручное исключение,
+  отдельная training_version, write-path eligibility/CAS, прежний terminal replay,
+  unavailable без раскрытия/штрафа, фильтры и bar/aria. Миграция сохраняет дочерние строки
+  и атомарно отказывается при FK-дефекте/небезопасном downgrade; backup-порядок описан.
+  Приняты независимый Ship, подтверждённый make check 12/216/47 и live HTTP smoke для
+  конечного diff. Лично git diff --check — exit 0; gate повторно не запускался.
+  Продуктовая БД не менялась; ручного браузерного прогона нет. Передано оркестратору
+  для архива и коммита. TRAIN-006 открывать после коммита; общий MVP ещё в работе.
+
+
+### Уточнение интерфейса по ручной проверке (2026-10-30)
+
+- Попытка 2: ПРИНЯТО. Exclude/return перенесены в компактную группу рядом с edit/delete;
+  доступны aria-label/title, pending/error/retry и сохранение прогресса.
+- Sort/training стоят в одной desktop-строке с переносом на узком экране. У активных
+  слов убрана подпись «В обучении»; excluded-статус и возврат сохранены.
+- После «Добавить слово» видны только заголовок и редактор: поиск, фильтры, список и их
+  сообщения скрыты. Cancel/save сохраняют URL; ошибка сохранения держит черновик.
+- Полный make check: exit 0, tooling 12 / backend 248 / frontend 77; формат/статика/build
+  и diff --check прошли. Независимый review_next: Ship; architect: ПРИНЯТО.
+- Root проверил настоящий headless Chromium 156 на tempSQLite/uvicorn/SPA: desktop1280
+  и mobile390, координаты controls, изолированный редактор/cancelURL, 158%/bar100,
+  отсутствие overflow и pageerror. Скриншоты просмотрены root и reviewer/architect.
+- Уточнение включается в тот же исторический коммит WORDS-002; последующие принятые
+  задачи сохраняются. Будущая очередь и план тегов не относятся к этому product diff.
+
+- Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
+- Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.

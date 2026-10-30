@@ -1,7 +1,16 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, CheckConstraint, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from lexicona.db import utcnow
@@ -42,7 +51,7 @@ class AuthSession(Base):
 
 class Word(Base):
     __tablename__ = "words"
-    __table_args__ = (CheckConstraint("progress BETWEEN 0 AND 100", name="progress_range"),)
+    __table_args__ = (CheckConstraint("progress >= 0", name="progress_range"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -53,6 +62,8 @@ class Word(Base):
     example_ru: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
     progress: Mapped[int] = mapped_column(default=0)
+    is_excluded: Mapped[bool] = mapped_column(default=False, server_default=false())
+    training_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     # Bumped on every meaningful edit so stale training answers stop counting.
     content_version: Mapped[int] = mapped_column(default=1)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
@@ -105,6 +116,7 @@ class TrainingItem(Base):
     )
     word_id: Mapped[str] = mapped_column(ForeignKey("words.id", ondelete="CASCADE"), index=True)
     word_content_version: Mapped[int]
+    word_training_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     position: Mapped[int]
     prompt: Mapped[str] = mapped_column(Text)
     options: Mapped[list[str]] = mapped_column(JSON)
@@ -114,7 +126,7 @@ class TrainingItem(Base):
     submitted_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
     revealed_at: Mapped[datetime | None]
     grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
-    outcome: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     is_correct: Mapped[bool | None]
     delta: Mapped[int | None]
     answered_at: Mapped[datetime | None]

@@ -1,7 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { api, errorMessage, type Word, type WordInput, type WordSort } from '../api'
+import {
+  api,
+  errorMessage,
+  type Word,
+  type WordInput,
+  type WordSort,
+  type WordTrainingFilter,
+} from '../api'
 import { WordForm } from '../components/WordForm'
 import { ProgressBar, SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
@@ -17,6 +24,11 @@ const SORT_OPTIONS: { value: WordSort; label: string }[] = [
   { value: 'progress_asc', label: 'Прогресс: по возрастанию' },
   { value: 'progress_desc', label: 'Прогресс: по убыванию' },
 ]
+const TRAINING_OPTIONS: { value: WordTrainingFilter; label: string }[] = [
+  { value: 'active', label: 'В обучении' },
+  { value: 'excluded', label: 'Исключённые' },
+  { value: 'all', label: 'Все слова' },
+]
 
 export function WordsPage() {
   const queryClient = useQueryClient()
@@ -25,12 +37,15 @@ export function WordsPage() {
   const requestedSort = searchParams.get('sort')
   const sort =
     SORT_OPTIONS.find((option) => option.value === requestedSort)?.value ?? 'created_desc'
+  const training =
+    TRAINING_OPTIONS.find((option) => option.value === searchParams.get('training'))?.value ??
+    'active'
   const query = useDeferredValue(search.trim())
   const [editing, setEditing] = useState<Editing>(null)
 
   const words = useQuery({
-    queryKey: ['words', query, sort],
-    queryFn: () => api.listWords(query, sort),
+    queryKey: ['words', query, sort, training],
+    queryFn: () => api.listWords(query, sort, training),
     placeholderData: keepPreviousData,
   })
 
@@ -48,15 +63,26 @@ export function WordsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['words'] }),
   })
 
+  const trainingState = useMutation({
+    mutationFn: ({ id, isExcluded }: { id: string; isExcluded: boolean }) =>
+      api.setWordTraining(id, isExcluded),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['words'] }),
+  })
+
   function startEditing(next: Editing) {
     save.reset()
     setEditing(next)
   }
 
-  function updateParameter(key: 'q' | 'sort', value: string) {
+  function updateParameter(key: 'q' | 'sort' | 'training', value: string) {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
-      if (!value || (key === 'sort' && value === 'created_desc')) next.delete(key)
+      if (
+        !value ||
+        (key === 'sort' && value === 'created_desc') ||
+        (key === 'training' && value === 'active')
+      )
+        next.delete(key)
       else next.set(key, value)
       return next
     })
@@ -65,6 +91,20 @@ export function WordsPage() {
   function confirmDelete(word: Word) {
     if (window.confirm(`Удалить «${word.headword}»? Прогресс по слову тоже удалится.`))
       remove.mutate(word.id)
+  }
+
+  if (editing?.kind === 'new') {
+    return (
+      <section className={css.stack}>
+        <h1 className={css.title}>Добавить слово</h1>
+        <WordForm
+          pending={save.isPending}
+          error={save.isError ? errorMessage(save.error) : null}
+          onSubmit={(input) => save.mutate(input)}
+          onCancel={() => setEditing(null)}
+        />
+      </section>
+    )
   }
 
   return (
@@ -86,25 +126,42 @@ export function WordsPage() {
         )}
       </div>
 
-      <label className={`${ui.field} ${css.sort}`}>
-        <span className={ui.label}>Сортировка</span>
-        <select
-          className={ui.input}
-          value={sort}
-          onChange={(event) => updateParameter('sort', event.target.value)}
-        >
-          {SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className={css.filters}>
+        <label className={`${ui.field} ${css.sort}`}>
+          <span className={ui.label}>Сортировка</span>
+          <select
+            className={ui.input}
+            value={sort}
+            onChange={(event) => updateParameter('sort', event.target.value)}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={`${ui.field} ${css.sort}`}>
+          <span className={ui.label}>Обучение</span>
+          <select
+            className={ui.input}
+            value={training}
+            onChange={(event) => updateParameter('training', event.target.value)}
+          >
+            {TRAINING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {editing !== null && (
         <WordForm
-          key={editing.kind === 'edit' ? editing.word.id : 'new'}
-          word={editing.kind === 'edit' ? editing.word : undefined}
+          key={editing.word.id}
+          word={editing.word}
           pending={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
           onSubmit={(input) => save.mutate(input)}
@@ -115,6 +172,11 @@ export function WordsPage() {
       {remove.isError && (
         <p className={ui.error} role="alert">
           {errorMessage(remove.error)}
+        </p>
+      )}
+      {trainingState.isError && (
+        <p className={ui.error} role="alert">
+          {errorMessage(trainingState.error)} Повторите действие.
         </p>
       )}
       {words.isError && (
@@ -129,7 +191,13 @@ export function WordsPage() {
       )}
       {words.data?.length === 0 && (
         <p className={ui.muted}>
-          {query ? 'Ничего не найдено.' : 'Словарь пуст. Добавьте первые слова.'}
+          {query
+            ? 'Ничего не найдено.'
+            : training === 'excluded'
+              ? 'Нет исключённых слов.'
+              : training === 'active'
+                ? 'Нет слов в обучении. Добавьте слово или верните исключённые.'
+                : 'Словарь пуст. Добавьте первые слова.'}
         </p>
       )}
 
@@ -148,11 +216,28 @@ export function WordsPage() {
                   {word.example_en}
                 </div>
               )}
+              {word.is_excluded && <p className={ui.muted}>Исключено из обучения</p>}
             </div>
             <div className={css.wordSide}>
               <span className={css.percent}>{word.progress}%</span>
               <ProgressBar value={word.progress} />
               <div className={css.rowActions}>
+                <button
+                  type="button"
+                  className={ui.ghost}
+                  disabled={trainingState.isPending}
+                  onClick={() =>
+                    trainingState.mutate({ id: word.id, isExcluded: !word.is_excluded })
+                  }
+                  aria-label={`${word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'} «${word.headword}»`}
+                  title={word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'}
+                >
+                  {trainingState.isPending && trainingState.variables?.id === word.id
+                    ? '…'
+                    : word.is_excluded
+                      ? '↩'
+                      : '⊘'}
+                </button>
                 <button
                   className={ui.ghost}
                   onClick={() => startEditing({ kind: 'edit', word })}

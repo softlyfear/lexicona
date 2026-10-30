@@ -3,16 +3,18 @@ import { canSpeak, speak } from '../speech'
 import ui from './ui.module.css'
 
 export function ProgressBar({ value }: { value: number }) {
+  const fill = Math.max(0, Math.min(100, value))
   return (
     <div
       className={ui.progress}
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={value}
+      aria-valuenow={fill}
+      aria-valuetext={`${value}%`}
       aria-label="Прогресс"
     >
-      <div className={ui.progressFill} style={{ width: `${value}%` }} />
+      <div className={ui.progressFill} style={{ width: `${fill}%` }} />
     </div>
   )
 }

@@ -9,6 +9,7 @@ export type WordSort =
   | 'headword_desc'
   | 'progress_asc'
   | 'progress_desc'
+export type WordTrainingFilter = 'active' | 'excluded' | 'all'
 
 export interface User {
   id: string
@@ -34,6 +35,7 @@ export interface WordInput {
 export interface Word extends WordInput {
   id: string
   progress: number
+  is_excluded: boolean
   created_at: string
   updated_at: string
 }
@@ -96,8 +98,20 @@ export interface SkippedResult {
   progress: number
 }
 
+export interface UnavailableResult {
+  outcome: 'unavailable'
+  reason: 'training_state_changed'
+  delta: 0
+  progress: number
+}
+
 export type TerminalResult =
-  AnswerResult | TextAnswerResult | CardAnswerResult | AssistedResult | SkippedResult
+  | AnswerResult
+  | TextAnswerResult
+  | CardAnswerResult
+  | AssistedResult
+  | SkippedResult
+  | UnavailableResult
 export type RevealResult = CardRevealResult | TerminalResult
 
 export class ApiError extends Error {
@@ -148,11 +162,16 @@ export const api = {
   updateSettings: (difficulty: Difficulty) =>
     request<User>('PUT', '/auth/settings', { difficulty }),
 
-  listWords: (q: string, sort: WordSort = 'created_desc') =>
-    request<Word[]>('GET', `/words?${new URLSearchParams({ q, sort })}`),
+  listWords: (
+    q: string,
+    sort: WordSort = 'created_desc',
+    training: WordTrainingFilter = 'active',
+  ) => request<Word[]>('GET', `/words?${new URLSearchParams({ q, sort, training })}`),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),
+  setWordTraining: (id: string, isExcluded: boolean) =>
+    request<Word>('PATCH', `/words/${id}/training`, { is_excluded: isExcluded }),
 
   startTraining: (direction: Direction, size: number, mode: TrainingMode = 'choice') =>
     request<TrainingSession>('POST', '/training/sessions', { mode, direction, size }),

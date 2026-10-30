@@ -116,7 +116,7 @@ async def test_input_progress_bounds_and_conservative_normalization(
         f"/api/training/items/{item['id']}/answer", json={"text": " CAN’T. "}
     )
     assert response.json()["correct"] is True
-    assert response.json()["progress"] == 100
+    assert response.json()["progress"] == 106
 
     await set_progress(app, word["id"], 2)
     item = await start_input(alice, "ru_en")

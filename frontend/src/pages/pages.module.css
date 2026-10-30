@@ -43,8 +43,15 @@
   max-width: 24rem;
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
 .sort {
-  width: min(100%, 19rem);
+  flex: 0 1 19rem;
+  min-width: 0;
 }
 
 .form {
@@ -258,5 +265,9 @@
     flex-direction: row;
     align-items: center;
     width: 100%;
+  }
+
+  .rowActions {
+    margin-left: auto;
   }
 }
