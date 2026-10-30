@@ -23,7 +23,7 @@ _rng = random.SystemRandom()
 class SessionIn(BaseModel):
     mode: Literal["choice", "input", "cards", "cloze"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
-    size: int = Field(default=10, ge=1, le=50)
+    size: int = Field(default=10, ge=1, le=500, strict=True)
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:

@@ -23,7 +23,7 @@ const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
   { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
   { mode: 'cards', direction: 'ru_en', label: 'Карточки: RU → EN' },
 ]
-const SIZES = [5, 10, 20, 30]
+const SIZES = [5, 10, 20, 30, 50, 75, 100, 125, 150]
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'again', label: 'Повторить' },
   { value: 'hard', label: 'Трудно' },
@@ -32,28 +32,55 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 ]
 
 export function TrainingPage() {
-  const [session, setSession] = useState<TrainingSession | null>(null)
-  if (session) return <Run session={session} onFinish={() => setSession(null)} />
-  return <Setup onStart={setSession} />
+  const [started, setStarted] = useState<{
+    session: TrainingSession
+    requestedSize: number
+  } | null>(null)
+  if (started)
+    return (
+      <Run
+        session={started.session}
+        requestedSize={started.requestedSize}
+        onFinish={() => setStarted(null)}
+      />
+    )
+  return <Setup onStart={(session, requestedSize) => setStarted({ session, requestedSize })} />
 }
 
-function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
+function Setup({
+  onStart,
+}: {
+  onStart: (session: TrainingSession, requestedSize: number) => void
+}) {
   const [direction, setDirection] = useState<Direction>('en_ru')
   const [mode, setMode] = useState<TrainingMode>('choice')
-  const [size, setSize] = useState(10)
+  const [sizeText, setSizeText] = useState('10')
+  const size = Number(sizeText)
+  const validSize = /^\d+$/u.test(sizeText) && Number.isInteger(size) && size >= 1 && size <= 500
+  const starting = useRef(false)
   const start = useMutation({
-    mutationFn: () =>
+    mutationFn: (requestedSize: number) =>
       mode === 'choice'
-        ? api.startTraining(direction, size)
-        : api.startTraining(direction, size, mode),
+        ? api.startTraining(direction, requestedSize)
+        : api.startTraining(direction, requestedSize, mode),
     onSuccess: onStart,
+    onSettled: () => {
+      starting.current = false
+    },
   })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!validSize || starting.current) return
+    starting.current = true
+    start.mutate(size)
+  }
 
   return (
     <section className={css.stack}>
       <h1 className={css.title}>Тренировка</h1>
-      <div className={`${ui.card} ${css.form}`}>
-        <fieldset className={css.choices}>
+      <form className={`${ui.card} ${css.form}`} onSubmit={submit} noValidate>
+        <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Режим</legend>
           {MODES.map((d) => (
             <label key={`${d.mode}-${d.direction}`} className={css.choice}>
@@ -71,21 +98,36 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
             </label>
           ))}
         </fieldset>
-        <fieldset className={css.choices}>
+        <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Слов в занятии</legend>
           <div className={css.actions}>
             {SIZES.map((n) => (
               <button
                 key={n}
                 type="button"
-                className={n === size ? ui.primary : ui.button}
-                aria-pressed={n === size}
-                onClick={() => setSize(n)}
+                className={validSize && n === size ? ui.primary : ui.button}
+                aria-pressed={validSize && n === size}
+                onClick={() => setSizeText(String(n))}
               >
                 {n}
               </button>
             ))}
           </div>
+          <label className={`${ui.field} ${css.trainingSize}`}>
+            <span className={ui.label}>Своё число слов</span>
+            <input
+              className={ui.input}
+              type="text"
+              inputMode="numeric"
+              value={sizeText}
+              onChange={(event) => setSizeText(event.target.value)}
+              aria-invalid={!validSize}
+              aria-describedby="training-size-hint"
+            />
+          </label>
+          <p id="training-size-hint" className={validSize ? ui.muted : ui.error}>
+            Введите целое число от 1 до 500.
+          </p>
         </fieldset>
         <p className={ui.muted}>Сначала идут слова с наименьшим прогрессом.</p>
         {mode === 'cloze' && (
@@ -104,11 +146,11 @@ function Setup({ onStart }: { onStart: (session: TrainingSession) => void }) {
           </p>
         )}
         <div>
-          <button className={ui.primary} onClick={() => start.mutate()} disabled={start.isPending}>
+          <button className={ui.primary} type="submit" disabled={start.isPending || !validSize}>
             Начать
           </button>
         </div>
-      </div>
+      </form>
     </section>
   )
 }
@@ -120,7 +162,15 @@ type Action =
   | { kind: 'reveal' }
   | { kind: 'skip' }
 
-function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => void }) {
+function Run({
+  session,
+  requestedSize,
+  onFinish,
+}: {
+  session: TrainingSession
+  requestedSize: number
+  onFinish: () => void
+}) {
   const queryClient = useQueryClient()
   const [index, setIndex] = useState(0)
   const [text, setText] = useState('')
@@ -272,6 +322,11 @@ function Run({ session, onFinish }: { session: TrainingSession; onFinish: () => 
           Завершить
         </button>
       </div>
+      {session.items.length < requestedSize && (
+        <p className={ui.muted}>
+          Доступно {session.items.length} из {requestedSize} запрошенных слов
+        </p>
+      )}
       <div className={`${ui.card} ${css.question}`}>
         <span
           className={`${css.prompt} ${session.mode === 'cloze' ? css.examplePrompt : ''}`}

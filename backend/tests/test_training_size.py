@@ -1,0 +1,138 @@
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from sqlalchemy import select
+
+from lexicona.db import Database
+from lexicona.models import TrainingItem, Word, WordTranslation
+from tests.conftest import Client
+
+
+async def seed(app: FastAPI, client: Client, count: int, *, excluded: bool = False) -> None:
+    owner = (await client.get("/api/auth/me")).json()["user"]["id"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        db.add_all(
+            [
+                Word(
+                    owner_id=owner,
+                    headword=f"word{i}",
+                    normalized_headword=f"word{i}",
+                    progress=i,
+                    is_excluded=excluded,
+                    example_en=f"Example word{i}.",
+                    translations=[
+                        WordTranslation(
+                            position=0, text=f"перевод{i}", normalized_text=f"перевод{i}"
+                        )
+                    ],
+                )
+                for i in range(count)
+            ]
+        )
+        await db.commit()
+
+
+@pytest.mark.parametrize("invalid", [0, -1, 501, True, False, "3", 3.0, 3.5, None])
+async def test_size_rejects_invalid_json_types_and_bounds(alice: Client, invalid: Any) -> None:
+    response = await alice.post(
+        "/api/training/sessions", json={"mode": "input", "direction": "en_ru", "size": invalid}
+    )
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob: Client) -> None:
+    await seed(app, alice, 155)
+    await seed(app, bob, 4)
+    default = await alice.post("/api/training/sessions", json={"mode": "input"})
+    assert default.status_code == 201 and len(default.json()["items"]) == 10
+    for size in [1, 50, 75, 100, 125, 150, 500]:
+        response = await alice.post("/api/training/sessions", json={"mode": "input", "size": size})
+        assert response.status_code == 201
+        assert response.headers["cache-control"] == "no-store"
+        items = response.json()["items"]
+        assert len(items) == min(size, 155)
+        assert [item["prompt"] for item in items] == [f"word{i}" for i in range(min(size, 155))]
+        assert len({item["id"] for item in items}) == len(items)
+    response = await bob.post("/api/training/sessions", json={"mode": "input", "size": 500})
+    assert response.status_code == 201 and len(response.json()["items"]) == 4
+    del alice.headers["X-CSRF-Token"]
+    response = await alice.post("/api/training/sessions", json={"mode": "input", "size": 500})
+    assert response.status_code == 403 and response.headers["cache-control"] == "no-store"
+
+
+async def test_500_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bob: Client) -> None:
+    await seed(app, alice, 500)
+    await seed(app, bob, 2)
+    for mode, direction in [
+        ("input", "en_ru"),
+        ("input", "ru_en"),
+        ("cards", "en_ru"),
+        ("cards", "ru_en"),
+        ("choice", "en_ru"),
+        ("choice", "ru_en"),
+        ("cloze", "en_en"),
+    ]:
+        response = await alice.post(
+            "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 500}
+        )
+        assert response.status_code == 201, (mode, direction, response.text)
+        items = response.json()["items"]
+        assert len(items) == 500
+        assert len({item["id"] for item in items}) == 500
+        database: Database = app.state.db
+        async with database.sessions() as db:
+            word_ids = list(
+                await db.scalars(
+                    select(TrainingItem.word_id).where(
+                        TrainingItem.session_id == response.json()["id"]
+                    )
+                )
+            )
+        assert len(word_ids) == len(set(word_ids)) == 500
+        if mode != "cloze":
+            assert len({item["prompt"] for item in items}) == 500
+        assert all(set(item) == {"id", "prompt", "options"} for item in items)
+        assert all(len(item["options"]) == (4 if mode == "choice" else 0) for item in items)
+
+
+async def test_excluded_and_ineligible_pools_remain_unavailable(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
+    await seed(app, alice, 3, excluded=True)
+    await seed(app, bob, 5)
+    for mode, direction, detail in [
+        ("input", "en_ru", "not_enough_words"),
+        ("cards", "ru_en", "not_enough_words"),
+        ("choice", "en_ru", "not_enough_words"),
+        ("cloze", "en_en", "no_eligible_cloze_examples"),
+    ]:
+        response = await alice.post(
+            "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 500}
+        )
+        assert response.status_code == 409
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json()["detail"] == detail
+
+
+async def test_partial_cloze_pool_skips_ineligible_and_excluded(
+    app: FastAPI, alice: Client
+) -> None:
+    await seed(app, alice, 7)
+    owner = (await alice.get("/api/auth/me")).json()["user"]["id"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        words = list(await db.scalars(select(Word).where(Word.owner_id == owner)))
+        words[0].example_en = "No match in the example."
+        words[1].is_excluded = True
+        await db.commit()
+    response = await alice.post(
+        "/api/training/sessions", json={"mode": "cloze", "direction": "en_en", "size": 500}
+    )
+    assert response.status_code == 201
+    items = response.json()["items"]
+    assert len(items) == 5
+    assert len({item["prompt"] for item in items}) == 1  # only the common masked example is public
+    assert len({item["id"] for item in items}) == 5
