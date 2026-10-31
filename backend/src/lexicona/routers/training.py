@@ -30,7 +30,7 @@ _rng = random.SystemRandom()
 class SessionIn(BaseModel):
     mode: Literal["choice", "input", "cards", "cloze"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
-    size: Annotated[int, Field(ge=1, le=500, strict=True)] | Literal["all"] = 10
+    size: Annotated[int, Field(ge=1, strict=True)] | Literal["all"] = 10
     tag_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=32, strict=True)]] = (
         Field(default_factory=list, max_length=20)
     )

@@ -104,7 +104,8 @@ it.each(['Добавить слово', 'Изменить «cat»'])('%s отм�
     </QueryClientProvider>,
   )
   await user.click(await screen.findByRole('button', { name: 'Произнести EN «cat»' }))
-  expect(screen.getByText('Ожидание голосов…')).toBeInTheDocument()
+  expect(engine.speak).not.toHaveBeenCalled()
+  expect(screen.queryByText('Ожидание голосов…')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: action }))
   voices = [voice]
   act(() => changed())

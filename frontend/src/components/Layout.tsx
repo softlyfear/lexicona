@@ -30,7 +30,9 @@ export function Layout({ user }: { user: User }) {
     <>
       <header className={css.header}>
         <div className={css.bar}>
-          <span className={css.brand}>Lexicona</span>
+          <NavLink to="/" className={css.brand}>
+            Lexicona
+          </NavLink>
           <nav className={css.nav} aria-label="Разделы">
             {LINKS.map(({ to, label }) => (
               <NavLink

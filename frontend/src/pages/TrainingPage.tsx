@@ -11,7 +11,7 @@ import {
   type TrainingSession,
   type TrainingSize,
 } from '../api'
-import { SpeakButton, SpeechStatus } from '../components/ui'
+import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
 import css from './pages.module.css'
@@ -91,7 +91,7 @@ function Setup({
   const validBounds =
     min !== undefined && max !== undefined && (min === null || max === null || min <= max)
   const size = Number(sizeText)
-  const validSize = /^\d+$/u.test(sizeText) && Number.isInteger(size) && size >= 1 && size <= 500
+  const validSize = /^\d+$/u.test(sizeText) && Number.isSafeInteger(size) && size >= 1
   const starting = useRef(false)
   const startScope = useRef(0)
   const start = useMutation({
@@ -198,14 +198,12 @@ function Setup({
             id="training-size-hint"
             className={sizeMode === 'all' || validSize ? ui.muted : ui.error}
           >
-            Введите целое число от 1 до 500.
+            Введите положительное целое число.
           </p>
         </fieldset>
         <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Фильтры слов</legend>
-          <p className={ui.muted}>
-            Теги: все выбранные, до 20. Прогресс включительно; пустая граница не ограничивает выбор.
-          </p>
+          <p className={ui.muted}>Можно выбрать теги для занятия</p>
           {tags.isLoading && (
             <p role="status" className={ui.muted}>
               Загружаем теги…
@@ -233,6 +231,7 @@ function Setup({
               </label>
             ))}
           </div>
+          <p className={ui.muted}>Можно указать диапазон выученности</p>
           <div className={css.trainingBounds}>
             <label className={ui.field}>
               <span className={ui.label}>Прогресс от, %</span>
@@ -260,8 +259,7 @@ function Setup({
             </label>
           </div>
           <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
-            Введите целые неотрицательные числа, которые можно точно представить; верхняя граница не
-            меньше нижней.
+            {validBounds ? '' : 'Введите неотрицательные целые числа: от меньшего к большему.'}
           </p>
           <div>
             <button
@@ -278,11 +276,6 @@ function Setup({
           </div>
         </fieldset>
         <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
-        {mode === 'choice' && (
-          <p className={ui.muted}>
-            Вопросы — по фильтру; варианты ответа — из всего активного словаря.
-          </p>
-        )}
         {mode === 'cloze' && (
           <p className={ui.muted}>
             Подходят английские примеры, где слово или выражение встречается ровно один раз целиком.
@@ -510,7 +503,6 @@ function Run({
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
       </div>
-      <SpeechStatus />
       {session.mode === 'choice' && (
         <div className={css.options} role="group" aria-label="Варианты ответа">
           {item.options.map((option, i) => {

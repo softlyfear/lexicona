@@ -10,7 +10,7 @@ import {
   type WordTrainingFilter,
 } from '../api'
 import { WordForm } from '../components/WordForm'
-import { ProgressBar, SpeakButton, SpeechStatus } from '../components/ui'
+import { ProgressBar, SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
@@ -149,7 +149,6 @@ export function WordsPage() {
         )}
       </div>
 
-      <SpeechStatus />
       <div className={css.filters}>
         <label className={`${ui.field} ${css.sort}`}>
           <span className={ui.label}>Сортировка</span>

@@ -34,7 +34,7 @@ async def seed(app: FastAPI, client: Client, count: int, *, excluded: bool = Fal
         await db.commit()
 
 
-@pytest.mark.parametrize("invalid", [0, -1, 501, True, False, "3", 3.0, 3.5, None])
+@pytest.mark.parametrize("invalid", [0, -1, True, False, "3", "ALL", 3.0, 3.5, None])
 async def test_size_rejects_invalid_json_types_and_bounds(alice: Client, invalid: Any) -> None:
     response = await alice.post(
         "/api/training/sessions", json={"mode": "input", "direction": "en_ru", "size": invalid}
@@ -48,7 +48,7 @@ async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob
     await seed(app, bob, 4)
     default = await alice.post("/api/training/sessions", json={"mode": "input"})
     assert default.status_code == 201 and len(default.json()["items"]) == 10
-    for size in [1, 50, 75, 100, 125, 150, 500]:
+    for size in [1, 50, 75, 100, 125, 150, 500, 501, 10**12]:
         response = await alice.post("/api/training/sessions", json={"mode": "input", "size": size})
         assert response.status_code == 201
         assert response.headers["cache-control"] == "no-store"
@@ -56,7 +56,7 @@ async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob
         assert len(items) == min(size, 155)
         assert {item["prompt"] for item in items} <= {f"word{i}" for i in range(155)}
         assert len({item["id"] for item in items}) == len(items)
-    response = await bob.post("/api/training/sessions", json={"mode": "input", "size": 500})
+    response = await bob.post("/api/training/sessions", json={"mode": "input", "size": 10**12})
     assert response.status_code == 201 and len(response.json()["items"]) == 4
     del alice.headers["X-CSRF-Token"]
     response = await alice.post("/api/training/sessions", json={"mode": "input", "size": 500})
@@ -66,6 +66,10 @@ async def test_default_presets_and_partial_pool(app: FastAPI, alice: Client, bob
 async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bob: Client) -> None:
     await seed(app, alice, 501)
     await seed(app, bob, 2)
+    numeric = await alice.post("/api/training/sessions", json={"mode": "input", "size": 501})
+    assert numeric.status_code == 201
+    numeric_items = numeric.json()["items"]
+    assert len(numeric_items) == len({item["prompt"] for item in numeric_items}) == 501
     for mode, direction in [
         ("input", "en_ru"),
         ("input", "ru_en"),

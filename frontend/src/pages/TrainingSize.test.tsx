@@ -60,7 +60,7 @@ describe('размер занятия', () => {
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
   })
 
-  it.each(['', '0', '501', '1.5', '-1', '3.0', 'abc'])(
+  it.each(['', '0', '9007199254740992', '1.5', '-1', '3.0', 'abc'])(
     'не запускает при недопустимом размере "%s"',
     async (value) => {
       const user = userEvent.setup()
@@ -69,14 +69,14 @@ describe('размер занятия', () => {
       await user.clear(input)
       if (value) await user.type(input, value)
       expect(input).toHaveAttribute('aria-invalid', 'true')
-      expect(input).toHaveAccessibleDescription('Введите целое число от 1 до 500.')
+      expect(input).toHaveAccessibleDescription('Введите положительное целое число.')
       expect(screen.getByRole('button', { name: 'Начать' })).toBeDisabled()
       await user.type(input, '{Enter}')
       expect(api.startTraining).not.toHaveBeenCalled()
     },
   )
 
-  it.each([1, 500])('принимает границу %i и отправляет её числом по Enter', async (n) => {
+  it.each([1, 501])('принимает размер %i и отправляет его числом по Enter', async (n) => {
     const user = userEvent.setup()
     renderPage()
     const input = screen.getByRole('textbox', { name: 'Своё число слов' })
@@ -85,7 +85,7 @@ describe('размер занятия', () => {
     expect(api.startTraining).toHaveBeenCalledWith('en_ru', n)
     expect(await screen.findByText('кот')).toBeInTheDocument()
     if (n === 1) expect(screen.queryByText(/Доступно .* запрошенных слов/)).not.toBeInTheDocument()
-    else expect(screen.getByText('Доступно 1 из 500 запрошенных слов')).toBeInTheDocument()
+    else expect(screen.getByText(`Доступно 1 из ${n} запрошенных слов`)).toBeInTheDocument()
   })
 
   it('ошибка сохраняет настройки; pending блокирует изменения и повторный старт', async () => {

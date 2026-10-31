@@ -45,7 +45,6 @@ describe('фильтры тренировки', () => {
     await user.click(screen.getByLabelText('Работа'))
     await user.type(screen.getByLabelText('Прогресс от, %'), '100')
     await user.type(screen.getByLabelText('Прогресс до, %'), '158')
-    expect(screen.getByText(/Вопросы — по фильтру/)).toBeInTheDocument()
     expect(screen.getByText(/случайном порядке/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(api.startTraining).toHaveBeenCalledWith('en_ru', 'all', 'choice', {
@@ -97,7 +96,7 @@ describe('фильтры тренировки', () => {
     renderPage()
     const size = screen.getByRole('textbox', { name: 'Своё число слов' })
     await user.clear(size)
-    await user.type(size, '501')
+    await user.type(size, '0')
     await user.click(screen.getByLabelText('Все подходящие слова'))
     const max = screen.getByLabelText('Прогресс до, %')
     await user.type(max, '9007199254740992')
