@@ -54,6 +54,21 @@ describe('api', () => {
     expect(new URL(defaultPath, 'http://test').searchParams.get('training')).toBe('active')
   })
 
+  it('sends dictionary lookup in the POST body with CSRF, and notices by GET', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, {})
+    await api.lookupDictionary('private word')
+    await api.dictionaryNotices()
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/dictionary/lookup')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(init.body).toBe(JSON.stringify({ headword: 'private word' }))
+    const [noticesPath, noticesInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
+    expect(noticesPath).toBe('/api/dictionary/notices')
+    expect(noticesInit.method).toBe('GET')
+  })
+
   it('updates word training state with CSRF and strict boolean body', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { id: 'word', is_excluded: true })

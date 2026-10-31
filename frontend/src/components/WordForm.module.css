@@ -1,0 +1,22 @@
+.dictionary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dictionaryButton {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.noticeText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -105,7 +105,7 @@ def test_tags_upgrade_and_guarded_downgrade(tmp_path: Path) -> None:
             "SELECT * FROM training_items",
         )
         before = [conn.execute(query).fetchall() for query in queries]
-    command.upgrade(config, "head")
+    command.upgrade(config, "a71b3c9d8201")
     with sqlite3.connect(path) as conn:
         assert [conn.execute(query).fetchall() for query in queries] == before
         assert conn.execute("SELECT * FROM tags").fetchall() == []
@@ -126,3 +126,49 @@ def test_tags_upgrade_and_guarded_downgrade(tmp_path: Path) -> None:
         conn.execute("DELETE FROM word_tags")
         conn.execute("DELETE FROM tags")
     command.downgrade(config, "d90b58c2a113")
+
+
+def test_source_refs_migration_refuses_data_loss(tmp_path: Path) -> None:
+    import json
+    import sqlite3
+
+    path = tmp_path / "refs.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "a71b3c9d8201")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'a', 'h', 0, 'medium', '2020-01-01')"
+        )
+        db.execute(
+            "INSERT INTO words (id, owner_id, headword, normalized_headword, progress, "
+            "is_excluded, training_version, content_version, created_at, updated_at) "
+            "VALUES ('w', 'u', 'cat', 'cat', 12, 0, 1, 2, '2020-01-01', '2020-01-01')"
+        )
+    command.upgrade(config, "head")
+    ref = [
+        {
+            "source_id": "freedict-wikdict-eng-rus-2025.11.23",
+            "entry_id": 1,
+            "field": "translation",
+            "value": "кот",
+        }
+    ]
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT headword, progress, content_version, source_refs FROM words"
+        ).fetchone() == ("cat", 12, 2, None)
+        db.execute("UPDATE words SET source_refs = ?", (json.dumps(ref),))
+    with pytest.raises(RuntimeError, match="source refs"):
+        command.downgrade(config, "a71b3c9d8201")
+    with sqlite3.connect(path) as db:
+        assert json.loads(db.execute("SELECT source_refs FROM words").fetchone()[0]) == ref
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+        db.execute("UPDATE words SET source_refs = '[]'")
+    command.downgrade(config, "a71b3c9d8201")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT headword, progress, content_version FROM words").fetchone() == (
+            "cat",
+            12,
+            2,
+        )

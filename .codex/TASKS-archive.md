@@ -462,6 +462,97 @@
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
 
+## WORDS-004 — локальные подсказки переводов и IPA в редакторе
+
+Статус: done. Попытка: 1. План и приёмка — оркестратор.
+Цель: при добавлении/редактировании слова предложить реальные RU-переводы и IPA,
+сохранив ручной ввод, явный выбор и происхождение заимствованных данных.
+Источник выбран ранее: FreeDict+WikDict eng-rus2025.11.23, CC-BY-SA3.0 Unported.
+Прочитать .local/research/translation-source-selection.json и source-report.snapshot.md.
+
+AC:
+1. Реальный отдельный read-only SQLite индекс из закреплённого source archive,
+   не из личной БД. CLI build принимает pinned archive или скачивает только фиксированный
+   public URL, проверяет SHA256 до разбора, ограничивает download/archive/XML/rows/fields,
+   не извлекает произвольные пути/ссылки, не исполняет код и не читает внешние DTD/entities.
+   Atomic replace готового проверенного индекса; повреждение не уничтожает прежний.
+2. Локальный POST /api/dictionary/lookup {headword:string1..200} с auth/CSRF/no-store;
+   слово в body, без raw-word logs/внешних API/browser storage. Ответ source metadata+
+   matches (entry_id,headword,part_of_speech,translations,transcriptions,match exact/normalized).
+   Точное написание перед normalized fallback, далее исходный ordinal/sense; Apple/apple
+   проверяются отдельно. Нет fuzzy/автогенерации/обещания популярности или US-IPA.
+   Ответ ограничен; нет результата —200 matches[], индекс недоступен —503
+   dictionary_unavailable, без утечки пути/SQL/персональных данных.
+3. WordForm: явная кнопка запроса, loading/empty/error/retry, варианты сгруппированы
+   по найденному слову/части речи. Перевод добавляется к ручным, нормализованные дубли
+   не добавляются, максимум10. Выбор IPA явный и не приписывает вариантам акцент.
+   До выбора/при сбое поля сохраняются; headword change/new query/account revision/
+   unmount не дают позднему ответу менять новый draft. Manual save работает без индекса.
+4. Данные CC-BY-SA отделены от MIT кода/личных ручных записей. Индекс сохраняет raw
+   teiHeader/COPYING, pinned source/checksum/credits/URL/license и описание преобразований.
+   Source notices доступны из UI (локальный endpoint notices + canonical/source links).
+   Не перемаркировать3.0 на4.0 и не делать весь личный словарь ShareAlike по умолчанию.
+5. Выбранные source values получают source_refs в Word: source_id, entry_id,
+   field (translation|transcription), value. Это bounded owner-supplied provenance,
+   не доказательство правильности/прав. Нужна additive Alembic JSON nullable column;
+   WordOut отдаёт [], старый PUT без refs сохраняет surviving refs, [] снимает refs.
+   Сохраняются только refs значений, оставшихся в соответствующих полях; без дублей.
+   Источник/его license фиксированы, refs не принимают произвольные URL/license.
+   Чужие refs/слова не читаются/не меняются; косметические refs не сбрасывают progress,
+   смысловой перевод проходит существующее подтверждение reset. Будущий экспорт
+   должен переносить refs и source notices; сам импорт/экспорт вне этого тикета.
+6. Реальная сборка pinned индекса, smoke lookup/IPA/empty/Apple, UI explicit selection/
+   drafts/race/account/duplicates/max10, owner/CSRF/no-store, migrations/FK и reset tests.
+   Зафиксировать фактические размер/время индекса и lookup latency без обещания SLA.
+   Один итоговый make check, независимый review, root acceptance/commit/manual refresh.
+
+API contract: POST /dictionary/lookup body headword; ответ {source,matches} с limit20
+entries и bounded translation/IPA lists. source содержит id/title/edition/license/license_url/
+source_url/credits; fixed id freedict-wikdict-eng-rus-2025.11.23. GET /dictionary/notices
+с auth/no-store отдаёт source manifest, raw COPYING/header/transformations без личных данных.
+source_refs: [{source_id:fixed literal,entry_id:positive int,field:translation|transcription,
+value:string}] <=20, без произвольных URI; API проверяет типы/соответствие текущим values.
+Omitted PUT сохраняет surviving refs, источник не нужен для ручного сохранения/ref updates.
+Frontend Word/WordInput допускают отсутствие source_refs для совместимости.
+Runtime dictionary_path через Settings, default data/dictionaries/eng-rus-2025.11.23.sqlite3;
+Docker получает индекс отдельно от /data пользовательской БД. Не коммитить compiled data.
+
+Владельцы: backend-agent — backend/src/**, migrations/**, tests/**, backend metadata/lock
+при необходимости. Сначала подтвердить bounded parser/response/ref contract root, затем
+реализовать backend+CLI+tests. Frontend-agent — frontend/src/** после подтверждения API,
+единственный владелец итогового gate после всех частей. Root — README/PROJECT/TASKS,
+Dockerfile/Makefile/.env.example при необходимости, source/runtime/browser smoke и Git.
+Чужое не отменять; общие файлы не менять параллельно; Git/деплой только root.
+Без отдельного tests-agent. Конкретное архитектурное замечание решать с root по контракту.
+Source cached /tmp/lexicona-eng-rus-2025.11.23.tar.xz, SHA256 подтверждён root:
+f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39 (3948540 bytes).
+Raw TEI36394784 bytes, header62181 headwords; внешняя DTD есть в preamble, не загружать.
+Root прочитал canonical CC3.0 legalcode и FreeDict downloads; licenses в source именно3.0.
+Результат реализации: backend целевые20 passed; frontend целевые34 passed.
+Итоговый gate после всех code/tests/CSS — make check exit 0, tooling12/backend284/
+frontend119 (17 файлов), формат/lint/mypy/types/build прошли; diff --check чистый.
+Прежний прогон поймал формат теста; после его исправления прошёл, затем browser нашёл
+mobile notices overflow. CSS исправлен; первый gate после CSS прерван внешним SIGTERM
+exit143 (причина не установлена), повтор полностью прошёл. Эти результаты не скрывать.
+Root real pinned build: 62181 entry,8695808 bytes; CLI2.29с, peakRSS476852KiB (one-time).
+500 локальных lookup вызовов: median0.182мс,p950.233мс,max0.386мс, без утверждения SLA/API.
+Root Chrome156 browser — PASS: реальные RU/IPA, explicit append/manual draft/dups,
+notices/COPYING, сохранение2 refs и reopen, empty/503/manual save, mobile390 без
+overflow/pageerror. Ранние ошибки harness (textarea label/edit action name) исправлены,
+они не были дефектами продукта. Root просмотрел mobile screenshot; CSS fix подтверждён.
+Финальная Docker сборка ecf6d7376ecf — PASS. Изолированный smoke с --network none
+и временным /data: uid10001 читает readonly индекс/IPA/notices, миграции доc83917f0d52a,
+source_refs есть, uvicorn health и SPA/training — PASS; процесс/контейнер завершены.
+Независимый review_next — Ship, полный diff20 файлов/мобильный screenshot проверены,
+блокирующих замечаний нет; использован подтверждённый gate без повторного прогона.
+Приёмка оркестратором: ПРИНЯТО, AC1–6 выполнены. Source/derived data остаютсяCC-BY-SA3.0,
+refs/notices нужны будущему экспорту; не объявлять исходное исследование юридической
+гарантией всех прав/качества. После архива/коммита и обновления manual app — пауза
+по последнему указанию пользователя; новые тикеты и аудит полного MVP отложены.
+
+- Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
+- Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
 ## TRAIN-005 — всегда шесть вариантов в новых choice-занятиях
 
 Статус: done. Попытка: 1. План и приёмка — оркестратор.

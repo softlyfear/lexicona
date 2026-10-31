@@ -1,8 +1,11 @@
-.PHONY: install fmt check check-backend check-frontend check-tooling codex-models codex
+.PHONY: install dictionary fmt check check-backend check-frontend check-tooling codex-models codex
 
 install:
 	cd backend && uv sync --locked
 	cd frontend && npm ci
+
+dictionary:
+	cd backend && uv run --locked python -m lexicona.dictionary build
 
 fmt:
 	cd backend && uv run --locked ruff check --fix ../.codex/hooks ../tests ../scripts && uv run --locked ruff format ../.codex/hooks ../tests ../scripts

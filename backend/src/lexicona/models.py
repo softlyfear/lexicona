@@ -62,6 +62,7 @@ class Word(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     headword: Mapped[str] = mapped_column(String(200))
     normalized_headword: Mapped[str] = mapped_column(String(200), index=True)
+    source_refs: Mapped[list[dict[str, object]] | None] = mapped_column(JSON, nullable=True)
     transcription: Mapped[str | None] = mapped_column(String(300))
     example_en: Mapped[str | None] = mapped_column(Text)
     example_ru: Mapped[str | None] = mapped_column(Text)

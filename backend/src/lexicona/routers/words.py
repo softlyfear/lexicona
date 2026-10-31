@@ -1,5 +1,6 @@
+import unicodedata
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import (
@@ -10,6 +11,7 @@ from pydantic import (
     StrictBool,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +38,18 @@ WordSort = Literal[
 ]
 
 
+class SourceRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: Literal["freedict-wikdict-eng-rus-2025.11.23"]
+    entry_id: Annotated[int, Field(strict=True, gt=0)]
+    field: Literal["translation", "transcription"]
+    value: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+
+
+def ref_key(value: str) -> str:
+    return unicodedata.normalize("NFC", value.strip())
+
+
 class WordIn(BaseModel):
     headword: Text200
     translations: list[Text200] = Field(min_length=1, max_length=10)
@@ -44,6 +58,22 @@ class WordIn(BaseModel):
     example_ru: Annotated[Text2000 | None, Blank] = None
     note: Annotated[Text4000 | None, Blank] = None
     tags: list[str] = Field(default_factory=list, max_length=20)
+    source_refs: list[SourceRef] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def valid_refs(self) -> Self:
+        allowed = {ref_key(value) for value in self.translations}
+        transcription = ref_key(self.transcription) if self.transcription else None
+        if any(
+            (
+                ref_key(ref.value) not in allowed
+                if ref.field == "translation"
+                else ref_key(ref.value) != transcription
+            )
+            for ref in self.source_refs
+        ):
+            raise ValueError("source refs must match current field values")
+        return self
 
     @field_validator("tags")
     @classmethod
@@ -67,6 +97,7 @@ class WordOut(BaseModel):
     id: str
     tags: list[TagOut]
     headword: str
+    source_refs: list[SourceRef]
     translations: list[str]
     transcription: str | None
     example_en: str | None
@@ -83,6 +114,7 @@ class WordOut(BaseModel):
             id=word.id,
             tags=tags,
             headword=word.headword,
+            source_refs=word.source_refs or [],
             translations=[t.text for t in word.translations],
             transcription=word.transcription,
             example_en=word.example_en,
@@ -109,6 +141,21 @@ def _fill(word: Word, body: WordIn) -> None:
     word.example_en = body.example_en
     word.example_ru = body.example_ru
     word.note = body.note
+    candidates = (
+        [ref.model_dump() for ref in body.source_refs]
+        if "source_refs" in body.model_fields_set
+        else (word.source_refs or [])
+    )
+    translations = {ref_key(value) for value in body.translations}
+    transcription = ref_key(body.transcription) if body.transcription else None
+    surviving: list[dict[str, object]] = []
+    for ref in candidates:
+        value = ref_key(str(ref["value"]))
+        if (
+            value in translations if ref["field"] == "translation" else value == transcription
+        ) and ref not in surviving:
+            surviving.append(ref)
+    word.source_refs = surviving or None
     # Update rows in place: replacing them would clash on the (word_id, position) key.
     rows = word.translations
     for position, text in enumerate(body.translations):

@@ -1,8 +1,27 @@
-import { useState, type FormEvent } from 'react'
-import type { Tag, Word, WordInput } from '../api'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  api,
+  ApiError,
+  type DictionaryLookup,
+  type DictionaryNotices,
+  type SourceRef,
+  type Tag,
+  type Word,
+  type WordInput,
+} from '../api'
+import { forgetSession, getSessionRevision } from '../session'
 import { normalizeTagName, parseTranslations, tagKey } from '../words'
 import css from '../pages/pages.module.css'
 import ui from './ui.module.css'
+import formCss from './WordForm.module.css'
+
+const sourceId = 'freedict-wikdict-eng-rus-2025.11.23' as const
+const translationKey = (value: string) =>
+  tagKey(value)
+    .replaceAll('ё', 'е')
+    .replace(/[’‘ʼ`]/g, "'")
+    .replace(/(?<!\.)\.$/, '')
+    .trimEnd()
 
 const optional = (value: string) => value.trim() || null
 
@@ -37,6 +56,88 @@ export function WordForm({
   const [tags, setTags] = useState<string[]>(word?.tags.map((tag) => tag.name) ?? [])
   const [tagInput, setTagInput] = useState('')
   const [tagError, setTagError] = useState<string | null>(null)
+  const [refs, setRefs] = useState<SourceRef[]>(word?.source_refs ?? [])
+  const [lookup, setLookup] = useState<DictionaryLookup | null>(null)
+  const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [choiceError, setChoiceError] = useState<string | null>(null)
+  const [notices, setNotices] = useState<DictionaryNotices | null>(null)
+  const [noticesState, setNoticesState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const requestId = useRef(0)
+  const noticeId = useRef(0)
+  const revision = useRef(getSessionRevision())
+  useEffect(
+    () => () => {
+      requestId.current++
+      noticeId.current++
+    },
+    [],
+  )
+
+  async function findSuggestions() {
+    const id = ++requestId.current
+    const currentRevision = getSessionRevision()
+    revision.current = currentRevision
+    setLookup(null)
+    setChoiceError(null)
+    setLookupState('loading')
+    try {
+      const result = await api.lookupDictionary(headword.trim())
+      if (id !== requestId.current || currentRevision !== getSessionRevision()) return
+      setLookup(result)
+      setLookupState('idle')
+    } catch (error) {
+      if (id !== requestId.current || currentRevision !== getSessionRevision()) return
+      if (error instanceof ApiError && error.status === 401) {
+        forgetSession()
+        return
+      }
+      setLookupState('error')
+    }
+  }
+
+  async function loadNotices() {
+    const id = ++noticeId.current
+    const currentRevision = getSessionRevision()
+    setNoticesState('loading')
+    try {
+      const result = await api.dictionaryNotices()
+      if (id !== noticeId.current || currentRevision !== getSessionRevision()) return
+      setNotices(result)
+      setNoticesState('idle')
+    } catch (error) {
+      if (id !== noticeId.current || currentRevision !== getSessionRevision()) return
+      if (error instanceof ApiError && error.status === 401) {
+        forgetSession()
+        return
+      }
+      setNoticesState('error')
+    }
+  }
+
+  function choose(field: SourceRef['field'], value: string, entryId: number) {
+    if (revision.current !== getSessionRevision()) return
+    if (field === 'translation') {
+      const current = parseTranslations(translations)
+      if (current.some((item) => translationKey(item) === translationKey(value))) {
+        setChoiceError('Такой перевод уже добавлен.')
+        return
+      }
+      if (current.length >= 10) {
+        setChoiceError('Можно добавить не больше 10 переводов.')
+        return
+      }
+      setTranslations([...current, value].join('\n'))
+    } else {
+      setTranscription(value)
+    }
+    setChoiceError(null)
+    setRefs((current) =>
+      [
+        ...current.filter((ref) => field !== 'transcription' || ref.field !== field),
+        { source_id: sourceId, entry_id: entryId, field, value },
+      ].slice(0, 20),
+    )
+  }
 
   function addTag(raw: string) {
     const name = normalizeTagName(raw)
@@ -78,6 +179,11 @@ export function WordForm({
       example_ru: optional(exampleRu),
       note: optional(note),
       tags,
+      source_refs: refs.filter((ref) =>
+        ref.field === 'translation'
+          ? parsed.includes(ref.value)
+          : optional(transcription) === ref.value,
+      ),
     })
   }
 
@@ -90,7 +196,13 @@ export function WordForm({
           <input
             className={ui.input}
             value={headword}
-            onChange={(e) => setHeadword(e.target.value)}
+            onChange={(e) => {
+              requestId.current++
+              setHeadword(e.target.value)
+              setLookup(null)
+              setLookupState('idle')
+              setChoiceError(null)
+            }}
             maxLength={200}
             lang="en"
             autoCapitalize="none"
@@ -103,17 +215,133 @@ export function WordForm({
           <input
             className={ui.input}
             value={transcription}
-            onChange={(e) => setTranscription(e.target.value)}
+            onChange={(e) => {
+              setTranscription(e.target.value)
+              setRefs((current) =>
+                current.filter(
+                  (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
+                ),
+              )
+            }}
             maxLength={300}
           />
         </label>
+      </div>
+      <div className={formCss.dictionary}>
+        <button
+          type="button"
+          className={`${ui.button} ${formCss.dictionaryButton}`}
+          disabled={!headword.trim() || lookupState === 'loading'}
+          onClick={findSuggestions}
+        >
+          Подобрать перевод и транскрипцию
+        </button>
+        {lookupState === 'loading' && <p role="status">Ищем в словаре…</p>}
+        {lookupState === 'error' && (
+          <p role="alert">Словарь недоступен. Попробуйте ещё раз или введите данные вручную.</p>
+        )}
+        {lookup && lookup.matches.length === 0 && (
+          <p role="status">Варианты не найдены. Можно ввести данные вручную.</p>
+        )}
+        {lookup && lookup.matches.length > 0 && (
+          <div>
+            <p>Варианты из словаря. Порядок источника, не статистика популярности.</p>
+            {lookup.matches.map((match) => (
+              <section
+                key={match.entry_id}
+                aria-label={`${match.headword}${match.part_of_speech ? `, ${match.part_of_speech}` : ''}`}
+              >
+                <p>
+                  <strong>{match.headword}</strong>
+                  {match.part_of_speech && ` — ${match.part_of_speech}`}
+                  {match.match === 'normalized' && ' (нормализованное совпадение)'}
+                </p>
+                <div className={formCss.choices}>
+                  {match.translations.map((value) => (
+                    <button
+                      type="button"
+                      className={`${ui.button} ${formCss.dictionaryButton}`}
+                      key={value}
+                      onClick={() => choose('translation', value, match.entry_id)}
+                    >
+                      Добавить перевод «{value}»
+                    </button>
+                  ))}
+                  {match.transcriptions.map((value) => (
+                    <button
+                      type="button"
+                      className={`${ui.button} ${formCss.dictionaryButton}`}
+                      key={value}
+                      onClick={() => choose('transcription', value, match.entry_id)}
+                    >
+                      {transcription.trim() ? 'Заменить транскрипцию на' : 'Выбрать транскрипцию'} «
+                      {value}»
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+        {choiceError && (
+          <p role="alert" className={ui.error}>
+            {choiceError}
+          </p>
+        )}
+        {(lookup || refs.length > 0) && (
+          <div>
+            <p>
+              Источник: FreeDict+WikDict eng-rus 2025.11.23; Karl Bartel; WikDict; Wiktionary.org
+              через DBnary; FreeDict. Лицензия CC BY-SA 3.0 Unported.
+            </p>
+            <button
+              type="button"
+              className={`${ui.button} ${formCss.dictionaryButton}`}
+              onClick={loadNotices}
+              disabled={noticesState === 'loading'}
+            >
+              Сведения об источнике и лицензии
+            </button>
+            {noticesState === 'loading' && <p role="status">Загружаем сведения…</p>}
+            {noticesState === 'error' && (
+              <p role="alert">Не удалось загрузить сведения. Попробуйте ещё раз.</p>
+            )}
+            {notices && (
+              <div>
+                <p>
+                  {notices.source.title} — {notices.source.credits}
+                </p>
+                <p>
+                  <a href={notices.source.source_url}>Исходный архив</a> ·{' '}
+                  <a href={notices.source.license_url}>Лицензия CC BY-SA 3.0</a>
+                </p>
+                <p>SHA256: {notices.sha256}</p>
+                <p>{notices.transformations.join(' ')}</p>
+                <details>
+                  <summary>Текст COPYING</summary>
+                  <pre className={formCss.noticeText}>{notices.copying}</pre>
+                </details>
+                <details>
+                  <summary>Заголовок TEI</summary>
+                  <pre className={formCss.noticeText}>{notices.tei_header}</pre>
+                </details>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <label className={ui.field}>
         <span className={ui.label}>Переводы — по одному в строке, первый основной</span>
         <textarea
           className={ui.input}
           value={translations}
-          onChange={(e) => setTranslations(e.target.value)}
+          onChange={(e) => {
+            setTranslations(e.target.value)
+            const values = parseTranslations(e.target.value)
+            setRefs((current) =>
+              current.filter((ref) => ref.field !== 'translation' || values.includes(ref.value)),
+            )
+          }}
           rows={3}
           lang="ru"
           required

@@ -29,6 +29,44 @@ export interface Session {
   csrf_token: string
 }
 
+export interface SourceRef {
+  source_id: 'freedict-wikdict-eng-rus-2025.11.23'
+  entry_id: number
+  field: 'translation' | 'transcription'
+  value: string
+}
+
+export interface DictionarySource {
+  id: SourceRef['source_id']
+  title: string
+  edition: string
+  license: string
+  license_url: string
+  source_url: string
+  credits: string
+}
+
+export interface DictionaryMatch {
+  entry_id: number
+  headword: string
+  part_of_speech: string | null
+  translations: string[]
+  transcriptions: string[]
+  match: 'exact' | 'normalized'
+}
+
+export interface DictionaryLookup {
+  source: DictionarySource
+  matches: DictionaryMatch[]
+}
+export interface DictionaryNotices {
+  source: DictionarySource
+  sha256: string
+  copying: string
+  tei_header: string
+  transformations: string[]
+}
+
 export interface WordInput {
   headword: string
   translations: string[]
@@ -37,6 +75,7 @@ export interface WordInput {
   example_ru: string | null
   note: string | null
   tags?: string[]
+  source_refs?: SourceRef[]
 }
 
 export interface Tag {
@@ -222,6 +261,9 @@ export const api = {
     for (const id of tagIds) params.append('tag_id', id)
     return request<Word[]>('GET', `/words?${params}`)
   },
+  lookupDictionary: (headword: string) =>
+    request<DictionaryLookup>('POST', '/dictionary/lookup', { headword }),
+  dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),

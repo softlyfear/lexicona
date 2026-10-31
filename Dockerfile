@@ -16,11 +16,14 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY backend/ ./
 RUN uv sync --locked --no-dev
+RUN python -m lexicona.dictionary build --output /app/dictionaries/eng-rus-2025.11.23.sqlite3 \
+    && chmod 0444 /app/dictionaries/eng-rus-2025.11.23.sqlite3
 COPY --from=frontend /app/dist /app/static
 
 RUN useradd --system --uid 10001 lexicona && mkdir /data && chown lexicona /data
 USER lexicona
 ENV LEXICONA_DATABASE_URL=sqlite+aiosqlite:////data/lexicona.db \
+    LEXICONA_DICTIONARY_PATH=/app/dictionaries/eng-rus-2025.11.23.sqlite3 \
     LEXICONA_STATIC_DIR=/app/static \
     LEXICONA_COOKIE_SECURE=true
 VOLUME /data

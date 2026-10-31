@@ -28,6 +28,21 @@ cloze — masked EN. Ошибка/отказ не меняет обучение;
 Backend/схема прежние; voice localService и ограничения
 слышимости объясняются, fake/browser проверки отделяются от физических устройств.
 
+Подсказки RU/IPA используют отдельный read-only SQLite индекс pinned FreeDict+WikDict
+eng-rus2025.11.23 (CC-BY-SA3.0), вне пользовательской БД. CLI python -m lexicona.dictionary
+build проверяет SHA256, ограничивает archive/XML, отклоняет entities/чужие DTD и атомарно
+заменяет индекс. Runtime проверяет source manifest/SHA и закрывает каждое соединение.
+POST /dictionary/lookup принимает слово в body с auth/CSRF, не обращается к внешним
+сервисам и не записывает raw query в URL; exact case перед normalized/source ordinal.
+GET /dictionary/notices хранит raw COPYING/teiHeader/credits/transformations, API no-store.
+Word.source_refs — nullable JSON, migration c83917f0d52a additive; typed source_id/entry_id/
+field/value сохраняют происхождение выбранных значений. Omitted PUT сохраняет только
+ссылки на оставшиеся точные значения, [] очищает; index для manual save не нужен.
+Downgrade при непустых refs отказывается терять provenance. Редактор явно добавляет
+переводы/выбирает IPA, защищён от late responses; будущий экспорт переносит refs/notices.
+Данные индекса и выбранные производные значения не получают MIT лицензию кода;
+ручные записи не помечаются источником автоматически.
+
 Личные tags принадлежат owner и уникальны по NFC/casefold/схлопнутым пробелам,
 без подмены ё/е и пунктуации; до 20 тегов на слово, имя 1..80 code points.
 WordIn.tags содержит имена, WordOut.tags — id/name; PUT без tags сохраняет связи,
