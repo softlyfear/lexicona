@@ -99,7 +99,7 @@ async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
         if mode != "cloze":
             assert len({item["prompt"] for item in items}) == 501
         assert all(set(item) == {"id", "prompt", "options"} for item in items)
-        assert all(len(item["options"]) == (4 if mode == "choice" else 0) for item in items)
+        assert all(len(item["options"]) == (6 if mode == "choice" else 0) for item in items)
 
 
 async def test_excluded_and_ineligible_pools_remain_unavailable(

@@ -27,7 +27,13 @@ async def create_item(client: Client, mode: str, direction: str) -> dict[str, An
 
 async def seed(client: Client) -> dict[str, Any]:
     word = await add_word(client, "cat", "кот", "кошка")
-    for en, ru in [("dog", "собака"), ("cow", "корова"), ("fox", "лиса")]:
+    for en, ru in [
+        ("dog", "собака"),
+        ("cow", "корова"),
+        ("fox", "лиса"),
+        ("owl", "сова"),
+        ("wolf", "волк"),
+    ]:
         await add_word(client, en, ru)
     return cast(dict[str, Any], word)
 

@@ -25,6 +25,7 @@ function renderPage() {
 
 describe('TrainingPage', () => {
   beforeEach(() => {
+    vi.mocked(api.answer).mockReset()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
       mode: 'choice',
@@ -34,6 +35,49 @@ describe('TrainingPage', () => {
         { id: 'i2', prompt: 'dog', options: ['собака', 'кот', 'лиса', 'сова'] },
       ],
     })
+  })
+
+  it('uses keys 5 and 6 for six options and ignores repeated answers', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.startTraining).mockResolvedValue({
+      id: 's',
+      mode: 'choice',
+      direction: 'en_ru',
+      items: [
+        { id: 'i1', prompt: 'cat', options: ['один', 'два', 'три', 'четыре', 'пять', 'шесть'] },
+        { id: 'i2', prompt: 'dog', options: ['один', 'два', 'три', 'четыре', 'пять', 'шесть'] },
+      ],
+    })
+    vi.mocked(api.answer).mockImplementation(async (_id, option) => ({
+      outcome: 'answered',
+      correct: true,
+      correct_option: option,
+      chosen_option: option,
+      delta: 4,
+      progress: 4,
+    }))
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(await screen.findByRole('button', { name: /шесть/ })).toBeInTheDocument()
+    await user.keyboard('55')
+    expect(api.answer).toHaveBeenCalledTimes(1)
+    expect(api.answer).toHaveBeenCalledWith('i1', 4)
+    await screen.findByRole('status')
+    await user.keyboard('6')
+    expect(api.answer).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Далее' }))
+    await user.keyboard('6')
+    expect(api.answer).toHaveBeenLastCalledWith('i2', 5)
+    expect(api.answer).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores keys 5 and 6 for a saved four-option item', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await screen.findByText('cat')
+    await user.keyboard('56')
+    expect(api.answer).not.toHaveBeenCalled()
   })
 
   it('runs a session: answer, see feedback, finish with a score', async () => {
@@ -83,7 +127,9 @@ describe('TrainingPage', () => {
     vi.mocked(api.startTraining).mockRejectedValue(new ApiError(409, 'not_enough_words'))
     renderPage()
     await userEvent.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Нужно хотя бы 4 слова')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Нужно хотя бы 6 подходящих активных слов',
+    )
   })
 })
 

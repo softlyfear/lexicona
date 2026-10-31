@@ -211,7 +211,14 @@ async def test_card_cosmetic_edit_preserves_snapshot_and_score(app: FastAPI, ali
 
 
 async def test_choice_item_reveal_returns_choice_snapshot(alice: Client) -> None:
-    for en, ru in [("cat", "кот"), ("dog", "собака"), ("cow", "корова"), ("fox", "лиса")]:
+    for en, ru in [
+        ("cat", "кот"),
+        ("dog", "собака"),
+        ("cow", "корова"),
+        ("fox", "лиса"),
+        ("owl", "сова"),
+        ("wolf", "волк"),
+    ]:
         await add_word(alice, en, ru)
     session = await alice.post("/api/training/sessions", json={"mode": "choice"})
     item = session.json()["items"][0]

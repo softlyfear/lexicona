@@ -38,6 +38,8 @@ async def test_filters_choice_ownership_and_snapshot(
     await add_word(alice, "dog", "собака", tags=["animals"])
     await add_word(alice, "cow", "корова")
     await add_word(alice, "fox", "лиса")
+    await add_word(alice, "bear", "медведь")
+    await add_word(alice, "wolf", "волк")
     excluded = await add_word(alice, "owl", "сова")
     await alice.patch(f"/api/words/{excluded['id']}/training", json={"is_excluded": True})
     foreign = await add_word(bob, "secret", "тайна", tags=["private"])
@@ -54,7 +56,7 @@ async def test_filters_choice_ownership_and_snapshot(
     assert response.status_code == 201
     items = response.json()["items"]
     assert len(items) == 1 and items[0]["prompt"] == "cat"
-    assert set(items[0]["options"]) == {"кот", "собака", "корова", "лиса"}
+    assert set(items[0]["options"]) == {"кот", "собака", "корова", "лиса", "медведь", "волк"}
     for tag in (foreign["tags"][0]["id"], "missing"):
         response = await alice.post("/api/training/sessions", json={"tag_ids": [tag]})
         assert response.status_code == 404 and response.json()["detail"] == "tag_not_found"

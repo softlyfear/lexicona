@@ -89,7 +89,13 @@ async def test_all_modes_keep_progress_above_100(
     word = await add_word(alice, "cat", "кот", example_en="a cat")
     await set_progress(app, word["id"], initial)
     if mode == "choice":
-        for headword, translation in [("dog", "собака"), ("fox", "лиса"), ("cow", "корова")]:
+        for headword, translation in [
+            ("dog", "собака"),
+            ("fox", "лиса"),
+            ("cow", "корова"),
+            ("owl", "сова"),
+            ("wolf", "волк"),
+        ]:
             added = await add_word(alice, headword, translation)
             await set_progress(app, added["id"], initial + 10)
     item = await start(alice, mode, initial)
@@ -120,7 +126,13 @@ async def test_exclusion_invalidates_open_item_without_leaking(
     word = await add_word(alice, "cat", "кот", example_en="a cat")
     await set_progress(app, word["id"], 50)
     if mode == "choice":
-        for en, ru in [("dog", "собака"), ("fox", "лиса"), ("cow", "корова")]:
+        for en, ru in [
+            ("dog", "собака"),
+            ("fox", "лиса"),
+            ("cow", "корова"),
+            ("owl", "сова"),
+            ("wolf", "волк"),
+        ]:
             other = await add_word(alice, en, ru)
             await set_progress(app, other["id"], 60)
     item = await start(alice, mode, 50)
@@ -159,7 +171,14 @@ async def test_exclusion_invalidates_open_item_without_leaking(
 
 
 async def test_excluded_words_do_not_enter_choice_pool_or_distractors(alice: Client) -> None:
-    for en, ru in [("cat", "кот"), ("dog", "собака"), ("fox", "лиса"), ("cow", "корова")]:
+    for en, ru in [
+        ("cat", "кот"),
+        ("dog", "собака"),
+        ("fox", "лиса"),
+        ("cow", "корова"),
+        ("owl", "сова"),
+        ("wolf", "волк"),
+    ]:
         word = await add_word(alice, en, ru)
         if en == "fox":
             await set_state(alice, word["id"], True)
@@ -168,7 +187,7 @@ async def test_excluded_words_do_not_enter_choice_pool_or_distractors(alice: Cli
     fox = (await alice.get("/api/words", params={"training": "excluded"})).json()[0]
     await set_state(alice, fox["id"], False)
     response = await alice.post("/api/training/sessions", json={"mode": "choice", "size": 10})
-    assert response.status_code == 201 and len(response.json()["items"]) == 4
+    assert response.status_code == 201 and len(response.json()["items"]) == 6
 
 
 async def test_excluded_word_not_used_even_when_choice_has_enough_active(alice: Client) -> None:
@@ -179,6 +198,8 @@ async def test_excluded_word_not_used_even_when_choice_has_enough_active(alice: 
         ("fox", "лиса"),
         ("cow", "корова"),
         ("wolf", "волк"),
+        ("owl", "сова"),
+        ("bear", "медведь"),
     ]:
         word = await add_word(alice, en, ru)
         if en == "fox":
@@ -188,7 +209,7 @@ async def test_excluded_word_not_used_even_when_choice_has_enough_active(alice: 
         response = await alice.post(
             "/api/training/sessions", json={"mode": "choice", "direction": direction, "size": 10}
         )
-        assert response.status_code == 201 and len(response.json()["items"]) == 4
+        assert response.status_code == 201 and len(response.json()["items"]) == 6
         for item in response.json()["items"]:
             assert item["prompt"] not in ("fox", "лиса")
             assert "fox" not in item["options"] and "лиса" not in item["options"]

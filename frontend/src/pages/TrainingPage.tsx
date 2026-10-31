@@ -399,7 +399,8 @@ function Run({
       )
         return
       const n = Number(event.key)
-      if (!result && n >= 1 && n <= 4) perform({ kind: 'choice', option: n - 1 })
+      if (!result && /^[1-6]$/.test(event.key) && n <= item.options.length)
+        perform({ kind: 'choice', option: n - 1 })
       else if (result && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault()
         next()

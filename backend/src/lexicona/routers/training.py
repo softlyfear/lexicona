@@ -23,7 +23,7 @@ from lexicona.progress import AnswerKind
 
 router = APIRouter(prefix="/training", tags=["training"])
 
-OPTION_COUNT = 4
+OPTION_COUNT = 6
 _rng = random.SystemRandom()
 
 
@@ -66,7 +66,7 @@ class SessionOut(BaseModel):
 class AnswerIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    option: int = Field(ge=0, lt=OPTION_COUNT, strict=True)
+    option: int = Field(ge=0, strict=True)
 
 
 class TextAnswerIn(BaseModel):
@@ -458,6 +458,8 @@ async def answer_item(
         or (item.session.mode == "cards" and not isinstance(body, GradeAnswerIn))
     ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
+    if isinstance(body, AnswerIn) and body.option >= len(item.options):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_option")
     if item.outcome is not None:
         return _answer_out(item, word.progress)
     if item.answered_at is None:
