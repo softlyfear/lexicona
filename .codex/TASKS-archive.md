@@ -1,5 +1,21 @@
 # Закрытые задачи
 
+## SETUP-006 — независимая конфигурация Kimi Code рядом с Codex (2026-11-02)
+
+- Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.
+- Добавлены `.kimi-code/agents/` с основным orchestrator и шестью ролями, `make kimi`,
+  отдельный PostToolUse formatter и пять tooling-регрессий. Модели ролей наследуются от
+  основной Kimi-сессии; Codex CLI и model IDs не используются.
+- README, Makefile и ignore-файлы описывают два независимых агента. Пользовательский Kimi
+  config получил только formatter hook после timestamp backup и успешного `kimi doctor`.
+- Живой каталог Kimi обнаружил все семь profiles. Общий `make check`: exit 0,
+  tooling 17, backend 284, frontend 119; Ruff/mypy/Prettier/oxlint/tsc/build зелёные.
+- Независимый Kimi code-reviewer: Ship. Лично проверил полный diff, frontmatter,
+  dry-run команд и `make check-tooling` 17/17. Блокирующих замечаний нет.
+- `.codex/config.toml`, `.codex/agents/**`, `.codex/hooks/**`, `scripts/codex*` и прежние
+  tooling-тесты Codex не изменены. TASKS/PROJECT/archive остаются общим протоколом.
+- Runtime: Kimi Code k3.1-pro high для оркестратора и reviewer. VPS/GitHub не изменялись.
+
 ## SETUP-001 — перенос на Codex и новый Git (2026-10-29)
 
 - Статус: done; попытка: 1.

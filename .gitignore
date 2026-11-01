@@ -29,5 +29,7 @@ backend/data/
 .idea/
 .vscode/
 
-# Machine-local Codex settings
+# Machine-local agent settings
 .codex/*.local.*
+/.kimi-code/local.toml
+/.kimi-code/*.local.*
