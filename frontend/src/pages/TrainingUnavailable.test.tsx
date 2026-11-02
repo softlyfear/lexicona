@@ -44,6 +44,7 @@ describe('недоступное задание', () => {
     async (mode, direction, label) => {
       vi.mocked(api.startTraining).mockResolvedValue({
         id: 's',
+        purpose: 'free',
         mode,
         direction,
         items: [
@@ -83,6 +84,7 @@ describe('недоступное задание', () => {
   it('закрывает ранее раскрытую карточку без повторного показа ответа после исключения', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cards',
       direction: 'en_ru',
       items: [{ id: 'i', prompt: 'cat', options: [] }],

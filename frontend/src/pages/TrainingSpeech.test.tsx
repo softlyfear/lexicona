@@ -24,6 +24,7 @@ vi.mock('../speech', async (original) => {
 
 const session: TrainingSession = {
   id: 's',
+  purpose: 'free',
   mode: 'choice',
   direction: 'ru_en',
   items: [

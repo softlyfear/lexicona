@@ -136,3 +136,15 @@ item. Полное раскрытие в choice/input/cloze закрывает a
 reveal и skip при повторе возвращают фактически сохранённый результат. Штатное карточное
 reveal остаётся нетерминальным. Итог занятия считает помощь, пропуски и недоступные отдельно от
 самостоятельных правильных/неправильных ответов и самооценок карточек.
+
+`srs.py` и one-to-one `WordProgress` хранят отдельное от видимого процента расписание:
+stage 0..6, due_at, has_review, last_review_at, счётчики и progress_version. Миграция
+b7d42f0e9a61 создаёт начальные строки для существующих слов; TrainingSession.purpose и
+TrainingItem.word_progress_version фиксируют назначение занятия и снимок версии SRS.
+
+POST /training/sessions принимает purpose=scheduled|free (default free) и include_new.
+Scheduled случайно берёт due, затем максимум 10 новых; пустая выдача — 409 no_scheduled_words.
+Free сохраняет прежние фильтры и случайный отбор, не меняя SRS. Только terminal answered
+в scheduled применяет grade и интервалы 10 минут либо 1/3/7/14/30/60 дней; assist, skip,
+unavailable, reveal и replay расписание не меняют. Смысловая правка сбрасывает SRS и повышает
+progress_version; stale межсессионный ответ получает 409 PROGRESS_CHANGED без записи результата.

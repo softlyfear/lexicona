@@ -17,7 +17,7 @@ from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.deps import CurrentAuth, Db
-from lexicona.models import Tag, Word, WordTag, WordTranslation
+from lexicona.models import Tag, Word, WordProgress, WordTag, WordTranslation
 from lexicona.normalize import normalize
 from lexicona.tags import TagOut, replace_tags, tag_key, tag_name, tags_for_words
 
@@ -231,6 +231,7 @@ async def create_word(body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
     _fill(word, body)
     db.add(word)
     await db.flush()
+    db.add(WordProgress(owner_id=auth.user.id, word_id=word.id))
     await replace_tags(db, auth.user.id, word.id, body.tags)
     await db.commit()
     return await word_out(db, auth.user.id, word)
@@ -277,9 +278,29 @@ async def update_word(word_id: str, body: WordIn, auth: CurrentAuth, db: Db) -> 
     _fill(word, body)
     meaning_after = (word.normalized_headword, [t.normalized_text for t in word.translations])
     if meaning_before != meaning_after:
-        # A different word or meaning is a new thing to learn.
+        # A different word or meaning is a new thing to learn, with a monotonic version.
         word.progress = 0
         word.content_version += 1
+        reset = await db.execute(
+            update(WordProgress)
+            .where(WordProgress.owner_id == auth.user.id, WordProgress.word_id == word.id)
+            .values(
+                stage=0,
+                has_review=False,
+                due_at=None,
+                last_review_at=None,
+                success_streak=0,
+                review_count=0,
+                lapse_count=0,
+                progress_version=WordProgress.progress_version + 1,
+            )
+        )
+        if reset.rowcount == 0:  # type: ignore[attr-defined]
+            db.add(
+                WordProgress(
+                    owner_id=auth.user.id, word_id=word.id, progress_version=word.content_version
+                )
+            )
     if "tags" in body.model_fields_set:
         await replace_tags(db, auth.user.id, word.id, body.tags)
     await db.commit()

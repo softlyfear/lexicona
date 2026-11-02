@@ -8,6 +8,7 @@ import {
   type Direction,
   type TerminalResult,
   type TrainingMode,
+  type TrainingPurpose,
   type TrainingSession,
   type TrainingSize,
 } from '../api'
@@ -74,6 +75,8 @@ function Setup({
 }) {
   const [direction, setDirection] = useState<Direction>('en_ru')
   const [mode, setMode] = useState<TrainingMode>('choice')
+  const [purpose, setPurpose] = useState<TrainingPurpose>('free')
+  const [includeNew, setIncludeNew] = useState(true)
   const [sizeText, setSizeText] = useState('10')
   const [sizeMode, setSizeMode] = useState<'number' | 'all'>('number')
   const [tagIds, setTagIds] = useState<string[]>([])
@@ -96,15 +99,11 @@ function Setup({
   const startScope = useRef(0)
   const start = useMutation({
     mutationFn: (requestedSize: TrainingSize) => {
-      if (tagIds.length || min !== null || max !== null)
-        return api.startTraining(direction, requestedSize, mode, {
-          tag_ids: tagIds,
-          progress_min: min,
-          progress_max: max,
-        })
-      return mode === 'choice'
-        ? api.startTraining(direction, requestedSize)
-        : api.startTraining(direction, requestedSize, mode)
+      const filters =
+        tagIds.length || min !== null || max !== null
+          ? { tag_ids: tagIds, progress_min: min, progress_max: max }
+          : undefined
+      return api.startTraining(direction, requestedSize, mode, filters, purpose, includeNew)
     },
     onSuccess: (session, size) => {
       if (startScope.current === speechGeneration()) onStart(session, size)
@@ -127,6 +126,55 @@ function Setup({
     <section className={css.stack}>
       <h1 className={css.title}>Тренировка</h1>
       <form className={`${ui.card} ${css.form}`} onSubmit={submit} noValidate>
+        <fieldset
+          className={css.choices}
+          disabled={start.isPending}
+          aria-describedby="training-purpose-hint"
+        >
+          <legend className={ui.label}>Тип занятия</legend>
+          <label className={css.choice}>
+            <input
+              type="radio"
+              name="purpose"
+              checked={purpose === 'free'}
+              onChange={() => {
+                start.reset()
+                setPurpose('free')
+              }}
+            />
+            Свободная практика
+          </label>
+          <label className={css.choice}>
+            <input
+              type="radio"
+              name="purpose"
+              checked={purpose === 'scheduled'}
+              onChange={() => {
+                start.reset()
+                setPurpose('scheduled')
+              }}
+            />
+            По расписанию
+          </label>
+          {purpose === 'scheduled' && (
+            <label className={css.choice}>
+              <input
+                type="checkbox"
+                checked={includeNew}
+                onChange={(event) => {
+                  start.reset()
+                  setIncludeNew(event.target.checked)
+                }}
+              />
+              Включать новые слова
+            </label>
+          )}
+          <p id="training-purpose-hint" className={ui.muted}>
+            {purpose === 'scheduled'
+              ? 'Сначала — слова с наступившим сроком повторения, затем — до 10 новых слов.'
+              : 'Свободная практика не меняет расписание повторений.'}
+          </p>
+        </fieldset>
         <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Режим</legend>
           {MODES.map((d) => (
@@ -275,7 +323,9 @@ function Setup({
             </button>
           </div>
         </fieldset>
-        <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
+        {purpose === 'free' && (
+          <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
+        )}
         {mode === 'cloze' && (
           <p className={ui.muted}>
             Подходят английские примеры, где слово или выражение встречается ровно один раз целиком.
@@ -614,7 +664,9 @@ function Run({
       </div>
       {action.isError && (
         <p className={ui.error} role="alert">
-          {errorMessage(action.error)} Попробуйте ещё раз.
+          {errorMessage(action.error)}{' '}
+          {!(action.error instanceof ApiError && action.error.message === 'PROGRESS_CHANGED') &&
+            'Попробуйте ещё раз.'}
         </p>
       )}
       {result && (

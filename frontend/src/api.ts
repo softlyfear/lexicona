@@ -1,6 +1,7 @@
 export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
 export type Direction = 'en_ru' | 'ru_en' | 'en_en'
 export type TrainingMode = 'choice' | 'input' | 'cards' | 'cloze'
+export type TrainingPurpose = 'scheduled' | 'free'
 export type CardGrade = 'again' | 'hard' | 'good' | 'easy'
 export type WordSort =
   | 'created_desc'
@@ -102,6 +103,7 @@ export interface TrainingSession {
   id: string
   mode: TrainingMode
   direction: Direction
+  purpose: TrainingPurpose
   items: TrainingItem[]
 }
 
@@ -276,8 +278,17 @@ export const api = {
     size: TrainingSize,
     mode: TrainingMode = 'choice',
     filters?: TrainingFilters,
+    purpose: TrainingPurpose = 'free',
+    includeNew = true,
   ) =>
-    request<TrainingSession>('POST', '/training/sessions', { mode, direction, size, ...filters }),
+    request<TrainingSession>('POST', '/training/sessions', {
+      mode,
+      direction,
+      size,
+      purpose,
+      include_new: includeNew,
+      ...filters,
+    }),
   answer: (itemId: string, option: number) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>
@@ -300,6 +311,10 @@ const MESSAGES: Record<string, string> = {
   tag_not_found: 'Один из выбранных тегов недоступен. Снимите его и повторите поиск.',
   no_matching_words:
     'Нет подходящих слов. Измените или очистите фильтры либо добавьте слова в словарь.',
+  no_scheduled_words:
+    'Сейчас нет слов для занятия по расписанию. Включите новые слова или выберите свободную практику.',
+  PROGRESS_CHANGED:
+    'Ответ не засчитан: слово изменилось в другом занятии. Пропустите это задание и продолжите.',
 }
 
 export function errorMessage(error: unknown): string {

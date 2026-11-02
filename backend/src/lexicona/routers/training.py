@@ -6,6 +6,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     field_validator,
     model_validator,
@@ -13,13 +14,14 @@ from pydantic import (
 from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
-from lexicona import progress
+from lexicona import progress, srs
 from lexicona.cloze import mask_example
 from lexicona.db import utcnow
 from lexicona.deps import CurrentAuth, Db
-from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordTag
+from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordProgress, WordTag
 from lexicona.normalize import normalize
 from lexicona.progress import AnswerKind
+from lexicona.srs import Grade
 
 router = APIRouter(prefix="/training", tags=["training"])
 
@@ -30,6 +32,8 @@ _rng = random.SystemRandom()
 class SessionIn(BaseModel):
     mode: Literal["choice", "input", "cards", "cloze"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
+    purpose: Literal["scheduled", "free"] = "free"
+    include_new: StrictBool = True
     size: Annotated[int, Field(ge=1, strict=True)] | Literal["all"] = 10
     tag_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=32, strict=True)]] = (
         Field(default_factory=list, max_length=20)
@@ -60,6 +64,7 @@ class SessionOut(BaseModel):
     id: str
     mode: str
     direction: str
+    purpose: Literal["scheduled", "free"]
     items: list[ItemOut]
 
 
@@ -80,9 +85,6 @@ class TextAnswerIn(BaseModel):
         if not normalize(value):
             raise ValueError("answer must not be blank")
         return value
-
-
-Grade = Literal["again", "hard", "good", "easy"]
 
 
 class GradeAnswerIn(BaseModel):
@@ -229,14 +231,51 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         and (body.progress_min is None or word.progress >= body.progress_min)
         and (body.progress_max is None or word.progress <= body.progress_max)
     ]
-    if not filtered and (tag_ids or body.progress_min is not None or body.progress_max is not None):
+    if (
+        body.purpose == "free"
+        and not filtered
+        and (tag_ids or body.progress_min is not None or body.progress_max is not None)
+    ):
         raise HTTPException(status.HTTP_409_CONFLICT, "no_matching_words")
-    targets = _rng.sample(filtered, len(filtered))
+
+    schedules = {
+        schedule.word_id: schedule
+        for schedule in await db.scalars(
+            select(WordProgress).where(
+                WordProgress.owner_id == auth.user.id,
+                WordProgress.word_id.in_(word.id for word in filtered),
+            )
+        )
+    }
+    for word in filtered:
+        if word.id not in schedules:
+            # API-created and migrated words already have one; keep direct ORM fixtures valid too.
+            schedules[word.id] = WordProgress(owner_id=auth.user.id, word_id=word.id)
+            db.add(schedules[word.id])
+
+    if body.purpose == "free":
+        targets = _rng.sample(filtered, len(filtered))
+    else:
+        now = utcnow()
+        due: list[Word] = []
+        new: list[Word] = []
+        for word in filtered:
+            schedule = schedules[word.id]
+            if not schedule.has_review:
+                new.append(word)
+            elif schedule.due_at is not None and schedule.due_at <= now:
+                due.append(word)
+        targets = _rng.sample(due, len(due))
+        if body.include_new:
+            targets += _rng.sample(new, len(new))[:10]
+        if not targets:
+            raise HTTPException(status.HTTP_409_CONFLICT, "no_scheduled_words")
 
     session = TrainingSession(
         owner_id=auth.user.id,
         mode=body.mode,
         direction=body.direction,
+        purpose=body.purpose,
         difficulty=auth.user.difficulty,
     )
     for target in targets:
@@ -270,6 +309,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 word_id=target.id,
                 word_content_version=target.content_version,
                 word_training_version=target.training_version,
+                word_progress_version=schedules[target.id].progress_version,
                 position=len(session.items),
                 prompt=prompt,
                 options=options,
@@ -287,6 +327,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         id=session.id,
         mode=session.mode,
         direction=session.direction,
+        purpose=body.purpose,
         items=[ItemOut(id=i.id, prompt=i.prompt, options=i.options) for i in session.items],
     )
 
@@ -468,7 +509,7 @@ async def answer_item(
             kind = AnswerKind.CHOICE
             chosen_option = body.option
             submitted_text = None
-            grade = None
+            grade = "good" if correct else "again"
         elif isinstance(body, TextAnswerIn):
             assert item.expected_answers is not None
             correct = normalize(body.text) in {
@@ -477,7 +518,7 @@ async def answer_item(
             kind = AnswerKind.TYPED
             chosen_option = None
             submitted_text = body.text
-            grade = None
+            grade = "good" if correct else "again"
         else:
             correct = None  # Card ratings are self-assessment, not objective answers.
             kind = AnswerKind.CHOICE
@@ -491,7 +532,8 @@ async def answer_item(
                 item.session.difficulty, kind, correct if correct is not None else grade != "again"
             )
         )
-        # Check the version in the write transaction, not against a potentially stale read.
+        now = utcnow()
+        # Check content and training eligibility in the same write transaction as the item CAS.
         current_version = (
             select(Word.content_version)
             .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
@@ -503,7 +545,7 @@ async def answer_item(
             if item.session.mode == "cards"
             else true()
         )
-        # Conditional update: of two concurrent answers only one is recorded.
+        # Of concurrent answers to one item only this conditional update can win.
         claimed = await db.execute(
             update(TrainingItem)
             .where(
@@ -521,21 +563,78 @@ async def answer_item(
                     (eligible & (current_version == item.word_content_version), change), else_=0
                 ),
                 outcome=case((eligible, "answered"), else_="unavailable"),
-                answered_at=utcnow(),
+                answered_at=now,
             )
         )
-        if claimed.rowcount == 1 and change:  # type: ignore[attr-defined]
-            await db.execute(
-                update(Word)
-                .where(
-                    Word.id == word.id,
-                    Word.owner_id == auth.user.id,
-                    Word.is_excluded.is_(False),
-                    Word.training_version == item.word_training_version,
-                    Word.content_version == item.word_content_version,
+        if claimed.rowcount == 1:  # type: ignore[attr-defined]
+            state = (
+                await db.execute(
+                    select(
+                        Word.content_version,
+                        Word.training_version,
+                        Word.is_excluded,
+                        WordProgress.stage,
+                        WordProgress.success_streak,
+                        WordProgress.review_count,
+                        WordProgress.lapse_count,
+                    )
+                    .join(WordProgress, WordProgress.word_id == Word.id)
+                    .where(
+                        Word.id == item.word_id,
+                        Word.owner_id == auth.user.id,
+                        WordProgress.owner_id == auth.user.id,
+                    )
                 )
-                .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
+            ).one_or_none()
+            current = (
+                state is not None
+                and not state[2]
+                and state[0] == item.word_content_version
+                and state[1] == item.word_training_version
             )
+            if current:
+                assert state is not None
+                schedule_update = update(WordProgress).where(
+                    WordProgress.owner_id == auth.user.id,
+                    WordProgress.word_id == item.word_id,
+                    WordProgress.progress_version == item.word_progress_version,
+                )
+                if item.session.purpose == "scheduled":
+                    transition = srs.review(state[3], state[4], cast(Grade, grade), now)
+                    changed = await db.execute(
+                        schedule_update.values(
+                            stage=transition.stage,
+                            has_review=True,
+                            due_at=transition.due_at,
+                            last_review_at=now,
+                            success_streak=transition.success_streak,
+                            review_count=state[5] + 1,
+                            lapse_count=state[6] + int(transition.is_lapse),
+                            progress_version=item.word_progress_version + 1,
+                        )
+                    )
+                else:
+                    # Free practice changes only visible progress and the inter-session version.
+                    changed = await db.execute(
+                        schedule_update.values(progress_version=item.word_progress_version + 1)
+                    )
+                if changed.rowcount != 1:  # type: ignore[attr-defined]
+                    await db.rollback()  # Also undo the item claim above.
+                    raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
+                applied = await db.execute(
+                    update(Word)
+                    .where(
+                        Word.id == word.id,
+                        Word.owner_id == auth.user.id,
+                        Word.is_excluded.is_(False),
+                        Word.training_version == item.word_training_version,
+                        Word.content_version == item.word_content_version,
+                    )
+                    .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
+                )
+                if applied.rowcount != 1:  # type: ignore[attr-defined]
+                    await db.rollback()
+                    raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
         await db.commit()
         await db.refresh(item)
         await db.refresh(word)

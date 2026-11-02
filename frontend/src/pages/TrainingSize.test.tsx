@@ -24,6 +24,7 @@ function renderPage() {
 
 const session: TrainingSession = {
   id: 's',
+  purpose: 'free',
   mode: 'input',
   direction: 'ru_en',
   items: [{ id: 'i', prompt: 'кот', options: [] }],
@@ -55,7 +56,7 @@ describe('размер занятия', () => {
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     expect(size).toHaveValue('75')
     await user.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 75, 'input')
+    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 75, 'input', undefined, 'free', true)
     expect(await screen.findByText('Доступно 1 из 75 запрошенных слов')).toBeInTheDocument()
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
   })
@@ -82,7 +83,7 @@ describe('размер занятия', () => {
     const input = screen.getByRole('textbox', { name: 'Своё число слов' })
     await user.clear(input)
     await user.type(input, `${n}{Enter}`)
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', n)
+    expect(api.startTraining).toHaveBeenCalledWith('en_ru', n, 'choice', undefined, 'free', true)
     expect(await screen.findByText('кот')).toBeInTheDocument()
     if (n === 1) expect(screen.queryByText(/Доступно .* запрошенных слов/)).not.toBeInTheDocument()
     else expect(screen.getByText(`Доступно 1 из ${n} запрошенных слов`)).toBeInTheDocument()

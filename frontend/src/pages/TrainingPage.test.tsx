@@ -28,6 +28,7 @@ describe('TrainingPage', () => {
     vi.mocked(api.answer).mockReset()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'choice',
       direction: 'en_ru',
       items: [
@@ -41,6 +42,7 @@ describe('TrainingPage', () => {
     const user = userEvent.setup()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'choice',
       direction: 'en_ru',
       items: [

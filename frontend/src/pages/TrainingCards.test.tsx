@@ -32,6 +32,7 @@ describe('карточки', () => {
     vi.resetAllMocks()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cards',
       direction: 'en_ru',
       items: [{ id: 'i1', prompt: 'cat', options: [] }],
@@ -56,7 +57,7 @@ describe('карточки', () => {
     await user.click(screen.getByLabelText('Карточки: EN → RU'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(await screen.findByText('cat')).toBeInTheDocument()
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'cards')
+    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'cards', undefined, 'free', true)
     expect(screen.queryByText('кот')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Хорошо' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
@@ -88,6 +89,7 @@ describe('карточки', () => {
     const user = userEvent.setup()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cards',
       direction: 'ru_en',
       items: [{ id: 'i2', prompt: 'кот', options: [] }],
@@ -108,7 +110,7 @@ describe('карточки', () => {
     await user.click(screen.getByLabelText('Карточки: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(await screen.findByText('кот')).toBeInTheDocument()
-    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'cards')
+    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'cards', undefined, 'free', true)
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
     expect(screen.queryByText('Ответ: cat')).not.toBeInTheDocument()

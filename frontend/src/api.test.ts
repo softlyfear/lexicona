@@ -118,18 +118,32 @@ describe('api', () => {
     await expect(api.deleteWord('id')).resolves.toBeUndefined()
   })
 
-  it('starts cloze with the explicit en_en direction', async () => {
+  it('starts free cloze with the explicit en_en direction and additive defaults', async () => {
     setCsrfToken('secret')
-    const fetchMock = mockFetch(201, { id: 's', mode: 'cloze', direction: 'en_en', items: [] })
+    const fetchMock = mockFetch(201, {
+      id: 's',
+      mode: 'cloze',
+      direction: 'en_en',
+      purpose: 'free',
+      items: [],
+    })
     await api.startTraining('en_en', 10, 'cloze')
     const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(path).toBe('/api/training/sessions')
-    expect(init.body).toBe(JSON.stringify({ mode: 'cloze', direction: 'en_en', size: 10 }))
+    expect(init.body).toBe(
+      JSON.stringify({
+        mode: 'cloze',
+        direction: 'en_en',
+        size: 10,
+        purpose: 'free',
+        include_new: true,
+      }),
+    )
     expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
   })
 
-  it('sends all and training filters without changing the old request contract', async () => {
-    const fetchMock = mockFetch(201, { id: 's', items: [] })
+  it('sends all and training filters with the free purpose', async () => {
+    const fetchMock = mockFetch(201, { id: 's', purpose: 'free', items: [] })
     await api.startTraining('en_ru', 'all', 'choice', {
       tag_ids: ['a', 'b'],
       progress_min: 100,
@@ -140,9 +154,33 @@ describe('api', () => {
       mode: 'choice',
       direction: 'en_ru',
       size: 'all',
+      purpose: 'free',
+      include_new: true,
       tag_ids: ['a', 'b'],
       progress_min: 100,
       progress_max: 158,
+    })
+  })
+
+  it('sends scheduled options and returns the server session purpose', async () => {
+    const session = {
+      id: 's',
+      mode: 'choice',
+      direction: 'en_ru',
+      purpose: 'scheduled',
+      items: [],
+    } as const
+    const fetchMock = mockFetch(201, session)
+    await expect(
+      api.startTraining('en_ru', 10, 'choice', undefined, 'scheduled', false),
+    ).resolves.toEqual(session)
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({
+      mode: 'choice',
+      direction: 'en_ru',
+      size: 10,
+      purpose: 'scheduled',
+      include_new: false,
     })
   })
 

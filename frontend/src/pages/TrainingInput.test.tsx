@@ -32,6 +32,7 @@ describe('письменная тренировка', () => {
     vi.resetAllMocks()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'input',
       direction: 'en_ru',
       items: [
@@ -64,7 +65,7 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'input')
+    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'input', undefined, 'free', true)
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled()
     await user.type(input, 'кот 1')
     expect(api.answer).not.toHaveBeenCalled()
@@ -96,6 +97,7 @@ describe('письменная тренировка', () => {
       })
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'input',
       direction: 'ru_en',
       items: [{ id: 'i', prompt: 'кот', options: [] }],
@@ -104,7 +106,7 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     const input = await screen.findByRole('textbox', { name: 'Введите слово' })
-    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'input')
+    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'input', undefined, 'free', true)
     await user.type(input, 'cat{Enter}')
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
     expect(input).toHaveValue('cat')

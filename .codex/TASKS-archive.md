@@ -1,5 +1,26 @@
 # Закрытые задачи
 
+## SRS-001 — занятия по расписанию и свободная практика (2026-11-02)
+
+- Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.
+- Добавлены отдельное SRS-состояние `word_progress`, миграция с начальными строками,
+  назначение scheduled/free у сессии и снимок progress_version у задания. Scheduled выбирает
+  due и по желанию до 10 новых; free сохраняет прежний отбор и не меняет расписание.
+- Реализованы все grade, интервалы 10 минут и 1/3/7/14/30/60 дней, сброс SRS после
+  смысловой правки, owner/CSRF/no-store и отказ stale межсессионного ответа 409 PROGRESS_CHANGED.
+  Terminal CAS, replay и отсутствие SRS-эффектов у assist/skip/unavailable/reveal сохранены.
+- UI выбирает назначение занятия и включение новых слов, объясняет очередь и корректно
+  обрабатывает пустую scheduled-очередь и конфликт версии без ложного успеха.
+- Общий `make check`: exit 0; tooling 17, backend 313, frontend 123. Ruff, mypy,
+  Prettier, oxlint, TypeScript и production build зелёные.
+- Независимый Kimi code-reviewer: Ship; дополнительно прошли 127 training/SRS backend-тестов,
+  13 size-тестов, 13 frontend-тестов и `git diff --check`. Блокирующих замечаний нет.
+- Live HTTP smoke на временной SQLite с Alembic head, реальным uvicorn и собранным SPA:
+  login/CSRF, создание слова, scheduled-ответ, replay, stale 409, пустая очередь и free
+  без изменения SRS — PASS. Это HTTP-проверка, не ручной прогон на физических устройствах.
+- Runtime: Kimi Code k3.1-pro high. Recovery сессий, Idempotency-Key, answer_events,
+  статистика/история и следующие MVP-тикеты остаются вне scope. После тикета работа приостановлена.
+
 ## SETUP-006 — независимая конфигурация Kimi Code рядом с Codex (2026-11-02)
 
 - Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.

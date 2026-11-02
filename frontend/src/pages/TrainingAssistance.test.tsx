@@ -42,6 +42,7 @@ describe('помощь и пропуск', () => {
   ] as const)('учитывает помощь и пропуск отдельно: %s %s', async (mode, direction, label) => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode,
       direction,
       items: [
@@ -82,6 +83,7 @@ describe('помощь и пропуск', () => {
   it('блокирует клавиатуру и другие действия до ответа сервера', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'choice',
       direction: 'en_ru',
       items: [{ id: 'i', prompt: 'cat', options: ['one', 'two', 'three', 'four'] }],
@@ -118,6 +120,7 @@ describe('помощь и пропуск', () => {
   it('показывает фактически сохранённый сервером результат, даже если действие было другим', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'choice',
       direction: 'en_ru',
       items: [{ id: 'i', prompt: 'cat', options: ['one', 'two', 'three', 'four'] }],
@@ -144,6 +147,7 @@ describe('помощь и пропуск', () => {
   it('после сетевой ошибки помощи сохраняет ввод и позволяет повторить', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'input',
       direction: 'ru_en',
       items: [{ id: 'i', prompt: 'кот', options: [] }],
@@ -174,6 +178,7 @@ describe('помощь и пропуск', () => {
   it('после сетевой ошибки пропуска сохраняет ввод и позволяет повторить', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'input',
       direction: 'ru_en',
       items: [{ id: 'i', prompt: 'кот', options: [] }],
@@ -200,6 +205,7 @@ describe('помощь и пропуск', () => {
   it('считает самостоятельные ответы отдельно от помощи и пропусков', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'input',
       direction: 'en_ru',
       items: ['cat', 'dog', 'cow', 'fox'].map((prompt, index) => ({
@@ -257,6 +263,7 @@ describe('помощь и пропуск', () => {
   it('карточный reveal показывает пропуск, сохранённый конкурентным запросом', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cards',
       direction: 'en_ru',
       items: [{ id: 'i', prompt: 'cat', options: [] }],
@@ -279,6 +286,7 @@ describe('помощь и пропуск', () => {
   ] as const)('пропускает карточку после раскрытия в направлении %s', async (direction, label) => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cards',
       direction,
       items: [{ id: 'i', prompt: 'cat', options: [] }],

@@ -12,6 +12,7 @@ vi.mock('../api', async (original) => {
 
 const session: TrainingSession = {
   id: 's',
+  purpose: 'free',
   mode: 'choice',
   direction: 'en_ru',
   items: [{ id: 'i', prompt: 'cat', options: ['кот'] }],
@@ -47,11 +48,18 @@ describe('фильтры тренировки', () => {
     await user.type(screen.getByLabelText('Прогресс до, %'), '158')
     expect(screen.getByText(/случайном порядке/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 'all', 'choice', {
-      tag_ids: ['a', 'b'],
-      progress_min: 100,
-      progress_max: 158,
-    })
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      'all',
+      'choice',
+      {
+        tag_ids: ['a', 'b'],
+        progress_min: 100,
+        progress_max: 158,
+      },
+      'free',
+      true,
+    )
     expect(await screen.findByText('Все подходящие слова: 1')).toBeInTheDocument()
     expect(screen.queryByText(/запрошенных слов/)).not.toBeInTheDocument()
   })
@@ -111,6 +119,8 @@ describe('фильтры тренировки', () => {
       'all',
       'choice',
       expect.objectContaining({ progress_max: 0 }),
+      'free',
+      true,
     )
   })
 
@@ -120,7 +130,7 @@ describe('фильтры тренировки', () => {
     renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('можно начать без них')
     await user.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10)
+    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'choice', undefined, 'free', true)
   })
 
   it('блокирует фильтры и повторный старт во время запроса', async () => {

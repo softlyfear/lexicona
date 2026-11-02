@@ -124,13 +124,44 @@ class WordTranslation(Base):
     normalized_text: Mapped[str] = mapped_column(String(200))
 
 
+class WordProgress(Base):
+    __tablename__ = "word_progress"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "word_id"], ["words.owner_id", "words.id"], ondelete="CASCADE"
+        ),
+        CheckConstraint("stage BETWEEN 0 AND 6", name="word_progress_stage_range"),
+        CheckConstraint(
+            "success_streak >= 0 AND review_count >= 0 AND lapse_count >= 0 "
+            "AND progress_version >= 1",
+            name="word_progress_counters",
+        ),
+        Index("ix_word_progress_owner_due", "owner_id", "due_at"),
+    )
+
+    owner_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    word_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    stage: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    has_review: Mapped[bool] = mapped_column(default=False, server_default=false())
+    due_at: Mapped[datetime | None]
+    last_review_at: Mapped[datetime | None]
+    success_streak: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    review_count: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    lapse_count: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    progress_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+
+
 class TrainingSession(Base):
     __tablename__ = "training_sessions"
+    __table_args__ = (
+        CheckConstraint("purpose IN ('scheduled', 'free')", name="training_session_purpose"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     mode: Mapped[str] = mapped_column(String(16))
     direction: Mapped[str] = mapped_column(String(8))
+    purpose: Mapped[str] = mapped_column(String(16), default="free", server_default="free")
     # Frozen at session start: changing the setting affects only new sessions.
     difficulty: Mapped[Difficulty] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
@@ -153,6 +184,7 @@ class TrainingItem(Base):
     word_id: Mapped[str] = mapped_column(ForeignKey("words.id", ondelete="CASCADE"), index=True)
     word_content_version: Mapped[int]
     word_training_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+    word_progress_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     position: Mapped[int]
     prompt: Mapped[str] = mapped_column(Text)
     options: Mapped[list[str]] = mapped_column(JSON)

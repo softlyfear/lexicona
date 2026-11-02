@@ -49,6 +49,7 @@ describe('слово в примере', () => {
     vi.resetAllMocks()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cloze',
       direction: 'en_en',
       items: [{ id: 'i', prompt: 'The ____ sleeps.', options: [] }],
@@ -70,7 +71,7 @@ describe('слово в примере', () => {
     expect(screen.queryByText('The cat sleeps.')).not.toBeInTheDocument()
     expect(screen.queryByText('cat')).not.toBeInTheDocument()
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
-    expect(api.startTraining).toHaveBeenCalledWith('en_en', 10, 'cloze')
+    expect(api.startTraining).toHaveBeenCalledWith('en_en', 10, 'cloze', undefined, 'free', true)
     await user.click(screen.getByRole('button', { name: 'Произнести EN «The ____ sleeps.»' }))
     expect(speak).toHaveBeenCalledWith('The ____ sleeps.', 'en')
     const input = screen.getByRole('textbox', { name: 'Введите пропущенное выражение' })
@@ -128,6 +129,7 @@ describe('слово в примере', () => {
   it('учитывает помощь и пропуск отдельно без правильных ответов', async () => {
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
+      purpose: 'free',
       mode: 'cloze',
       direction: 'en_en',
       items: [
