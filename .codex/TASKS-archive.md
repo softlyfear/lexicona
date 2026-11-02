@@ -1,5 +1,28 @@
 # Закрытые задачи
 
+## WORDS-005 — компактные подсказки и встроенные варианты (2026-11-02)
+
+- Статус: done; попытка: 2; приёмка Kimi-оркестратора: ПРИНЯТО.
+- WordForm автоматически выбирает IPA с US-признаками oʊ и ɹ/r/ɚ/ɝ либо первый доступный,
+  не показывает IPA-кнопки/notices, выводит короткие RU-переводы без combining acute.
+  Source refs, notices API/README, ручной ввод и защита от late responses сохранены.
+- Choice в обоих направлениях смешивает личные кандидаты и до 120 случайных записей pinned
+  dictionary через asyncio.to_thread. Builtins остаются скрытыми distractors, не становятся
+  targets/Word/progress; недоступный индекс оставляет personal-only fallback.
+- Первая ревью-итерация: No-Ship — stressed personal `це́ль` и unstressed built-in `цель`
+  могли стать неоднозначными вариантами. Добавлен stress-insensitive `_choice_key` только для
+  сравнения и регрессия в обоих направлениях; отображаемые личные данные не изменяются.
+- Финальный `make check`: exit 0; tooling 17, backend 316, frontend 126. Ruff, mypy,
+  Prettier, oxlint, TypeScript и production build зелёные.
+- Повторный независимый Kimi code-reviewer: Ship; полный diff, 93 backend-теста,
+  22 frontend-теста и `git diff --check` проверены, других дефектов не найдено.
+- Live API/frontend smoke на запущенном приложении: login/CSRF, lookup hello с US IPA,
+  choice из одного временного личного слова с шестью уникальными вариантами, отсутствие
+  материализации builtins, удаление временного слова и SPA HTTP 200 — PASS.
+- Runtime: Kimi Code k3.1-pro high. Fallback IPA не гарантирует диалект при отсутствии
+  US-признаков. Перевод произвольных фраз и проверка орфографии обсуждены отдельно,
+  но в этот тикет не входят и не реализованы.
+
 ## SRS-001 — занятия по расписанию и свободная практика (2026-11-02)
 
 - Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.

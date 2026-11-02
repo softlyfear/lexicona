@@ -21,8 +21,8 @@ const result: DictionaryLookup = {
       entry_id: 1,
       headword: 'book',
       part_of_speech: 'n',
-      translations: ['книга', 'книжка'],
-      transcriptions: ['bʊk'],
+      translations: ['кни́га', 'книжка'],
+      transcriptions: ['/bʊk/'],
       match: 'exact',
     },
   ],
@@ -61,26 +61,23 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-it('сохраняет ручной черновик до явного выбора и provenance после выбора', async () => {
+it('автоматически подставляет fallback IPA и сохраняет provenance выбранного перевода', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   const user = userEvent.setup()
   const { submit } = form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  expect(
-    await screen.findByRole('button', { name: 'Добавить перевод «книга»' }),
-  ).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной')
-  expect(screen.getByLabelText('Транскрипция')).toHaveValue('manual')
-  await user.click(screen.getByRole('button', { name: 'Добавить перевод «книга»' }))
-  await user.click(screen.getByRole('button', { name: 'Заменить транскрипцию на «bʊk»' }))
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
+  await user.click(screen.getByRole('button', { name: 'книга' }))
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
     expect.objectContaining({
       translations: ['ручной', 'книга'],
-      transcription: 'bʊk',
+      transcription: '/bʊk/',
       source_refs: [
+        { source_id: source.id, entry_id: 1, field: 'transcription', value: '/bʊk/' },
         { source_id: source.id, entry_id: 1, field: 'translation', value: 'книга' },
-        { source_id: source.id, entry_id: 1, field: 'transcription', value: 'bʊk' },
       ],
     }),
   )
@@ -92,17 +89,49 @@ it('сохраняет ручной черновик до явного выбо�
   ])
 })
 
+it.each([
+  { transcriptions: ['/həˈləʊ/', '/hæˈlaʊ/', '/həˈloʊ/'], expected: '/həˈloʊ/' },
+  { transcriptions: ['/ˌɡʊd ˈmɔːnɪŋ/', '/ˌɡʊd ˈmɔɹnɪŋ/'], expected: '/ˌɡʊd ˈmɔɹnɪŋ/' },
+])('автоматически предпочитает IPA с US-признаками', async ({ transcriptions, expected }) => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [{ ...result.matches[0], transcriptions }],
+  })
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
+  expect(
+    screen.queryByRole('button', { name: /Выбрать транскрипцию|Заменить транскрипцию/ }),
+  ).not.toBeInTheDocument()
+})
+
+it('убирает ударения и объединяет образовавшиеся дубли переводов', async () => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [{ ...result.matches[0], translations: ['приве́т', 'привет', 'до́брый день'] }],
+  })
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findAllByRole('button', { name: 'привет' })).toHaveLength(1)
+  await user.click(screen.getByRole('button', { name: 'добрый день' }))
+  expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной\nдобрый день')
+  expect(screen.queryByText(/́/)).not.toBeInTheDocument()
+})
+
 it('отклоняет нормализованный дубль и одиннадцатый перевод', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   const user = userEvent.setup()
   form({ ...word, translations: ['КНИГА.'] })
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  await user.click(await screen.findByRole('button', { name: 'Добавить перевод «книга»' }))
+  await user.click(await screen.findByRole('button', { name: 'книга' }))
   expect(screen.getByRole('alert')).toHaveTextContent('уже добавлен')
   const input = screen.getByLabelText(/Переводы/)
   await user.clear(input)
   await user.type(input, Array.from({ length: 10 }, (_, i) => `слово${i}`).join('\n'))
-  await user.click(screen.getByRole('button', { name: 'Добавить перевод «книжка»' }))
+  await user.click(screen.getByRole('button', { name: 'книжка' }))
   expect(screen.getByRole('alert')).toHaveTextContent('не больше 10')
 })
 
@@ -123,7 +152,7 @@ it('позволяет сохранять вручную при пустом р�
     expect.objectContaining({ translations: ['ручной'], transcription: 'manual' }),
   )
   await user.click(button)
-  expect(await screen.findByText('Добавить перевод «книга»')).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
 })
 
 it('игнорирует поздний ответ после изменения слова и смены сессии', async () => {
@@ -140,14 +169,15 @@ it('игнорирует поздний ответ после изменения
   await user.click(button)
   await user.type(screen.getByLabelText(/Слово или выражение/), 's')
   await act(async () => resolve(result))
-  expect(screen.queryByText('Добавить перевод «книга»')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('manual')
   await user.click(button)
   forgetSession()
   await act(async () => resolve(result))
-  expect(screen.queryByText('Добавить перевод «книга»')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
 })
 
-it('показывает сведения и исходные уведомления только по запросу', async () => {
+it('не показывает IPA-варианты и сведения об источнике в редакторе', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   const notices = vi.spyOn(api, 'dictionaryNotices').mockResolvedValue({
     source,
@@ -159,14 +189,13 @@ it('показывает сведения и исходные уведомлен
   const user = userEvent.setup()
   form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  expect(await screen.findByText(/CC BY-SA 3.0 Unported/)).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  expect(screen.queryByText(/Источник:/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Сведения об источнике/ })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /Выбрать транскрипцию|Заменить транскрипцию/ }),
+  ).not.toBeInTheDocument()
   expect(notices).not.toHaveBeenCalled()
-  await user.click(screen.getByRole('button', { name: /Сведения об источнике/ }))
-  expect(await screen.findByText('COPYING text')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: /Лицензия CC BY-SA 3.0/ })).toHaveAttribute(
-    'href',
-    source.license_url,
-  )
 })
 
 it('не показывает результат первого запроса после второго', async () => {
@@ -187,5 +216,5 @@ it('не показывает результат первого запроса �
   await user.click(button)
   expect(await screen.findByText(/Варианты не найдены/)).toBeInTheDocument()
   await act(async () => resolve(result))
-  expect(screen.queryByText('Добавить перевод «книга»')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
 })

@@ -5,6 +5,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
+from lexicona import dictionary
 from lexicona.db import Database
 from lexicona.models import TrainingItem, TrainingSession, Word
 from lexicona.normalize import normalize
@@ -41,7 +42,10 @@ async def correct_option(app: FastAPI, item_id: str) -> int:
         return item.correct_option
 
 
-async def test_needs_at_least_six_distinct_words(alice: Client) -> None:
+async def test_without_builtin_pool_needs_six_distinct_words(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     for en, ru in ANIMALS[:5]:
         await add_word(alice, en, ru)
     response = await alice.post("/api/training/sessions", json={})
@@ -61,7 +65,8 @@ async def test_session_has_six_unique_options_and_hides_answer(alice: Client) ->
         assert translations[item["prompt"]] in item["options"]
 
 
-async def test_ru_en_direction(alice: Client) -> None:
+async def test_ru_en_direction(alice: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     await seed(alice)
     session = await start(alice, direction="ru_en")
     english = {en for en, _ in ANIMALS}
@@ -246,8 +251,9 @@ async def test_legacy_four_option_snapshot(
 
 @pytest.mark.parametrize("direction", ["en_ru", "ru_en"])
 async def test_ambiguous_pool_creates_no_partial_session(
-    app: FastAPI, alice: Client, direction: str
+    app: FastAPI, alice: Client, direction: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     for en, ru in ANIMALS:
         await add_word(alice, en, ru, "общее")
     response = await alice.post("/api/training/sessions", json={"direction": direction})

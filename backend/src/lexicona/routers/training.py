@@ -1,4 +1,6 @@
+import asyncio
 import random
+import sqlite3
 from typing import Annotated, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
@@ -14,10 +16,10 @@ from pydantic import (
 from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
-from lexicona import progress, srs
+from lexicona import dictionary, progress, srs
 from lexicona.cloze import mask_example
 from lexicona.db import utcnow
-from lexicona.deps import CurrentAuth, Db
+from lexicona.deps import AppSettings, CurrentAuth, Db
 from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordProgress, WordTag
 from lexicona.normalize import normalize
 from lexicona.progress import AnswerKind
@@ -159,26 +161,42 @@ TerminalOut = (
 )
 
 
-def _meanings(word: Word) -> set[str]:
-    return {t.normalized_text for t in word.translations}
+ChoiceCandidate = Word | dictionary.ChoiceEntry
+
+
+def _choice_key(value: str) -> str:
+    return value.replace("\u0301", "")
+
+
+def _meanings(word: ChoiceCandidate) -> set[str]:
+    if isinstance(word, Word):
+        return {_choice_key(translation.normalized_text) for translation in word.translations}
+    return {_choice_key(normalized) for _, normalized in word.translations}
 
 
 def _build_item(
-    target: Word, pool: list[Word], direction: str
+    target: Word, pool: list[ChoiceCandidate], direction: str
 ) -> tuple[str, list[str], int] | None:
     """Return (prompt, options, correct index), or None if no unambiguous distractors exist."""
 
-    def shown(word: Word) -> tuple[str, str]:
+    def shown(word: ChoiceCandidate) -> tuple[str, str]:
+        if isinstance(word, Word):
+            if direction == "en_ru":
+                return word.translations[0].text, _choice_key(word.translations[0].normalized_text)
+            return word.headword, _choice_key(word.normalized_headword)
         if direction == "en_ru":
-            return word.translations[0].text, word.translations[0].normalized_text
-        return word.headword, word.normalized_headword
+            text, key = word.translations[0]
+            return text, _choice_key(key)
+        return word.headword, _choice_key(word.normalized_headword)
 
     answer, answer_key = shown(target)
     seen = {answer_key}
     distractors: list[str] = []
     for other in _rng.sample(pool, len(pool)):
         # Skip anything that could also be a right answer for the target.
-        if other.id == target.id or other.normalized_headword == target.normalized_headword:
+        if isinstance(other, Word) and other.id == target.id:
+            continue
+        if _choice_key(other.normalized_headword) == _choice_key(target.normalized_headword):
             continue
         if _meanings(other) & _meanings(target):
             continue
@@ -199,7 +217,17 @@ def _build_item(
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
-async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
+async def create_session(
+    body: SessionIn, auth: CurrentAuth, db: Db, settings: AppSettings
+) -> SessionOut:
+    builtin_pool: list[dictionary.ChoiceEntry] = []
+    if body.mode == "choice":
+        try:
+            builtin_pool = await asyncio.to_thread(
+                dictionary.choice_candidates, settings.dictionary_path
+            )
+        except OSError, sqlite3.Error, ValueError, TypeError, KeyError:
+            builtin_pool = []
     tag_ids = set(body.tag_ids)
     if tag_ids:
         owned = (
@@ -282,7 +310,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         if body.size != "all" and len(session.items) == body.size:
             break
         if body.mode == "choice":
-            built = _build_item(target, pool, body.direction)
+            built = _build_item(target, [*pool, *builtin_pool], body.direction)
             if built is None:
                 continue
             prompt, options, correct = built

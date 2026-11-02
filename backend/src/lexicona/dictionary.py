@@ -13,10 +13,12 @@ import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from lexicona.config import Settings
+from lexicona.normalize import normalize
 
 SOURCE_ID = "freedict-wikdict-eng-rus-2025.11.23"
 SHA256 = "f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39"
@@ -257,6 +259,52 @@ def lookup(path: Path, headword: str) -> dict[str, Any]:
             }
         )
     return {"source": SOURCE, "matches": matches}
+
+
+@dataclass(frozen=True, slots=True)
+class ChoiceEntry:
+    entry_id: int
+    headword: str
+    normalized_headword: str
+    translations: tuple[tuple[str, str], ...]
+
+
+def choice_candidates(path: Path, limit: int = 120) -> list[ChoiceEntry]:
+    if type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("invalid choice candidate limit")
+    with closing(_connect(path)) as db:
+        _notices(db)
+        rows = db.execute(
+            "SELECT entry_id, CASE WHEN length(headword) <= 200 THEN headword END, "
+            "CASE WHEN length(translations) <= 30000 THEN translations END "
+            "FROM entries WHERE translations != '[]' ORDER BY RANDOM() LIMIT ?",
+            (limit,),
+        ).fetchall()
+    candidates = []
+    for entry_id, spelling, raw_translations in rows:
+        if (
+            type(entry_id) is not int
+            or entry_id <= 0
+            or not isinstance(spelling, str)
+            or not normalize(spelling)
+        ):
+            raise ValueError("invalid entry")
+        translations: dict[str, str] = {}
+        for value in _list_field(raw_translations, 200):
+            text = value.replace("\u0301", "")
+            normalized = normalize(text)
+            if normalized:
+                translations.setdefault(normalized, text)
+        if translations:
+            candidates.append(
+                ChoiceEntry(
+                    entry_id=entry_id,
+                    headword=spelling,
+                    normalized_headword=normalize(spelling),
+                    translations=tuple((text, key) for key, text in translations.items()),
+                )
+            )
+    return candidates
 
 
 def notices(path: Path) -> dict[str, Any]:

@@ -3,7 +3,6 @@ import {
   api,
   ApiError,
   type DictionaryLookup,
-  type DictionaryNotices,
   type SourceRef,
   type Tag,
   type Word,
@@ -24,6 +23,16 @@ const translationKey = (value: string) =>
     .trimEnd()
 
 const optional = (value: string) => value.trim() || null
+const americanScore = (value: string) => Number(/[ɹrɚɝ]/.test(value)) + Number(value.includes('oʊ'))
+
+function preferredTranscription(matches: DictionaryLookup['matches']) {
+  const match = matches.find((item) => item.transcriptions.length > 0)
+  if (!match) return null
+  const value = match.transcriptions.reduce((preferred, candidate) =>
+    americanScore(candidate) > americanScore(preferred) ? candidate : preferred,
+  )
+  return { entryId: match.entry_id, value }
+}
 
 interface Props {
   word?: Word
@@ -60,15 +69,11 @@ export function WordForm({
   const [lookup, setLookup] = useState<DictionaryLookup | null>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [choiceError, setChoiceError] = useState<string | null>(null)
-  const [notices, setNotices] = useState<DictionaryNotices | null>(null)
-  const [noticesState, setNoticesState] = useState<'idle' | 'loading' | 'error'>('idle')
   const requestId = useRef(0)
-  const noticeId = useRef(0)
   const revision = useRef(getSessionRevision())
   useEffect(
     () => () => {
       requestId.current++
-      noticeId.current++
     },
     [],
   )
@@ -83,7 +88,28 @@ export function WordForm({
     try {
       const result = await api.lookupDictionary(headword.trim())
       if (id !== requestId.current || currentRevision !== getSessionRevision()) return
-      setLookup(result)
+      const matches = result.matches.map((match) => ({
+        ...match,
+        translations: [
+          ...new Set(match.translations.map((value) => value.replaceAll('\u0301', ''))),
+        ],
+      }))
+      setLookup({ ...result, matches })
+      const preferred = preferredTranscription(matches)
+      if (preferred) {
+        setTranscription(preferred.value)
+        setRefs((current) =>
+          [
+            ...current.filter((ref) => ref.field !== 'transcription'),
+            {
+              source_id: sourceId,
+              entry_id: preferred.entryId,
+              field: 'transcription' as const,
+              value: preferred.value,
+            },
+          ].slice(0, 20),
+        )
+      }
       setLookupState('idle')
     } catch (error) {
       if (id !== requestId.current || currentRevision !== getSessionRevision()) return
@@ -95,46 +121,23 @@ export function WordForm({
     }
   }
 
-  async function loadNotices() {
-    const id = ++noticeId.current
-    const currentRevision = getSessionRevision()
-    setNoticesState('loading')
-    try {
-      const result = await api.dictionaryNotices()
-      if (id !== noticeId.current || currentRevision !== getSessionRevision()) return
-      setNotices(result)
-      setNoticesState('idle')
-    } catch (error) {
-      if (id !== noticeId.current || currentRevision !== getSessionRevision()) return
-      if (error instanceof ApiError && error.status === 401) {
-        forgetSession()
-        return
-      }
-      setNoticesState('error')
-    }
-  }
-
-  function choose(field: SourceRef['field'], value: string, entryId: number) {
+  function chooseTranslation(value: string, entryId: number) {
     if (revision.current !== getSessionRevision()) return
-    if (field === 'translation') {
-      const current = parseTranslations(translations)
-      if (current.some((item) => translationKey(item) === translationKey(value))) {
-        setChoiceError('Такой перевод уже добавлен.')
-        return
-      }
-      if (current.length >= 10) {
-        setChoiceError('Можно добавить не больше 10 переводов.')
-        return
-      }
-      setTranslations([...current, value].join('\n'))
-    } else {
-      setTranscription(value)
+    const current = parseTranslations(translations)
+    if (current.some((item) => translationKey(item) === translationKey(value))) {
+      setChoiceError('Такой перевод уже добавлен.')
+      return
     }
+    if (current.length >= 10) {
+      setChoiceError('Можно добавить не больше 10 переводов.')
+      return
+    }
+    setTranslations([...current, value].join('\n'))
     setChoiceError(null)
     setRefs((current) =>
       [
-        ...current.filter((ref) => field !== 'transcription' || ref.field !== field),
-        { source_id: sourceId, entry_id: entryId, field, value },
+        ...current,
+        { source_id: sourceId, entry_id: entryId, field: 'translation' as const, value },
       ].slice(0, 20),
     )
   }
@@ -262,20 +265,9 @@ export function WordForm({
                       type="button"
                       className={`${ui.button} ${formCss.dictionaryButton}`}
                       key={value}
-                      onClick={() => choose('translation', value, match.entry_id)}
+                      onClick={() => chooseTranslation(value, match.entry_id)}
                     >
-                      Добавить перевод «{value}»
-                    </button>
-                  ))}
-                  {match.transcriptions.map((value) => (
-                    <button
-                      type="button"
-                      className={`${ui.button} ${formCss.dictionaryButton}`}
-                      key={value}
-                      onClick={() => choose('transcription', value, match.entry_id)}
-                    >
-                      {transcription.trim() ? 'Заменить транскрипцию на' : 'Выбрать транскрипцию'} «
-                      {value}»
+                      {value}
                     </button>
                   ))}
                 </div>
@@ -287,47 +279,6 @@ export function WordForm({
           <p role="alert" className={ui.error}>
             {choiceError}
           </p>
-        )}
-        {(lookup || refs.length > 0) && (
-          <div>
-            <p>
-              Источник: FreeDict+WikDict eng-rus 2025.11.23; Karl Bartel; WikDict; Wiktionary.org
-              через DBnary; FreeDict. Лицензия CC BY-SA 3.0 Unported.
-            </p>
-            <button
-              type="button"
-              className={`${ui.button} ${formCss.dictionaryButton}`}
-              onClick={loadNotices}
-              disabled={noticesState === 'loading'}
-            >
-              Сведения об источнике и лицензии
-            </button>
-            {noticesState === 'loading' && <p role="status">Загружаем сведения…</p>}
-            {noticesState === 'error' && (
-              <p role="alert">Не удалось загрузить сведения. Попробуйте ещё раз.</p>
-            )}
-            {notices && (
-              <div>
-                <p>
-                  {notices.source.title} — {notices.source.credits}
-                </p>
-                <p>
-                  <a href={notices.source.source_url}>Исходный архив</a> ·{' '}
-                  <a href={notices.source.license_url}>Лицензия CC BY-SA 3.0</a>
-                </p>
-                <p>SHA256: {notices.sha256}</p>
-                <p>{notices.transformations.join(' ')}</p>
-                <details>
-                  <summary>Текст COPYING</summary>
-                  <pre className={formCss.noticeText}>{notices.copying}</pre>
-                </details>
-                <details>
-                  <summary>Заголовок TEI</summary>
-                  <pre className={formCss.noticeText}>{notices.tei_header}</pre>
-                </details>
-              </div>
-            )}
-          </div>
         )}
       </div>
       <label className={ui.field}>

@@ -7,6 +7,7 @@ import pytest
 from alembic import command
 from fastapi import FastAPI
 
+from lexicona import dictionary
 from lexicona.db import Database
 from lexicona.models import TrainingItem, Word
 from tests.conftest import Client, add_word
@@ -170,7 +171,10 @@ async def test_exclusion_invalidates_open_item_without_leaking(
         assert saved.chosen_option is None and saved.grade is None and saved.delta == 0
 
 
-async def test_excluded_words_do_not_enter_choice_pool_or_distractors(alice: Client) -> None:
+async def test_excluded_words_do_not_enter_choice_pool_or_distractors(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     for en, ru in [
         ("cat", "кот"),
         ("dog", "собака"),

@@ -4,6 +4,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
+from lexicona import dictionary
 from lexicona.db import Database
 from lexicona.models import TrainingItem, TrainingSession, Word
 from tests.conftest import Client, add_word
@@ -32,8 +33,9 @@ async def test_invalid_inputs(alice: Client, field: str, value: Any) -> None:
 
 
 async def test_filters_choice_ownership_and_snapshot(
-    app: FastAPI, alice: Client, bob: Client, anon: Client
+    app: FastAPI, alice: Client, bob: Client, anon: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     target = await add_word(alice, "cat", "кот", tags=["animals", "selected"])
     await add_word(alice, "dog", "собака", tags=["animals"])
     await add_word(alice, "cow", "корова")
@@ -130,8 +132,9 @@ async def test_inclusive_progress_boundaries_and_large_integers(
 
 
 async def test_failed_filtered_starts_leave_no_partial_sessions(
-    app: FastAPI, alice: Client
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     word = await add_word(alice, "word", "слово", tags=["selected"], example_en="No match")
     tag = word["tags"][0]["id"]
     cases = [
