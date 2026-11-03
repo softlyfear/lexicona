@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { api, type DictionaryLookup, type Word } from '../api'
+import { ApiError, api, type DictionaryLookup, type Word } from '../api'
 import { forgetSession } from '../session'
 import { WordForm } from './WordForm'
 
@@ -59,6 +59,38 @@ function form(initial = word) {
 }
 beforeEach(() => {
   vi.restoreAllMocks()
+})
+
+it('сообщает о тайм-ауте поиска и позволяет повторить без потери введённого', async () => {
+  vi.spyOn(api, 'lookupDictionary')
+    .mockRejectedValueOnce(new ApiError(504, 'dictionary_timeout'))
+    .mockResolvedValueOnce(result)
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Поиск перевода занял слишком много времени',
+  )
+  expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной')
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('сообщает о тайм-ауте примера и позволяет повторить без потери текста', async () => {
+  vi.spyOn(api, 'generateExample')
+    .mockRejectedValueOnce(new ApiError(504, 'examples_timeout'))
+    .mockResolvedValueOnce({ example_en: 'A book.', example_ru: 'Книга.' })
+  const user = userEvent.setup()
+  form({ ...word, example_en: 'Old example.', example_ru: 'Старый пример.' })
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Составление примера заняло слишком много времени',
+  )
+  expect(screen.getByLabelText('Пример (EN)')).toHaveValue('Old example.')
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  expect(await screen.findByDisplayValue('A book.')).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
 it('автоматически подставляет fallback IPA и сохраняет provenance выбранного перевода', async () => {
@@ -161,12 +193,12 @@ it('добавляет машинный перевод без ударения �
   )
 })
 
-it('показывает варианты Gemini и автоматически подставляет US IPA', async () => {
+it('показывает варианты DeepSeek и автоматически подставляет US IPA', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
     source,
     matches: [],
     machine_translation: {
-      provider: 'gemini',
+      provider: 'openrouter',
       text: 'первый перевод',
       alternatives: ['второй перевод', 'третий перевод'],
       transcription: '/feɪk ɪt tɪl ju meɪk ɪt/',
@@ -175,7 +207,7 @@ it('показывает варианты Gemini и автоматически �
   const user = userEvent.setup()
   const { submit } = form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  expect(await screen.findByText('Машинный перевод · Gemini')).toBeInTheDocument()
+  expect(await screen.findByText('Машинный перевод · DeepSeek · OpenRouter')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'второй перевод' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'третий перевод' })).toBeInTheDocument()
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/feɪk ɪt tɪl ju meɪk ɪt/')
@@ -274,7 +306,7 @@ it('не показывает результат первого запроса �
   expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
 })
 
-it('показывает полную часть речи, озвучку и добавляет пример Gemini', async () => {
+it('показывает полную часть речи, озвучку и добавляет пример DeepSeek', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   vi.spyOn(api, 'generateExample').mockResolvedValue({
     example_en: 'I read a book.',
@@ -318,9 +350,9 @@ it('сбрасывает загрузку примера при изменени
   const user = userEvent.setup()
   form()
   await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
-  expect(screen.getByRole('status')).toHaveTextContent('Gemini составляет пример')
+  expect(screen.getByRole('status')).toHaveTextContent('DeepSeek составляет пример')
   await user.type(screen.getByLabelText(/Слово или выражение/), 's')
-  expect(screen.queryByText('Gemini составляет пример…')).not.toBeInTheDocument()
+  expect(screen.queryByText('DeepSeek составляет пример…')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Добавить пример' })).toBeEnabled()
   await act(async () => resolve({ example_en: 'A book.', example_ru: 'Книга.' }))
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('')
@@ -411,7 +443,7 @@ it('не добавляет и не подставляет точный повт
   await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
   await user.click(await screen.findByRole('button', { name: 'Добавить ещё 1 пример' }))
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('Gemini повторил прежний пример')
+  expect(await screen.findByRole('alert')).toHaveTextContent('DeepSeek повторил прежний пример')
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('First example.')
   expect(screen.getByLabelText('Перевод примера')).toHaveValue('Первый пример.')
 })

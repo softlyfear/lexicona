@@ -31,6 +31,8 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
         return {**result, "machine_translation": None}
     try:
         machine = await asyncio.to_thread(translation.translate, settings, body.headword)
+    except translation.TranslationTimeout:
+        raise HTTPException(504, "dictionary_timeout") from None
     except translation.TranslationError:
         raise HTTPException(503, "dictionary_unavailable") from None
     if result is None and machine is None:
@@ -56,6 +58,8 @@ async def example(body: ExampleIn, auth: CurrentAuth, settings: AppSettings) -> 
         generated = await asyncio.to_thread(
             translation.generate_example, settings, body.headword, body.previous_examples
         )
+    except translation.TranslationTimeout:
+        raise HTTPException(504, "examples_timeout") from None
     except translation.TranslationError:
         raise HTTPException(503, "examples_unavailable") from None
     if generated is None:

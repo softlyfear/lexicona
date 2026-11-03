@@ -58,7 +58,7 @@ export interface DictionaryMatch {
 }
 
 export interface MachineTranslation {
-  provider: 'deepl' | 'gemini'
+  provider: 'deepl' | 'openrouter'
   text: string
   alternatives?: string[]
   transcription?: string | null
@@ -318,6 +318,10 @@ const MESSAGES: Record<string, string> = {
   invalid_credentials: 'Неверный логин или пароль.',
   invalid_current_password: 'Неверный текущий пароль.',
   too_many_attempts: 'Слишком много попыток. Попробуйте через 15 минут.',
+  dictionary_timeout:
+    'Поиск перевода занял слишком много времени. Попробуйте ещё раз или введите данные вручную.',
+  examples_timeout:
+    'Составление примера заняло слишком много времени. Попробуйте ещё раз или введите его вручную.',
   not_enough_words: 'Нужно хотя бы 6 подходящих активных слов с различными словами и переводами.',
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',

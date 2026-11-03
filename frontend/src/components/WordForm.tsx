@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   api,
   ApiError,
+  errorMessage,
   type DictionaryLookup,
   type SourceRef,
   type Tag,
@@ -103,6 +104,7 @@ export function WordForm({
   const [refs, setRefs] = useState<SourceRef[]>(word?.source_refs ?? [])
   const [lookup, setLookup] = useState<DictionaryLookup | null>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [lookupError, setLookupError] = useState<string | null>(null)
   const [choiceError, setChoiceError] = useState<string | null>(null)
   const [exampleState, setExampleState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [exampleGenerated, setExampleGenerated] = useState(false)
@@ -124,6 +126,7 @@ export function WordForm({
     setHeadword(value)
     setLookup(null)
     setLookupState('idle')
+    setLookupError(null)
     setExampleState('idle')
     setExampleGenerated(false)
     setExampleError(null)
@@ -137,6 +140,7 @@ export function WordForm({
     setLookup(null)
     setChoiceError(null)
     setLookupState('loading')
+    setLookupError(null)
     try {
       const result = await api.lookupDictionary(value.trim())
       if (id !== lookupRequestId.current || currentRevision !== getSessionRevision()) return
@@ -187,6 +191,8 @@ export function WordForm({
         forgetSession()
         return
       }
+      if (error instanceof ApiError && error.message === 'dictionary_timeout')
+        setLookupError(errorMessage(error))
       setLookupState('error')
     }
   }
@@ -215,7 +221,7 @@ export function WordForm({
         )
       ) {
         setExampleState('error')
-        setExampleError('Gemini повторил прежний пример. Попробуйте ещё раз; текст не изменён.')
+        setExampleError('DeepSeek повторил прежний пример. Попробуйте ещё раз; текст не изменён.')
         return
       }
       const append = (current: string, addition: string) =>
@@ -237,6 +243,8 @@ export function WordForm({
         forgetSession()
         return
       }
+      if (error instanceof ApiError && error.message === 'examples_timeout')
+        setExampleError(errorMessage(error))
       setExampleState('error')
     }
   }
@@ -367,7 +375,9 @@ export function WordForm({
         </button>
         {lookupState === 'loading' && <p role="status">Ищем в словаре…</p>}
         {lookupState === 'error' && (
-          <p role="alert">Словарь недоступен. Попробуйте ещё раз или введите данные вручную.</p>
+          <p role="alert">
+            {lookupError ?? 'Словарь недоступен. Попробуйте ещё раз или введите данные вручную.'}
+          </p>
         )}
         {lookup &&
           lookup.matches.length === 0 &&
@@ -401,7 +411,9 @@ export function WordForm({
           ))}
         {machine && machineChoices.length > 0 && (
           <section aria-label="Машинный перевод">
-            <p>Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'Gemini'}</p>
+            <p>
+              Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'DeepSeek · OpenRouter'}
+            </p>
             <div className={formCss.choices}>
               {machineChoices.map((value) => (
                 <button
@@ -573,7 +585,7 @@ export function WordForm({
             </button>
           )}
         </div>
-        {exampleState === 'loading' && <p role="status">Gemini составляет пример…</p>}
+        {exampleState === 'loading' && <p role="status">DeepSeek составляет пример…</p>}
         {exampleState === 'error' && (
           <p role="alert" className={ui.error}>
             {exampleError ??

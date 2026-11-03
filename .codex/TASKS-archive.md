@@ -1,5 +1,21 @@
 # Закрытые задачи
 
+## TRANSLATE-002 — DeepSeek Flash Latest вместо Gemini (2026-11-03)
+
+- Статус реализации: принята; попытка: 1. Внешняя live-проверка остаётся в TASKS.md:
+  OpenRouter отклонил данный ключ с HTTP401 «User not found»; пользователь уведомлён.
+- Gemini заменён OpenRouter с указанным пользователем router ~deepseek/deepseek-flash-latest,
+  DeepL остаётся первым внешним переводчиком, local lookup/provenance прежние. Примеры,
+  fallback-перевод и US IPA используют строгий chat/completions JSON/schema без reasoning;
+  fixed HTTPS, no redirects, ответ64KiB, 60с LLM/15с DeepL, безопасные503/504.
+- Root переименовал приватный OPEN_ROUTER в LEXICONA_OPENROUTER_API_KEY и выставил модель;
+  старые Gemini env удалены, секрет не выводился и исключён из Git. Frontend показывает
+  DeepSeek · OpenRouter и отдельные timeout-сообщения, сохраняет retry/late-response/примеры.
+- Backend/frontend исполнили части; root make check exit0: tooling17/backend351/frontend146,
+  формат/линтеры/mypy/TS/build успешны. Независимый reviewer прочитал полный diff, официальные
+  contracts/router, проверил gitignore/diff: Ship для кода, без заявления о live-успехе.
+- Runtime: Codex gpt-6.1-sol high (root/reviewer), gpt-6.1-terra high (исполнители).
+
 ## PWA-001 — установка веб-приложения на телефон и планшет (2026-11-03)
 
 - Статус: done; попытка: 1; приёмка root: ПРИНЯТО.

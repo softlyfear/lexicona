@@ -12,10 +12,10 @@ class Settings(BaseSettings):
 
     dictionary_path: Path = Path("data/dictionaries/eng-rus-2025.11.23.sqlite3")
     database_url: str = "sqlite+aiosqlite:///./data/lexicona.db"
-    translation_provider: Literal["deepl", "gemini"] = "deepl"
+    translation_provider: Literal["deepl", "openrouter"] = "deepl"
     deepl_api_key: SecretStr | None = None
-    gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-flash-lite-latest"
+    openrouter_api_key: SecretStr | None = None
+    openrouter_model: str = "~deepseek/deepseek-flash-latest"
     # Set to true behind HTTPS so the session cookie is never sent over plain HTTP.
     cookie_secure: bool = False
     session_days: int = 30

@@ -40,14 +40,17 @@ POST /dictionary/lookup принимает слово в body с auth/CSRF и н
 exact case перед normalized/source ordinal. При matches=[] локально возвращаются до трёх
 spelling_suggestions по близости написания (длина ±2); выбор варианта меняет headword и повторяет
 lookup. Внешний перевод вызывается в asyncio.to_thread: по умолчанию DeepL Free, при его
-сбое/отсутствии ключа — Gemini Free;
-provider=gemini выбирает Gemini напрямую. Фиксированный HTTPS endpoint, 15с timeout, без redirects,
-ответ до64KiB и строгий JSON-разбор. Gemini возвращает 1..3 перевода и сгенерированную US IPA.
+сбое/отсутствии ключа — DeepSeek через OpenRouter;
+provider=openrouter выбирает его напрямую. Фиксированный HTTPS chat/completions endpoint,
+15с DeepL/60с LLM timeout, без redirects, ответ до64KiB и строгий JSON-разбор без duplicate keys.
+Модель по умолчанию ~deepseek/deepseek-flash-latest, JSON schema, reasoning отключён.
+DeepSeek возвращает 1..3 перевода и сгенерированную US IPA.
 Ответ добавляет machine_translation {provider,text,alternatives,transcription}, не связанный
 с FreeDict source_refs; форма показывает все варианты и подставляет IPA. Текст уходит DeepL,
-а при fallback также Gemini; Google может использовать контент Gemini Free для улучшения
-продуктов. POST /dictionary/example отдельно генерирует через Gemini EN-пример и RU-перевод
+а при fallback также OpenRouter. POST /dictionary/example отдельно генерирует через DeepSeek EN-пример и RU-перевод
 с теми же auth/CSRF, transport limits и strict JSON; запись происходит только при submit слова.
+Таймауты дают безопасный 504 dictionary_timeout/examples_timeout, прочие ошибки — прежний503;
+ключ LEXICONA_OPENROUTER_API_KEY хранится только на сервере, Gemini удалён из активного кода.
 Append/replace передают до 20 прежних EN-примеров (1..2000 символов) в JSON, просят существенно
 изменить ситуацию/грамматику/лексику и используют temperature 0.9; переводы сохраняют temperature 0.
 Точный case-insensitive повтор не изменяет поля; replace в UI явно называется «Заменить все примеры».
