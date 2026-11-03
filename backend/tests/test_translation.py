@@ -229,9 +229,15 @@ def test_gemini_example_request_and_response(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(translation, "_post", post)
     result = translation.generate_example(
-        Settings(_env_file=None, gemini_api_key="test-secret"), "phrase"
+        Settings(_env_file=None, gemini_api_key="test-secret"), "phrase", ["An old phrase"]
     )
     assert result == ("A useful phrase", "Полезная фраза")
+    assert json.loads(calls[0]["contents"][0]["parts"][0]["text"]) == {
+        "headword": "phrase",
+        "previous_examples": ["An old phrase"],
+    }
+    assert calls[0]["generationConfig"]["temperature"] == 0.9
+    assert "substantially different" in calls[0]["systemInstruction"]["parts"][0]["text"]
     schema = calls[0]["generationConfig"]["responseSchema"]
     assert schema["required"] == ["example_en", "example_ru"]
 
@@ -247,14 +253,36 @@ async def test_example_auth_csrf_and_errors(
         await alice.post("/api/dictionary/example", json={"headword": "phrase"})
     ).status_code == 403
     alice.headers["X-CSRF-Token"] = alice.csrf
-    monkeypatch.setattr(translation, "generate_example", lambda settings, text: None)
+    monkeypatch.setattr(
+        translation, "generate_example", lambda settings, text, previous_examples: None
+    )
     assert (
         await alice.post("/api/dictionary/example", json={"headword": "phrase"})
     ).status_code == 503
-    monkeypatch.setattr(
-        translation, "generate_example", lambda settings, text: ("A phrase", "Фраза")
+    calls = []
+
+    def generated(settings: Settings, text: str, previous_examples: list[str]) -> tuple[str, str]:
+        calls.append((text, previous_examples))
+        return "A phrase", "Фраза"
+
+    monkeypatch.setattr(translation, "generate_example", generated)
+    response = await alice.post(
+        "/api/dictionary/example",
+        json={"headword": "phrase", "previous_examples": ["An old phrase"]},
     )
-    response = await alice.post("/api/dictionary/example", json={"headword": "phrase"})
     assert response.status_code == 200
     assert response.json() == {"example_en": "A phrase", "example_ru": "Фраза"}
     assert response.headers["cache-control"] == "no-store"
+    assert calls == [("phrase", ["An old phrase"])]
+    assert (
+        await alice.post(
+            "/api/dictionary/example",
+            json={"headword": "phrase", "previous_examples": [""]},
+        )
+    ).status_code == 422
+    assert (
+        await alice.post(
+            "/api/dictionary/example",
+            json={"headword": "phrase", "previous_examples": ["text"] * 21},
+        )
+    ).status_code == 422

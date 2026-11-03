@@ -272,9 +272,10 @@ export const api = {
   },
   lookupDictionary: (headword: string) =>
     request<DictionaryLookup>('POST', '/dictionary/lookup', { headword }),
-  generateExample: (headword: string) =>
+  generateExample: (headword: string, previousExamples: string[]) =>
     request<{ example_en: string; example_ru: string }>('POST', '/dictionary/example', {
       headword,
+      previous_examples: previousExamples,
     }),
   dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),

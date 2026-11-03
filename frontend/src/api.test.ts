@@ -69,6 +69,19 @@ describe('api', () => {
     expect(noticesInit.method).toBe('GET')
   })
 
+  it('sends previous examples for diverse generation', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, {})
+    await api.generateExample('sleep', ['I sleep early.'])
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/dictionary/example')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(init.body).toBe(
+      JSON.stringify({ headword: 'sleep', previous_examples: ['I sleep early.'] }),
+    )
+  })
+
   it('updates word training state with CSRF and strict boolean body', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { id: 'word', is_excluded: true })

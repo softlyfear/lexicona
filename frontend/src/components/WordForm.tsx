@@ -203,8 +203,21 @@ export function WordForm({
     setExampleState('loading')
     setExampleError(null)
     try {
-      const result = await api.generateExample(headword.trim())
+      const previousExamples = exampleEn
+        .split(/\n\s*\n/u)
+        .map((example) => example.trim())
+        .filter(Boolean)
+      const result = await api.generateExample(headword.trim(), previousExamples)
       if (id !== exampleRequestId.current || currentRevision !== getSessionRevision()) return
+      if (
+        previousExamples.some(
+          (example) => example.toLocaleLowerCase() === result.example_en.toLocaleLowerCase(),
+        )
+      ) {
+        setExampleState('error')
+        setExampleError('Gemini повторил прежний пример. Попробуйте ещё раз; текст не изменён.')
+        return
+      }
       const append = (current: string, addition: string) =>
         mode === 'append' && current.trim() ? `${current.trimEnd()}\n\n${addition}` : addition
       const nextEn = append(exampleEn, result.example_en)
@@ -546,7 +559,7 @@ export function WordForm({
                 disabled={!headword.trim() || exampleState === 'loading'}
                 onClick={() => addExample('replace')}
               >
-                Заменить пример
+                Заменить все примеры
               </button>
             </>
           ) : (

@@ -358,7 +358,8 @@ it('предлагает исправление опечатки и ищет в�
 })
 
 it('добавляет ещё один пример через пустую строку или полностью заменяет текущий', async () => {
-  vi.spyOn(api, 'generateExample')
+  const generate = vi
+    .spyOn(api, 'generateExample')
     .mockResolvedValueOnce({ example_en: 'First example.', example_ru: 'Первый пример.' })
     .mockResolvedValueOnce({ example_en: 'Second example.', example_ru: 'Второй пример.' })
     .mockResolvedValueOnce({ example_en: 'Replacement.', example_ru: 'Замена.' })
@@ -366,16 +367,19 @@ it('добавляет ещё один пример через пустую ст
   form()
   await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
   expect(await screen.findByRole('button', { name: 'Добавить ещё 1 пример' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Заменить пример' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Заменить все примеры' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Добавить пример' })).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Добавить ещё 1 пример' }))
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('First example.\n\nSecond example.')
   expect(screen.getByLabelText('Перевод примера')).toHaveValue('Первый пример.\n\nВторой пример.')
 
-  await user.click(screen.getByRole('button', { name: 'Заменить пример' }))
+  await user.click(screen.getByRole('button', { name: 'Заменить все примеры' }))
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('Replacement.')
   expect(screen.getByLabelText('Перевод примера')).toHaveValue('Замена.')
+  expect(generate).toHaveBeenNthCalledWith(1, 'book', [])
+  expect(generate).toHaveBeenNthCalledWith(2, 'book', ['First example.'])
+  expect(generate).toHaveBeenNthCalledWith(3, 'book', ['First example.', 'Second example.'])
 })
 
 it('не теряет примеры, если дополнение превышает лимит поля', async () => {
@@ -396,4 +400,18 @@ it('не теряет примеры, если дополнение превыш
   expect(await screen.findByRole('alert')).toHaveTextContent('Текст не изменён')
   expect(english).toHaveValue('a'.repeat(1999))
   expect(russian).toHaveValue('б'.repeat(1999))
+})
+
+it('не добавляет и не подставляет точный повтор прежнего примера', async () => {
+  vi.spyOn(api, 'generateExample')
+    .mockResolvedValueOnce({ example_en: 'First example.', example_ru: 'Первый пример.' })
+    .mockResolvedValueOnce({ example_en: 'first example.', example_ru: 'Другой перевод.' })
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  await user.click(await screen.findByRole('button', { name: 'Добавить ещё 1 пример' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Gemini повторил прежний пример')
+  expect(screen.getByLabelText('Пример (EN)')).toHaveValue('First example.')
+  expect(screen.getByLabelText('Перевод примера')).toHaveValue('Первый пример.')
 })

@@ -44,6 +44,9 @@ provider=gemini выбирает Gemini напрямую. Фиксированн
 а при fallback также Gemini; Google может использовать контент Gemini Free для улучшения
 продуктов. POST /dictionary/example отдельно генерирует через Gemini EN-пример и RU-перевод
 с теми же auth/CSRF, transport limits и strict JSON; запись происходит только при submit слова.
+Append/replace передают до 20 прежних EN-примеров (1..2000 символов) в JSON, просят существенно
+изменить ситуацию/грамматику/лексику и используют temperature 0.9; переводы сохраняют temperature 0.
+Точный case-insensitive повтор не изменяет поля; replace в UI явно называется «Заменить все примеры».
 Качество идиом, IPA и примеров не гарантируется. GET /dictionary/notices хранит raw
 COPYING/teiHeader/credits/transformations, API no-store.
 Word.source_refs — nullable JSON, migration c83917f0d52a additive; typed source_id/entry_id/
