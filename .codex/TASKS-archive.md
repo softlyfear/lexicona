@@ -1625,3 +1625,35 @@ browser PASS подтверждён root/reviewer. Теги не отправл�
 
 - Runtime участников: Codex gpt-6.1-sol high и gpt-6.1-terra high.
 - Метаданные основной сессии недоступны; локальный коммит выполняет оркестратор.
+
+## TRANSLATE-001 — DeepL и Gemini для неизвестных фраз (2026-11-03)
+
+Статус: done. Реализованы настройки DeepL/Gemini, fallback только после пустого локального lookup,
+strict/bounded HTTP, machine_translation без FreeDict provenance и выбор переводов/US IPA в форме.
+Live DeepL и Gemini проверены; секреты не коммитились. Финальный общий gate после стабилизации
+двух unrelated random-order тестов: tooling 17, backend 329, frontend 131, все проверки зелёные.
+Независимый reviewer ранее не нашёл дефектов diff; финальный Ship подтверждён для общего среза.
+
+## UX-001 — подсказки, озвучка и примеры в редакторе (2026-11-03)
+
+Статус: done. Добавлены EN-озвучка, полные русские POS, очистка wiki-разметки и генерация EN/RU
+примера через Gemini с auth/CSRF/no-store. Cloze исключён из UI и API новых занятий, legacy snapshots
+и cards сохранены. Популярность и голоса не имитируются. Находки первого No-Ship (API cloze,
+request-id, POS map) исправлены; конечный make check зелёный, независимый reviewer вернул Ship.
+
+## TRAIN-RETRY-001 — исправление ошибки без повторного штрафа (2026-11-03)
+
+Статус: done. В choice/input/legacy cloze первая ошибка применяет дельту и SRS один раз, последующие
+попытки имеют delta=0 и не трогают SRS, правильный ответ закрывает item. UI не раскрывает ответ до
+исправления и сохраняет reveal/skip. CAS, гонки и отсутствие утечки ответа проверены. Общий gate:
+backend 329, frontend 131; финальный независимый Ship.
+
+## UX-002 — исправление опечаток и стабильный порядок тестов (2026-11-03)
+
+Статус: done. SpeakButton перенесён к полю headword. При пустом exact lookup локальный pinned index
+возвращает до трёх близких написаний; UI объясняет отсутствие точного совпадения, выбор подсказки
+подставляет слово и повторяет lookup. Live `corsar` предлагает `corsair`. Два прежних теста больше
+не зависят от неопределённого порядка SQLite: choice проверяет reversed population, SRS — состав
+due/new/future. `make fmt && make check` зелёный: tooling 17, backend 329, frontend 131, ruff/mypy,
+format/lint/typecheck/build. Независимый reviewer: Ship, дефектов нет; лично 24 backend и 19
+WordForm тестов, diff --check.

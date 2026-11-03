@@ -30,7 +30,7 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
     if result is None and machine is None:
         raise HTTPException(503, "dictionary_unavailable")
     return {
-        **(result or {"source": dictionary.SOURCE, "matches": []}),
+        **(result or {"source": dictionary.SOURCE, "matches": [], "spelling_suggestions": []}),
         "machine_translation": (
             {
                 "provider": machine.provider,

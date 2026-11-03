@@ -13,6 +13,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from contextlib import closing
 from dataclasses import dataclass
+from difflib import get_close_matches
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -243,6 +244,30 @@ def lookup(path: Path, headword: str) -> dict[str, Any]:
             "CASE WHEN headword = ? THEN 0 ELSE 1 END, entry_id LIMIT 20",
             (key(headword), display(headword)),
         ).fetchall()
+        suggestions: list[str] = []
+        if not rows and len(key(headword)) >= 2:
+            normalized = key(headword)
+            candidates = db.execute(
+                "SELECT normalized, "
+                "COALESCE(MIN(CASE WHEN headword = normalized THEN headword END), MIN(headword)) "
+                "FROM entries WHERE normalized != ? AND length(normalized) BETWEEN ? AND ? "
+                "GROUP BY normalized",
+                (normalized, max(2, len(normalized) - 2), len(normalized) + 2),
+            ).fetchall()
+            spellings: dict[str, str] = {}
+            for candidate, spelling in candidates:
+                if (
+                    not isinstance(candidate, str)
+                    or not isinstance(spelling, str)
+                    or key(candidate) != candidate
+                    or key(spelling) != candidate
+                ):
+                    raise ValueError("invalid entry")
+                spellings[candidate] = spelling
+            suggestions = [
+                spellings[candidate]
+                for candidate in get_close_matches(normalized, list(spellings), n=3, cutoff=0.75)
+            ]
     matches = []
     for entry_id, spelling, pos_valid, pos, translations, transcriptions in rows:
         if (
@@ -269,7 +294,7 @@ def lookup(path: Path, headword: str) -> dict[str, Any]:
                 "match": "exact" if spelling == display(headword) else "normalized",
             }
         )
-    return {"source": SOURCE, "matches": matches}
+    return {"source": SOURCE, "matches": matches, "spelling_suggestions": suggestions}
 
 
 @dataclass(frozen=True, slots=True)

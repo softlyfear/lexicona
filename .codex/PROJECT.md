@@ -33,8 +33,10 @@ eng-rus2025.11.23 (CC-BY-SA3.0), вне пользовательской БД. C
 build проверяет SHA256, ограничивает archive/XML, отклоняет entities/чужие DTD и атомарно
 заменяет индекс. Runtime проверяет source manifest/SHA и закрывает каждое соединение.
 POST /dictionary/lookup принимает слово в body с auth/CSRF и не записывает raw query в URL;
-exact case перед normalized/source ordinal. При matches=[] внешний перевод вызывается в
-asyncio.to_thread: по умолчанию DeepL Free, при его сбое/отсутствии ключа — Gemini Free;
+exact case перед normalized/source ordinal. При matches=[] локально возвращаются до трёх
+spelling_suggestions по близости написания (длина ±2); выбор варианта меняет headword и повторяет
+lookup. Внешний перевод вызывается в asyncio.to_thread: по умолчанию DeepL Free, при его
+сбое/отсутствии ключа — Gemini Free;
 provider=gemini выбирает Gemini напрямую. Фиксированный HTTPS endpoint, 15с timeout, без redirects,
 ответ до64KiB и строгий JSON-разбор. Gemini возвращает 1..3 перевода и сгенерированную US IPA.
 Ответ добавляет machine_translation {provider,text,alternatives,transcription}, не связанный

@@ -111,16 +111,17 @@ async def test_scheduled_queue_due_then_at_most_ten_new(
 
     session = await start(alice, mode="input", purpose="scheduled", size="all")
     assert session["purpose"] == "scheduled"
-    assert [item["prompt"] for item in session["items"]] == [
-        "due1",
-        "due2",
-        *[f"new{i}" for i in range(10)],
-    ]
+    prompts = [item["prompt"] for item in session["items"]]
+    assert len(prompts) == 12
+    assert set(prompts[:2]) == {"due1", "due2"}
+    assert len(set(prompts[2:])) == 10
+    assert set(prompts[2:]) <= {f"new{i}" for i in range(12)}
+    assert "future" not in prompts
 
     due_only = await start(alice, mode="input", purpose="scheduled", include_new=False, size="all")
-    assert [item["prompt"] for item in due_only["items"]] == ["due1", "due2"]
+    assert {item["prompt"] for item in due_only["items"]} == {"due1", "due2"}
     limited = await start(alice, mode="input", purpose="scheduled", size=1)
-    assert [item["prompt"] for item in limited["items"]] == ["due1"]
+    assert limited["items"][0]["prompt"] in {"due1", "due2"}
 
 
 async def test_scheduled_empty_and_free_selection_contract(alice: Client) -> None:

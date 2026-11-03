@@ -66,6 +66,7 @@ export interface MachineTranslation {
 export interface DictionaryLookup {
   source: DictionarySource
   matches: DictionaryMatch[]
+  spelling_suggestions?: string[]
   machine_translation?: MachineTranslation | null
 }
 export interface DictionaryNotices {

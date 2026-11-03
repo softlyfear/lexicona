@@ -96,9 +96,17 @@ async def test_random_order_is_not_sorted_by_progress(
     words = await seed(alice)
     for en, value in [("cat", 90), ("dog", 80), ("cow", 70), ("fox", 0), ("owl", 10)]:
         await set_progress(app, words[en]["id"], value)
-    monkeypatch.setattr(training._rng, "sample", lambda population, k: list(reversed(population)))
+    populations: list[list[Word]] = []
+
+    def reversed_population(population: list[Word], k: int) -> list[Word]:
+        assert k == len(population)
+        populations.append(population)
+        return list(reversed(population))
+
+    monkeypatch.setattr(training._rng, "sample", reversed_population)
     session = await start(alice, mode="input", size=2)
-    assert [item["prompt"] for item in session["items"]] == ["wolf", "owl"]
+    expected = [populations[0][-1].headword, populations[0][-2].headword]
+    assert [item["prompt"] for item in session["items"]] == expected
 
 
 async def test_correct_and_wrong_answers_move_progress(app: FastAPI, alice: Client) -> None:

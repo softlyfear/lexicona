@@ -116,7 +116,17 @@ export function WordForm({
     [],
   )
 
-  async function findSuggestions() {
+  function changeHeadword(value: string) {
+    lookupRequestId.current++
+    exampleRequestId.current++
+    setHeadword(value)
+    setLookup(null)
+    setLookupState('idle')
+    setExampleState('idle')
+    setChoiceError(null)
+  }
+
+  async function findSuggestions(value = headword) {
     const id = ++lookupRequestId.current
     const currentRevision = getSessionRevision()
     revision.current = currentRevision
@@ -124,7 +134,7 @@ export function WordForm({
     setChoiceError(null)
     setLookupState('loading')
     try {
-      const result = await api.lookupDictionary(headword.trim())
+      const result = await api.lookupDictionary(value.trim())
       if (id !== lookupRequestId.current || currentRevision !== getSessionRevision()) return
       const matches = result.matches.map((match) => ({
         ...match,
@@ -175,6 +185,11 @@ export function WordForm({
       }
       setLookupState('error')
     }
+  }
+
+  async function selectSpelling(value: string) {
+    changeHeadword(value)
+    await findSuggestions(value)
   }
 
   async function addExample() {
@@ -280,27 +295,22 @@ export function WordForm({
   return (
     <form className={`${ui.card} ${css.form}`} onSubmit={submit} aria-label="Слово">
       <div className={css.formRow}>
-        <label className={ui.field}>
-          <span className={ui.label}>Слово или выражение (EN)</span>
-          <input
-            className={ui.input}
-            value={headword}
-            onChange={(e) => {
-              lookupRequestId.current++
-              exampleRequestId.current++
-              setHeadword(e.target.value)
-              setLookup(null)
-              setLookupState('idle')
-              setExampleState('idle')
-              setChoiceError(null)
-            }}
-            maxLength={200}
-            lang="en"
-            autoCapitalize="none"
-            autoFocus
-            required
-          />
-        </label>
+        <div className={formCss.headword}>
+          <label className={ui.field}>
+            <span className={ui.label}>Слово или выражение (EN)</span>
+            <input
+              className={ui.input}
+              value={headword}
+              onChange={(e) => changeHeadword(e.target.value)}
+              maxLength={200}
+              lang="en"
+              autoCapitalize="none"
+              autoFocus
+              required
+            />
+          </label>
+          <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
+        </div>
         <label className={ui.field}>
           <span className={ui.label}>Транскрипция</span>
           <input
@@ -318,15 +328,12 @@ export function WordForm({
           />
         </label>
       </div>
-      <div>
-        <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
-      </div>
       <div className={formCss.dictionary}>
         <button
           type="button"
           className={`${ui.button} ${formCss.dictionaryButton}`}
           disabled={!headword.trim() || lookupState === 'loading'}
-          onClick={findSuggestions}
+          onClick={() => findSuggestions()}
         >
           Подобрать перевод и транскрипцию
         </button>
@@ -334,9 +341,36 @@ export function WordForm({
         {lookupState === 'error' && (
           <p role="alert">Словарь недоступен. Попробуйте ещё раз или введите данные вручную.</p>
         )}
-        {lookup && lookup.matches.length === 0 && !lookup.machine_translation && (
-          <p role="status">Варианты не найдены. Можно ввести данные вручную.</p>
-        )}
+        {lookup &&
+          lookup.matches.length === 0 &&
+          lookup.spelling_suggestions &&
+          lookup.spelling_suggestions.length > 0 && (
+            <section aria-label="Возможные исправления">
+              <p>Точного совпадения нет. Возможно, вы имели в виду:</p>
+              <div className={formCss.choices}>
+                {lookup.spelling_suggestions.map((value) => (
+                  <button
+                    type="button"
+                    className={`${ui.button} ${formCss.dictionaryButton}`}
+                    key={value}
+                    onClick={() => selectSpelling(value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        {lookup &&
+          lookup.matches.length === 0 &&
+          !lookup.spelling_suggestions?.length &&
+          (lookup.machine_translation ? (
+            <p role="status">
+              Слова нет в локальном словаре. Проверьте написание или используйте машинный перевод.
+            </p>
+          ) : (
+            <p role="status">Слово не найдено. Проверьте написание или введите перевод вручную.</p>
+          ))}
         {machine && machineChoices.length > 0 && (
           <section aria-label="Машинный перевод">
             <p>Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'Gemini'}</p>

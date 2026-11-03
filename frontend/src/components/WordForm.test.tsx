@@ -146,7 +146,7 @@ it('добавляет машинный перевод без ударения �
   const { submit } = form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
   expect(await screen.findByText('Машинный перевод · DeepL')).toBeInTheDocument()
-  expect(screen.queryByText(/Варианты не найдены/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Слово не найдено/)).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'притворись, пока не получится' }))
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной\nпритворись, пока не получится')
   expect(
@@ -199,7 +199,7 @@ it('позволяет сохранять вручную при пустом р�
   const { submit } = form()
   const button = screen.getByRole('button', { name: /Подобрать перевод/ })
   await user.click(button)
-  expect(await screen.findByText(/Варианты не найдены/)).toBeInTheDocument()
+  expect(await screen.findByText(/Слово не найдено/)).toBeInTheDocument()
   await user.click(button)
   expect(await screen.findByRole('alert')).toHaveTextContent('Словарь недоступен')
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
@@ -269,7 +269,7 @@ it('не показывает результат первого запроса �
   await user.click(button)
   await user.type(screen.getByLabelText(/Слово или выражение/), 's')
   await user.click(button)
-  expect(await screen.findByText(/Варианты не найдены/)).toBeInTheDocument()
+  expect(await screen.findByText(/Слово не найдено/)).toBeInTheDocument()
   await act(async () => resolve(result))
   expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
 })
@@ -325,4 +325,34 @@ it('сбрасывает загрузку примера при изменени
   await act(async () => resolve({ example_en: 'A book.', example_ru: 'Книга.' }))
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('')
   expect(screen.getByLabelText('Перевод примера')).toHaveValue('')
+})
+
+it('предлагает исправление опечатки и ищет выбранный вариант', async () => {
+  const lookup = vi
+    .spyOn(api, 'lookupDictionary')
+    .mockResolvedValueOnce({
+      source,
+      matches: [],
+      spelling_suggestions: ['corsair'],
+      machine_translation: { provider: 'deepl', text: 'корсар' },
+    })
+    .mockResolvedValueOnce({
+      ...result,
+      matches: [
+        {
+          ...result.matches[0],
+          headword: 'corsair',
+          translations: ['корсар'],
+          transcriptions: ['/ˌkɔːrˈser/'],
+        },
+      ],
+    })
+  const user = userEvent.setup()
+  form({ ...word, headword: 'corsar' })
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByText(/Точного совпадения нет/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'corsair' }))
+  expect(screen.getByLabelText(/Слово или выражение/)).toHaveValue('corsair')
+  expect(await screen.findByRole('button', { name: 'корсар' })).toBeInTheDocument()
+  expect(lookup).toHaveBeenNthCalledWith(2, 'corsair')
 })

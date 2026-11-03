@@ -56,6 +56,8 @@ def test_build_lookup_notices_and_atomic_failure(
     ]
     assert dictionary.lookup(path, "apple")["matches"][0]["transcriptions"] == ["/a/"]
     assert dictionary.lookup(path, "missing")["matches"] == []
+    assert dictionary.lookup(path, "apple")["spelling_suggestions"] == []
+    assert dictionary.lookup(path, "appl")["spelling_suggestions"] == ["apple"]
     assert dictionary.notices(path)["copying"] == "license"
     before = path.read_bytes()
     for bad in [
