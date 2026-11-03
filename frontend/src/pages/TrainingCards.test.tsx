@@ -64,7 +64,10 @@ describe('карточки', () => {
     expect(screen.getByRole('button', { name: 'Показать ответ' })).toBeDisabled()
     expect(api.revealCard).toHaveBeenCalledOnce()
     await act(async () => finishReveal({ outcome: 'revealed', expected_answers: ['кот', 'кошка'] }))
-    expect(await screen.findByText('Ответ: кот, кошка')).toBeInTheDocument()
+    expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent(
+      'кот, кошка',
+    )
+    expect(screen.getByRole('button', { name: 'Произнести RU «кот, кошка»' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Хорошо' }))
     expect(api.answerCard).toHaveBeenCalledWith('i1', 'good')
     for (const label of ['Повторить', 'Трудно', 'Хорошо', 'Легко'])
@@ -113,9 +116,9 @@ describe('карточки', () => {
     expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'cards', undefined, 'free', true)
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
-    expect(screen.queryByText('Ответ: cat')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Ответ карточки' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
-    expect(await screen.findByText('Ответ: cat')).toBeInTheDocument()
+    expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent('cat')
     await user.click(screen.getByRole('button', { name: 'Трудно' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
     expect(screen.getByRole('button', { name: 'Трудно' })).toBeEnabled()

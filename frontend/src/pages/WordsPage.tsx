@@ -115,12 +115,16 @@ export function WordsPage() {
     tagsError: tags.isError ? errorMessage(tags.error) : null,
   }
 
-  if (editing?.kind === 'new') {
+  if (editing) {
     return (
       <section className={css.stack}>
-        <h1 className={css.title}>Добавить слово</h1>
+        <h1 className={css.title}>
+          {editing.kind === 'new' ? 'Добавить слово' : 'Редактировать слово'}
+        </h1>
         <WordForm
           {...tagFormProps}
+          key={editing.kind === 'edit' ? editing.word.id : 'new'}
+          word={editing.kind === 'edit' ? editing.word : undefined}
           pending={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
           onSubmit={(input) => save.mutate(input)}
@@ -142,11 +146,9 @@ export function WordsPage() {
           value={search}
           onChange={(e) => updateParameter('q', e.target.value)}
         />
-        {editing === null && (
-          <button className={ui.primary} onClick={() => startEditing({ kind: 'new' })}>
-            Добавить слово
-          </button>
-        )}
+        <button className={ui.primary} onClick={() => startEditing({ kind: 'new' })}>
+          Добавить слово
+        </button>
       </div>
 
       <div className={css.filters}>
@@ -218,18 +220,6 @@ export function WordsPage() {
           </button>
         )}
       </fieldset>
-
-      {editing !== null && (
-        <WordForm
-          {...tagFormProps}
-          key={editing.word.id}
-          word={editing.word}
-          pending={save.isPending}
-          error={save.isError ? errorMessage(save.error) : null}
-          onSubmit={(input) => save.mutate(input)}
-          onCancel={() => setEditing(null)}
-        />
-      )}
 
       {remove.isError && (
         <p className={ui.error} role="alert">

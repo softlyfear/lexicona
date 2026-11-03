@@ -219,6 +219,30 @@
   min-height: 7rem;
 }
 
+.cardRevealed {
+  flex-direction: column;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.cardAnswer {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.cardAnswerValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .prompt {
   font-size: clamp(1.5rem, 6vw, 2.25rem);
   font-weight: 600;

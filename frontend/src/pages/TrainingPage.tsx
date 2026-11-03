@@ -549,7 +549,9 @@ function Run({
           Доступно {session.items.length} из {requestedSize} запрошенных слов
         </p>
       )}
-      <div className={`${ui.card} ${css.question}`}>
+      <div
+        className={`${ui.card} ${css.question} ${session.mode === 'cards' && cardAnswer ? css.cardRevealed : ''}`}
+      >
         <span
           className={`${css.prompt} ${session.mode === 'cloze' ? css.examplePrompt : ''}`}
           lang={promptLang}
@@ -557,6 +559,20 @@ function Run({
           {item.prompt}
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
+        {session.mode === 'cards' && cardAnswer && (
+          <div className={css.cardAnswer} role="group" aria-label="Ответ карточки">
+            <span className={ui.label}>Ответ</span>
+            <div className={css.cardAnswerValue}>
+              <span className={css.prompt} lang={answerLang}>
+                {cardAnswer.join(', ')}
+              </span>
+              <SpeakButton
+                text={cardAnswer.join(', ')}
+                lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
+              />
+            </div>
+          </div>
+        )}
       </div>
       {session.mode === 'choice' && (
         <div className={css.options} role="group" aria-label="Варианты ответа">
@@ -626,9 +642,6 @@ function Run({
       )}
       {session.mode === 'cards' && cardAnswer && (
         <div className={css.stack}>
-          <p className={ui.muted} lang={answerLang}>
-            Ответ: {cardAnswer.join(', ')}
-          </p>
           <fieldset className={css.choices}>
             <legend className={ui.label}>Как вы запомнили?</legend>
             <div className={css.actions}>

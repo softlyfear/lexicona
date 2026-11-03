@@ -105,6 +105,8 @@ export function WordForm({
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [choiceError, setChoiceError] = useState<string | null>(null)
   const [exampleState, setExampleState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [exampleGenerated, setExampleGenerated] = useState(false)
+  const [exampleError, setExampleError] = useState<string | null>(null)
   const lookupRequestId = useRef(0)
   const exampleRequestId = useRef(0)
   const revision = useRef(getSessionRevision())
@@ -123,6 +125,8 @@ export function WordForm({
     setLookup(null)
     setLookupState('idle')
     setExampleState('idle')
+    setExampleGenerated(false)
+    setExampleError(null)
     setChoiceError(null)
   }
 
@@ -192,16 +196,27 @@ export function WordForm({
     await findSuggestions(value)
   }
 
-  async function addExample() {
+  async function addExample(mode: 'append' | 'replace' = 'replace') {
     const id = ++exampleRequestId.current
     const currentRevision = getSessionRevision()
     revision.current = currentRevision
     setExampleState('loading')
+    setExampleError(null)
     try {
       const result = await api.generateExample(headword.trim())
       if (id !== exampleRequestId.current || currentRevision !== getSessionRevision()) return
-      setExampleEn(result.example_en)
-      setExampleRu(result.example_ru)
+      const append = (current: string, addition: string) =>
+        mode === 'append' && current.trim() ? `${current.trimEnd()}\n\n${addition}` : addition
+      const nextEn = append(exampleEn, result.example_en)
+      const nextRu = append(exampleRu, result.example_ru)
+      if (nextEn.length > 2000 || nextRu.length > 2000) {
+        setExampleState('error')
+        setExampleError('Примеры не помещаются в поля: максимум 2000 символов. Текст не изменён.')
+        return
+      }
+      setExampleEn(nextEn)
+      setExampleRu(nextRu)
+      setExampleGenerated(true)
       setExampleState('idle')
     } catch (error) {
       if (id !== exampleRequestId.current || currentRevision !== getSessionRevision()) return
@@ -514,18 +529,42 @@ export function WordForm({
         </div>
       </fieldset>
       <div>
-        <button
-          type="button"
-          className={ui.button}
-          disabled={!headword.trim() || exampleState === 'loading'}
-          onClick={addExample}
-        >
-          Добавить пример
-        </button>
+        <div className={css.actions}>
+          {exampleGenerated ? (
+            <>
+              <button
+                type="button"
+                className={ui.button}
+                disabled={!headword.trim() || exampleState === 'loading'}
+                onClick={() => addExample('append')}
+              >
+                Добавить ещё 1 пример
+              </button>
+              <button
+                type="button"
+                className={ui.button}
+                disabled={!headword.trim() || exampleState === 'loading'}
+                onClick={() => addExample('replace')}
+              >
+                Заменить пример
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={ui.button}
+              disabled={!headword.trim() || exampleState === 'loading'}
+              onClick={() => addExample()}
+            >
+              Добавить пример
+            </button>
+          )}
+        </div>
         {exampleState === 'loading' && <p role="status">Gemini составляет пример…</p>}
         {exampleState === 'error' && (
           <p role="alert" className={ui.error}>
-            Не удалось составить пример. Попробуйте ещё раз или введите его вручную.
+            {exampleError ??
+              'Не удалось составить пример. Попробуйте ещё раз или введите его вручную.'}
           </p>
         )}
       </div>

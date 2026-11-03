@@ -151,7 +151,7 @@ describe('сортировка словаря', () => {
     expect(params().has('sort')).toBe(false)
   })
 
-  it('показывает обновление предыдущего списка и сохраняет открытый редактор', async () => {
+  it('показывает прежний список до завершения обновления сортировки', async () => {
     let resolve!: (words: Word[]) => void
     vi.mocked(api.listWords).mockImplementation((_q, sort) =>
       sort === 'created_asc'
@@ -163,17 +163,11 @@ describe('сортировка словаря', () => {
     const user = userEvent.setup()
     renderPage()
     await screen.findByText('cat')
-    await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
-    const input = screen.getByLabelText('Слово или выражение (EN)')
-    await user.clear(input)
-    await user.type(input, 'cat draft')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'created_asc')
     expect(await screen.findByRole('status')).toHaveTextContent('Обновляем список')
     expect(screen.getByText('cat')).toBeInTheDocument()
-    expect(input).toHaveValue('cat draft')
     await act(async () => resolve([word('2', 'dog'), word('1', 'cat')]))
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
-    expect(screen.getByLabelText('Слово или выражение (EN)')).toHaveValue('cat draft')
     expect(
       screen.getAllByRole('listitem').map((item) => within(item).getByRole('strong').textContent),
     ).toEqual(['dog', 'cat'])
@@ -238,7 +232,7 @@ describe('сортировка словаря', () => {
     expect(params().has('training')).toBe(false)
   })
 
-  it('исключает и возвращает слово без сброса черновика и прогресса; ошибка допускает повтор', async () => {
+  it('исключает и возвращает слово без сброса прогресса; ошибка допускает повтор', async () => {
     let excluded = false
     let finish!: (value: Word) => void
     vi.mocked(api.listWords).mockImplementation(async () => [
@@ -274,13 +268,8 @@ describe('сортировка словаря', () => {
     expect(bar).toHaveAttribute('aria-valuenow', '100')
     expect(bar).toHaveAttribute('aria-valuetext', '158%')
     expect(bar.firstElementChild).toHaveStyle({ width: '100%' })
-    await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
-    const input = screen.getByLabelText('Слово или выражение (EN)')
-    await user.clear(input)
-    await user.type(input, 'draft')
-    await user.click(screen.getByRole('button', { name: 'Исключить из обучения «cat»' }))
+    await user.click(action)
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
-    expect(input).toHaveValue('draft')
     await user.click(screen.getByRole('button', { name: 'Исключить из обучения «cat»' }))
     expect(screen.getByRole('button', { name: 'Исключить из обучения «cat»' })).toBeDisabled()
     excluded = true
@@ -288,7 +277,6 @@ describe('сортировка словаря', () => {
     const restore = await screen.findByRole('button', { name: 'Вернуть в обучение «cat»' })
     expect(restore).toHaveAttribute('title', 'Вернуть в обучение')
     expect(screen.getByText('Исключено из обучения')).toBeInTheDocument()
-    expect(input).toHaveValue('draft')
     expect(screen.getByText('158%')).toBeInTheDocument()
     await user.click(restore)
     expect(
@@ -296,7 +284,6 @@ describe('сортировка словаря', () => {
     ).toBeInTheDocument()
     expect(api.setWordTraining).toHaveBeenNthCalledWith(2, '1', true)
     expect(api.setWordTraining).toHaveBeenNthCalledWith(3, '1', false)
-    expect(input).toHaveValue('draft')
   })
 
   it('изолирует новый редактор и возвращает прежние параметры после отмены', async () => {
@@ -318,6 +305,21 @@ describe('сортировка словаря', () => {
     expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('progress_desc')
     expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('excluded')
     expect(params().toString()).toBe('q=cat&sort=progress_desc&training=excluded')
+  })
+
+  it('изолирует редактирование слова от поиска, фильтра тегов и списка', async () => {
+    const user = userEvent.setup()
+    renderPage('/?q=cat&sort=progress_desc&training=all')
+    await user.click(await screen.findByRole('button', { name: 'Изменить «cat»' }))
+    expect(screen.getByRole('heading', { name: 'Редактировать слово' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Слово или выражение (EN)')).toHaveValue('cat')
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Теги: все выбранные' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(screen.getByRole('searchbox', { name: 'Поиск' })).toHaveValue('cat')
+    expect(params().toString()).toBe('q=cat&sort=progress_desc&training=all')
   })
 
   it('сохраняет черновик при ошибке создания и возвращает обновлённый список при успехе', async () => {

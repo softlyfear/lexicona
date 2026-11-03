@@ -311,7 +311,7 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     await screen.findByText('cat')
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
-    expect(await screen.findByText('Ответ: кот')).toBeInTheDocument()
+    expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent('кот')
     await user.click(screen.getByRole('button', { name: 'Пропустить' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
     expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()

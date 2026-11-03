@@ -4,9 +4,8 @@
 Настройки Codex не менять; Kimi продолжает MVP. TASKS/PROJECT/TASKS-archive — общий проектный
 протокол обоих агентов, не настройки Codex.
 
-Активных тикетов нет. TRANSLATE-001, UX-001, TRAIN-RETRY-001 и UX-002 приняты и перенесены
-в TASKS-archive.md. Финальный make check зелёный: tooling 17, backend 329, frontend 131;
-независимый reviewer вернул Ship.
+Активных тикетов нет. UX-003 принят и перенесён в TASKS-archive.md. Финальный make check
+зелёный: tooling 17, backend 329, frontend 134; независимый reviewer вернул Ship.
 
 ## Очередь после отдельного нового запроса
 
