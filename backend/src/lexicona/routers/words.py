@@ -192,16 +192,15 @@ async def list_words(
         )
         if count != len(ids):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "tag_not_found")
-        for selected_id in ids:
-            query = query.where(
-                select(WordTag.word_id)
-                .where(
-                    WordTag.owner_id == auth.user.id,
-                    WordTag.word_id == Word.id,
-                    WordTag.tag_id == selected_id,
-                )
-                .exists()
+        query = query.where(
+            select(WordTag.word_id)
+            .where(
+                WordTag.owner_id == auth.user.id,
+                WordTag.word_id == Word.id,
+                WordTag.tag_id.in_(ids),
             )
+            .exists()
+        )
     if training != "all":
         query = query.where(Word.is_excluded.is_(training == "excluded"))
     if needle := normalize(q):

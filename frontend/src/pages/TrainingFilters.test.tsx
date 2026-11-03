@@ -36,7 +36,7 @@ describe('фильтры тренировки', () => {
     vi.mocked(api.startTraining).mockResolvedValue(session)
   })
 
-  it('отправляет все слова с AND тегами и включительными границами, игнорируя неверный размер', async () => {
+  it('отправляет выбранные теги и включительные границы, игнорируя неверный размер', async () => {
     const user = userEvent.setup()
     renderPage()
     const size = screen.getByRole('textbox', { name: 'Своё число слов' })

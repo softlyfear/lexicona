@@ -33,6 +33,7 @@ async def test_owner_filter_csrf_and_cascade(alice: Client, bob: Client, anon: C
     assert (await anon.get("/api/tags")).status_code == 401
     a = await add_word(alice, "apple", "яблоко", tags=["fruit", "food"])
     b = await add_word(alice, "apricot", "абрикос", tags=["fruit"])
+    c = await add_word(alice, "bread", "хлеб", tags=["food"])
     foreign = await add_word(bob, "secret", "секрет", tags=["private"])
     tags = {t["name"]: t["id"] for t in a["tags"]}
     tag_list = await alice.get("/api/tags")
@@ -41,7 +42,19 @@ async def test_owner_filter_csrf_and_cascade(alice: Client, bob: Client, anon: C
     both = await alice.get(
         "/api/words", params=[("tag_id", tags["fruit"]), ("tag_id", tags["food"])]
     )
-    assert [w["id"] for w in both.json()] == [a["id"]]
+    assert {w["id"] for w in both.json()} == {a["id"], b["id"], c["id"]}
+    assert len(both.json()) == 3
+    await alice.patch(f"/api/words/{c['id']}/training", json={"is_excluded": True})
+    active = await alice.get(
+        "/api/words",
+        params=[
+            ("tag_id", tags["fruit"]),
+            ("tag_id", tags["food"]),
+            ("q", "a"),
+            ("sort", "headword_asc"),
+        ],
+    )
+    assert [w["id"] for w in active.json()] == [a["id"], b["id"]]
     response = await alice.get(
         "/api/words",
         params=[

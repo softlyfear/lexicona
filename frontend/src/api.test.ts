@@ -131,22 +131,22 @@ describe('api', () => {
     await expect(api.deleteWord('id')).resolves.toBeUndefined()
   })
 
-  it('starts free cloze with the explicit en_en direction and additive defaults', async () => {
+  it('starts matching with the explicit en_ru direction and additive defaults', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(201, {
       id: 's',
-      mode: 'cloze',
-      direction: 'en_en',
+      mode: 'matching',
+      direction: 'en_ru',
       purpose: 'free',
       items: [],
     })
-    await api.startTraining('en_en', 10, 'cloze')
+    await api.startTraining('en_ru', 10, 'matching')
     const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(path).toBe('/api/training/sessions')
     expect(init.body).toBe(
       JSON.stringify({
-        mode: 'cloze',
-        direction: 'en_en',
+        mode: 'matching',
+        direction: 'en_ru',
         size: 10,
         purpose: 'free',
         include_new: true,

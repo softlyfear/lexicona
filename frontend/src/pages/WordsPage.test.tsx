@@ -348,7 +348,7 @@ describe('сортировка словаря', () => {
     expect(api.listWords).toHaveBeenLastCalledWith('cat', 'progress_desc', 'all', [])
   })
 
-  it('совмещает фильтр всех тегов с URL и историей и позволяет снять пустой результат', async () => {
+  it('совмещает фильтр любого тега с URL и историей и позволяет снять пустой результат', async () => {
     vi.mocked(api.listTags).mockResolvedValue([
       { id: 'b', name: 'Работа' },
       { id: 'a', name: 'Дом' },
@@ -358,6 +358,7 @@ describe('сортировка словаря', () => {
     )
     const user = userEvent.setup()
     renderPage('/?q=cat&sort=progress_desc&training=all')
+    expect(screen.getByText('Теги: любой выбранный')).toBeInTheDocument()
     await screen.findByText('cat')
     await user.click(await screen.findByRole('checkbox', { name: 'Работа' }))
     await user.click(screen.getByRole('checkbox', { name: 'Дом' }))

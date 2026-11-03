@@ -51,6 +51,41 @@ describe('сопоставление пар', () => {
     vi.mocked(api.startTraining).mockResolvedValue(twoItems)
   })
 
+  it('показывает восемь пар и затем оставшиеся две', async () => {
+    const user = userEvent.setup()
+    const items = Array.from({ length: 10 }, (_, index) => ({
+      id: `i${index}`,
+      prompt: `word${index}`,
+      options: Array.from(
+        { length: index < 8 ? 8 : 2 },
+        (_, option) => `перевод${index < 8 ? option : option + 8}`,
+      ),
+    }))
+    vi.mocked(api.startTraining).mockResolvedValue({ ...twoItems, items })
+    vi.mocked(api.skipItem).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 0 })
+    renderPage()
+    await start(user)
+    expect(
+      within(screen.getByRole('group', { name: 'Английские слова' })).getAllByRole('button'),
+    ).toHaveLength(8)
+    expect(
+      within(screen.getByRole('group', { name: 'Русские переводы' })).getAllByRole('button'),
+    ).toHaveLength(8)
+    for (let index = 0; index < 8; index++) {
+      await user.click(screen.getByRole('button', { name: `word${index}` }))
+      await user.click(screen.getByRole('button', { name: 'Пропустить' }))
+    }
+    await user.click(await screen.findByRole('button', { name: 'Следующая группа' }))
+    expect(screen.getByText('Группа 2 / 2')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('group', { name: 'Английские слова' })).getAllByRole('button'),
+    ).toHaveLength(2)
+    expect(
+      within(screen.getByRole('group', { name: 'Русские переводы' })).getAllByRole('button'),
+    ).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'word8' })).toBeInTheDocument()
+  })
+
   it('сопоставляет две колонки и разрешает исправление без второго штрафа', async () => {
     const user = userEvent.setup()
     vi.mocked(api.answer)

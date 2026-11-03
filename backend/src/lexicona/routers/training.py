@@ -31,7 +31,7 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice", "input", "cards", "matching"] = "choice"
+    mode: Literal["choice", "input", "matching"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
     purpose: Literal["scheduled", "free"] = "free"
     include_new: StrictBool = True
@@ -247,8 +247,7 @@ async def create_session(
         rows = await db.execute(
             select(WordTag.word_id)
             .where(WordTag.owner_id == auth.user.id, WordTag.tag_id.in_(tag_ids))
-            .group_by(WordTag.word_id)
-            .having(func.count(WordTag.tag_id) == len(tag_ids))
+            .distinct()
         )
         matching_ids = set(rows.scalars())
     filtered = [
@@ -321,10 +320,10 @@ async def create_session(
                 continue
             matching_targets.append(target)
             current_batch.append(target)
-            if len(current_batch) == 4:
+            if len(current_batch) == 8:
                 current_batch = []
-        for offset in range(0, len(matching_targets), 4):
-            batch = matching_targets[offset : offset + 4]
+        for offset in range(0, len(matching_targets), 8):
+            batch = matching_targets[offset : offset + 8]
             options = _rng.sample([word.translations[0].text for word in batch], len(batch))
             for target in batch:
                 session.items.append(

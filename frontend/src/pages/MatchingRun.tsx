@@ -37,8 +37,14 @@ export function MatchingRun({
   const [notice, setNotice] = useState('')
   const [done, setDone] = useState(false)
   const locked = useRef(false)
-  const batchCount = Math.ceil(session.items.length / 4)
-  const batch = session.items.slice(batchIndex * 4, batchIndex * 4 + 4)
+  const batches: TrainingItem[][] = []
+  for (let offset = 0; offset < session.items.length;) {
+    const size = Math.max(1, session.items[offset].options.length)
+    batches.push(session.items.slice(offset, offset + size))
+    offset += size
+  }
+  const batchCount = batches.length
+  const batch = batches[batchIndex] ?? []
   const selected = batch.find((item) => item.id === selectedId)
   const selectedResult = selected ? answers[selected.id] : undefined
   const batchDone = batch.every((item) => isTerminal(answers[item.id]))

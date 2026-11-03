@@ -13,7 +13,7 @@ from lexicona.db import Database, utcnow
 from lexicona.models import TrainingItem, Word, WordProgress
 from lexicona.routers import training
 from lexicona.srs import Grade, review
-from tests.conftest import Client, add_word
+from tests.conftest import Client, add_legacy_card_item, add_word
 from tests.test_app import alembic_config
 
 
@@ -182,7 +182,7 @@ async def test_scheduled_card_grades_update_srs_and_visible_progress(
         await db.execute(update(Word).where(Word.id == word["id"]).values(progress=50))
         await db.commit()
     before_reveal = progress_tuple(await get_progress(app, word["id"]))
-    item = (await start(alice, mode="cards", purpose="scheduled", size=1))["items"][0]
+    item = await add_legacy_card_item(app, alice, word["id"], purpose="scheduled")
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     assert progress_tuple(await get_progress(app, word["id"])) == before_reveal
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": grade})

@@ -1,5 +1,31 @@
 # Закрытые задачи
 
+## UX-005 — учебные режимы и объединение тегов (2026-11-03)
+
+- Статус: done; попытка: 1; приёмка root: ПРИНЯТО.
+- По ручным замечаниям пользователя карточки EN→RU/RU→EN убраны из выбора режима и API
+  новых занятий (422); сохранённые данные/legacy snapshots и их безопасность остаются.
+- Matching формирует группы до восьми однозначных пар, при нехватке — доступный набор.
+  Клиент определяет границы по длине snapshot options, поддерживая старые группы до четырёх.
+  Проверка ответа/первая попытка/дельты/CAS/SRS/reveal/skip и отсутствие batch bonus сохранены.
+- Несколько выбранных тегов объединяют слова по OR в словаре и тренировках; UI явно
+  сообщает «любой выбранный». EXISTS/DISTINCT исключают дубли, owner/404/CSRF/no-store,
+  поиск/сортировка/прогресс/исключение сохраняются. Схема не менялась.
+- Владельцы: backend-agent — backend/src/tests, frontend-agent — frontend/src;
+  root — требования/документация/протокол, gate, приёмка и Git.
+- Root `make check`: exit 0, tooling 17 / backend 341 / frontend 140;
+  Ruff/mypy/Prettier/oxlint/TypeScript/production build успешны. Независимый code-reviewer
+  прочитал весь diff и подтвердил AC/gate/безопасность: Ship, дефектов нет; diff --check 0.
+- Chromium smoke root на tempSQLite/Alembic head, реальных uvicorn и production SPA:
+  cards нет в UI/API 422, теги расширяют 4→9 без дублей, matching 8+1 и 4 при нехватке,
+  ошибка/исправление/сохранённый прогресс без batch bonus — PASS. Скриншоты 1280/390 px
+  просмотрены, горизонтального overflow и pageerror нет. После временного DNS-сбоя PyPI
+  smoke использовал установленный Playwright offline; URL-фильтр проверялся после
+  асинхронного обновления checked. Финальный smoke полностью успешен.
+- Локальные frontend/backend/прокси health отвечают 200; пользовательская БД не менялась
+  проверками. Gemini timeout, другие режимы, настройки агентов, VPS/деплой вне scope.
+- Runtime: Codex gpt-6.1-sol high (root/reviewer), Codex gpt-6.1-terra high (backend/frontend).
+
 ## TRAIN-008 — сопоставление английских слов и русских переводов (2026-11-03)
 
 - Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.

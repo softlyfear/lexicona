@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from lexicona import dictionary
 from lexicona.db import Database
 from lexicona.models import TrainingItem, Word
-from tests.conftest import Client, add_legacy_cloze_item, add_word
+from tests.conftest import Client, add_legacy_card_item, add_legacy_cloze_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress
 
@@ -22,10 +22,12 @@ async def set_state(client: Client, word_id: str, excluded: bool) -> Any:
 async def start(
     app: FastAPI, client: Client, mode: str = "input", progress: int | None = None
 ) -> dict[str, Any]:
-    if mode == "cloze":
+    if mode in ("cloze", "cards"):
         words = (await client.get("/api/words", params={"training": "all"})).json()
         word = next(word for word in words if word["progress"] == progress)
-        return await add_legacy_cloze_item(app, client, word["id"])
+        if mode == "cloze":
+            return await add_legacy_cloze_item(app, client, word["id"])
+        return await add_legacy_card_item(app, client, word["id"])
     direction = "en_ru"
     response = await client.post(
         "/api/training/sessions",

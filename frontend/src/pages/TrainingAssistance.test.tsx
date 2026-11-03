@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type TerminalResult } from '../api'
-import { TrainingPage } from './TrainingPage'
+import { Run, TrainingPage } from './TrainingPage'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -27,6 +27,25 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <TrainingPage />
+    </QueryClientProvider>,
+  )
+}
+
+function renderLegacyCard(direction: 'en_ru' | 'ru_en' = 'en_ru') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <Run
+        session={{
+          id: 's',
+          purpose: 'free',
+          mode: 'cards',
+          direction,
+          items: [{ id: 'i', prompt: 'cat', options: [] }],
+        }}
+        requestedSize={10}
+        onFinish={() => {}}
+      />
     </QueryClientProvider>,
   )
 }
@@ -282,9 +301,7 @@ describe('помощь и пропуск', () => {
     })
     vi.mocked(api.revealCard).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 12 })
     const user = userEvent.setup()
-    renderPage()
-    await user.click(screen.getByLabelText('Карточки: EN → RU'))
-    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    renderLegacyCard()
     await screen.findByText('cat')
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
@@ -292,31 +309,32 @@ describe('помощь и пропуск', () => {
     expect(screen.queryByRole('button', { name: 'Хорошо' })).not.toBeInTheDocument()
   })
 
-  it.each([
-    ['en_ru', 'Карточки: EN → RU'],
-    ['ru_en', 'Карточки: RU → EN'],
-  ] as const)('пропускает карточку после раскрытия в направлении %s', async (direction, label) => {
-    vi.mocked(api.startTraining).mockResolvedValue({
-      id: 's',
-      purpose: 'free',
-      mode: 'cards',
-      direction,
-      items: [{ id: 'i', prompt: 'cat', options: [] }],
-    })
-    vi.mocked(api.revealCard).mockResolvedValue({ outcome: 'revealed', expected_answers: ['кот'] })
-    vi.mocked(api.skipItem).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 20 })
-    const user = userEvent.setup()
-    renderPage()
-    await user.click(screen.getByLabelText(label))
-    await user.click(screen.getByRole('button', { name: 'Начать' }))
-    await screen.findByText('cat')
-    await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
-    expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent('кот')
-    await user.click(screen.getByRole('button', { name: 'Пропустить' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
-    expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Оценено карточек: 0')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
-  })
+  it.each([['en_ru'], ['ru_en']] as const)(
+    'пропускает карточку после раскрытия в направлении %s',
+    async (direction) => {
+      vi.mocked(api.startTraining).mockResolvedValue({
+        id: 's',
+        purpose: 'free',
+        mode: 'cards',
+        direction,
+        items: [{ id: 'i', prompt: 'cat', options: [] }],
+      })
+      vi.mocked(api.revealCard).mockResolvedValue({
+        outcome: 'revealed',
+        expected_answers: ['кот'],
+      })
+      vi.mocked(api.skipItem).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 20 })
+      const user = userEvent.setup()
+      renderLegacyCard(direction)
+      await screen.findByText('cat')
+      await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
+      expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent('кот')
+      await user.click(screen.getByRole('button', { name: 'Пропустить' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
+      expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
+      await user.click(screen.getByRole('button', { name: 'Далее' }))
+      expect(await screen.findByText('Оценено карточек: 0')).toBeInTheDocument()
+      expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
+    },
+  )
 })

@@ -73,8 +73,6 @@ async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
     for mode, direction in [
         ("input", "en_ru"),
         ("input", "ru_en"),
-        ("cards", "en_ru"),
-        ("cards", "ru_en"),
         ("choice", "en_ru"),
         ("choice", "ru_en"),
     ]:
@@ -105,7 +103,6 @@ async def test_excluded_pools_remain_unavailable(app: FastAPI, alice: Client, bo
     await seed(app, bob, 5)
     for mode, direction in [
         ("input", "en_ru"),
-        ("cards", "ru_en"),
         ("choice", "en_ru"),
     ]:
         response = await alice.post(

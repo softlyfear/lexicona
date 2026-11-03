@@ -102,6 +102,35 @@ async def test_filtered_empty_does_not_create_session(app: FastAPI, alice: Clien
         assert len((await db.scalars(select(Word))).all()) == 1
 
 
+async def test_tag_union_deduplicates_and_preserves_progress_and_exclusion(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
+    one = await add_word(alice, "one", "один", tags=["a"])
+    two = await add_word(alice, "two", "два", tags=["b"])
+    both = await add_word(alice, "both", "оба", tags=["a", "b"])
+    excluded = await add_word(alice, "excluded", "выключено", tags=["b"])
+    foreign = await add_word(bob, "secret", "тайна", tags=["private"])
+    for word in (one, two, both, excluded):
+        await set_progress(app, word["id"], 10)
+    await alice.patch(f"/api/words/{excluded['id']}/training", json={"is_excluded": True})
+    ids = [tag["id"] for tag in both["tags"]]
+    payload = {
+        "mode": "matching",
+        "size": "all",
+        "tag_ids": [*ids, ids[0]],
+        "progress_min": 10,
+        "progress_max": 10,
+    }
+    response = await alice.post("/api/training/sessions", json=payload)
+    assert response.status_code == 201
+    assert {item["prompt"] for item in response.json()["items"]} == {"one", "two", "both"}
+    assert len(response.json()["items"]) == 3
+    response = await alice.post(
+        "/api/training/sessions", json={**payload, "tag_ids": [ids[0], foreign["tags"][0]["id"]]}
+    )
+    assert response.status_code == 404
+
+
 async def test_inclusive_progress_boundaries_and_large_integers(
     app: FastAPI, alice: Client
 ) -> None:

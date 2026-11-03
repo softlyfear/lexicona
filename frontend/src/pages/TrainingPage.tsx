@@ -7,7 +7,7 @@ import {
   type CardGrade,
   type Direction,
   type TerminalResult,
-  type TrainingMode,
+  type NewTrainingMode,
   type TrainingPurpose,
   type TrainingSession,
   type TrainingSize,
@@ -18,14 +18,12 @@ import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
 import { MatchingRun } from './MatchingRun'
 import css from './pages.module.css'
 
-const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
+const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'en_ru', label: 'Поиск перевода: EN → RU' },
   { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
   { mode: 'matching', direction: 'en_ru', label: 'Сопоставление пар: EN → RU' },
   { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
-  { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
-  { mode: 'cards', direction: 'ru_en', label: 'Карточки: RU → EN' },
 ]
 const SIZES = [5, 10, 20, 30, 50, 75, 100, 125, 150]
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
@@ -75,7 +73,7 @@ function Setup({
   onStart: (session: TrainingSession, requestedSize: TrainingSize) => void
 }) {
   const [direction, setDirection] = useState<Direction>('en_ru')
-  const [mode, setMode] = useState<TrainingMode>('choice')
+  const [mode, setMode] = useState<NewTrainingMode>('choice')
   const [purpose, setPurpose] = useState<TrainingPurpose>('free')
   const [includeNew, setIncludeNew] = useState(true)
   const [sizeText, setSizeText] = useState('10')
@@ -252,7 +250,7 @@ function Setup({
         </fieldset>
         <fieldset className={css.choices} disabled={start.isPending}>
           <legend className={ui.label}>Фильтры слов</legend>
-          <p className={ui.muted}>Можно выбрать теги для занятия</p>
+          <p className={ui.muted}>Теги: любой выбранный</p>
           {tags.isLoading && (
             <p role="status" className={ui.muted}>
               Загружаем теги…
@@ -358,7 +356,7 @@ type Action =
   | { kind: 'reveal' }
   | { kind: 'skip' }
 
-function Run({
+export function Run({
   session,
   requestedSize,
   onFinish,

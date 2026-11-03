@@ -39,13 +39,25 @@ async def test_matching_batches_are_unambiguous_and_hide_answers(
     await seed(alice)
     await add_word(alice, "wolf", "волк")
     await add_word(alice, "cow", "корова")
+    await add_word(alice, "bear", "медведь")
+    await add_word(alice, "goat", "коза")
+    await add_word(alice, "horse", "лошадь")
+    await add_word(alice, "pig", "свинья")
     session = await start(alice, size="all")
     assert session["mode"] == "matching" and session["direction"] == "en_ru"
-    assert len(session["items"]) == 6
-    translations = dict(PAIRS) | {"wolf": "волк", "cow": "корова"}
-    for offset in range(0, len(session["items"]), 4):
-        batch = session["items"][offset : offset + 4]
-        assert 1 <= len(batch) <= 4
+    assert len(session["items"]) == 10
+    translations = dict(PAIRS) | {
+        "wolf": "волк",
+        "cow": "корова",
+        "bear": "медведь",
+        "goat": "коза",
+        "horse": "лошадь",
+        "pig": "свинья",
+    }
+    assert [len(session["items"][offset : offset + 8]) for offset in (0, 8)] == [8, 2]
+    for offset in range(0, len(session["items"]), 8):
+        batch = session["items"][offset : offset + 8]
+        assert 1 <= len(batch) <= 8
         options = batch[0]["options"]
         assert len(options) == len(batch)
         assert len({normalize(option) for option in options}) == len(options)
@@ -76,9 +88,9 @@ async def test_matching_skips_ambiguous_pairs_within_a_batch(alice: Client) -> N
     await seed(alice)
     await add_word(alice, "kitty", "котёнок", "кот")
     session = await start(alice, size="all")
-    assert 4 <= len(session["items"]) <= 5
-    for offset in range(0, len(session["items"]), 4):
-        prompts = {item["prompt"] for item in session["items"][offset : offset + 4]}
+    assert len(session["items"]) == 4
+    for offset in range(0, len(session["items"]), 8):
+        prompts = {item["prompt"] for item in session["items"][offset : offset + 8]}
         assert not {"cat", "kitty"} <= prompts
 
 

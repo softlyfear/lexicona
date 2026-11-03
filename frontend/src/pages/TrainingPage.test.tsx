@@ -38,6 +38,13 @@ describe('TrainingPage', () => {
     })
   })
 
+  it('не предлагает новые занятия с карточками', () => {
+    renderPage()
+    expect(screen.queryByLabelText('Карточки: EN → RU')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Карточки: RU → EN')).not.toBeInTheDocument()
+    expect(screen.getByText('Теги: любой выбранный')).toBeInTheDocument()
+  })
+
   it('uses keys 5 and 6 for six options and ignores repeated answers', async () => {
     const user = userEvent.setup()
     vi.mocked(api.startTraining).mockResolvedValue({

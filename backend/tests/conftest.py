@@ -119,3 +119,38 @@ async def add_legacy_cloze_item(app: FastAPI, client: Client, word_id: str) -> d
         db.add(session)
         await db.commit()
         return {"id": item.id, "prompt": prompt, "options": []}
+
+
+async def add_legacy_card_item(
+    app: FastAPI, client: Client, word_id: str, direction: str = "en_ru", purpose: str = "free"
+) -> dict[str, Any]:
+    user = (await client.get("/api/auth/me")).json()["user"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        word = await db.get(Word, word_id)
+        assert word is not None and word.owner_id == user["id"]
+        schedule = await db.get(WordProgress, {"owner_id": user["id"], "word_id": word_id})
+        assert schedule is not None
+        prompt = word.headword if direction == "en_ru" else word.translations[0].text
+        expected = [t.text for t in word.translations] if direction == "en_ru" else [word.headword]
+        session = TrainingSession(
+            owner_id=user["id"],
+            mode="cards",
+            direction=direction,
+            purpose=purpose,
+            difficulty=user["difficulty"],
+        )
+        item = TrainingItem(
+            word_id=word.id,
+            word_content_version=word.content_version,
+            word_training_version=word.training_version,
+            word_progress_version=schedule.progress_version,
+            position=0,
+            prompt=prompt,
+            options=[],
+            expected_answers=expected,
+        )
+        session.items.append(item)
+        db.add(session)
+        await db.commit()
+        return {"id": item.id, "prompt": prompt, "options": []}

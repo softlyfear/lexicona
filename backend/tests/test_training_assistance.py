@@ -9,12 +9,16 @@ from fastapi import FastAPI
 
 from lexicona.db import Database
 from lexicona.models import TrainingItem
-from tests.conftest import Client, add_word
+from tests.conftest import Client, add_legacy_card_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress
 
 
-async def create_item(client: Client, mode: str, direction: str) -> dict[str, Any]:
+async def create_item(app: FastAPI, client: Client, mode: str, direction: str) -> dict[str, Any]:
+    if mode == "cards":
+        words = (await client.get("/api/words")).json()
+        word = next(word for word in words if word["headword"] == "cat")
+        return await add_legacy_card_item(app, client, word["id"], direction)
     result = await client.post(
         "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 10}
     )
@@ -45,7 +49,7 @@ async def test_assistance_is_terminal_and_uses_snapshot(
 ) -> None:
     word = await seed(alice)
     await set_progress(app, word["id"], 53)
-    item = await create_item(alice, mode, direction)
+    item = await create_item(app, alice, mode, direction)
     assert set(item) == {"id", "prompt", "options"}
 
     # Cosmetic edits and subsequent semantic edits cannot rewrite the private snapshot.
@@ -99,7 +103,7 @@ async def test_skip_is_terminal_and_does_not_leak_or_change_progress(
 ) -> None:
     word = await seed(alice)
     await set_progress(app, word["id"], 53)
-    item = await create_item(alice, mode, direction)
+    item = await create_item(app, alice, mode, direction)
     url = f"/api/training/items/{item['id']}"
     response = await alice.post(f"{url}/skip")
     result = {"outcome": "skipped", "delta": 0, "progress": 53}
@@ -123,9 +127,9 @@ async def test_skip_is_terminal_and_does_not_leak_or_change_progress(
         assert recorded.chosen_option is None and recorded.submitted_text is None
 
 
-async def test_revealed_card_can_be_skipped_without_grade(alice: Client) -> None:
+async def test_revealed_card_can_be_skipped_without_grade(app: FastAPI, alice: Client) -> None:
     await add_word(alice, "cat", "кот")
-    item = await create_item(alice, "cards", "en_ru")
+    item = await create_item(app, alice, "cards", "en_ru")
     url = f"/api/training/items/{item['id']}"
     assert (await alice.post(f"{url}/reveal")).json() == {
         "outcome": "revealed",
@@ -147,7 +151,7 @@ async def test_help_and_skip_keep_progress_at_every_difficulty(
     assert (
         await alice.put("/api/auth/settings", json={"difficulty": difficulty})
     ).status_code == 200
-    item = await create_item(alice, "input", "en_ru")
+    item = await create_item(app, alice, "input", "en_ru")
     result = await alice.post(f"/api/training/items/{item['id']}/{action}")
     assert result.status_code == 200
     assert result.json()["outcome"] == ("assisted" if action == "reveal" else "skipped")
@@ -163,7 +167,7 @@ async def test_racing_terminal_actions_have_one_canonical_result(
 ) -> None:
     word = await seed(alice)
     await set_progress(app, word["id"], 50)
-    item = await create_item(alice, mode, "en_ru")
+    item = await create_item(app, alice, mode, "en_ru")
     url = f"/api/training/items/{item['id']}"
     if mode == "cards":
         await alice.post(f"{url}/reveal")
@@ -194,10 +198,10 @@ async def test_racing_terminal_actions_have_one_canonical_result(
 
 @pytest.mark.parametrize("endpoint", ["reveal", "skip"])
 async def test_assistance_endpoints_owner_csrf_no_store_and_deleted_item(
-    alice: Client, bob: Client, endpoint: str
+    app: FastAPI, alice: Client, bob: Client, endpoint: str
 ) -> None:
     word = await add_word(alice, "cat", "кот")
-    item = await create_item(alice, "input", "en_ru")
+    item = await create_item(app, alice, "input", "en_ru")
     url = f"/api/training/items/{item['id']}/{endpoint}"
     response = await bob.post(url)
     assert response.status_code == 404 and response.headers["cache-control"] == "no-store"

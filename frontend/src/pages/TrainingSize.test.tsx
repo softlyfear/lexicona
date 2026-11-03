@@ -109,7 +109,7 @@ describe('размер занятия', () => {
     expect(screen.getByLabelText('Написание слова: RU → EN')).toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(input).toBeDisabled()
-    expect(screen.getByLabelText('Карточки: EN → RU')).toBeDisabled()
+    expect(screen.getByLabelText('Сопоставление пар: EN → RU')).toBeDisabled()
     expect(screen.getByRole('button', { name: '50' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Начать' })).toBeDisabled()
     await user.keyboard('{Enter}')

@@ -1,7 +1,7 @@
 import asyncio
 import sqlite3
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from alembic import command
@@ -9,17 +9,23 @@ from fastapi import FastAPI
 
 from lexicona.db import Database
 from lexicona.models import TrainingItem
-from tests.conftest import Client, add_word
+from tests.conftest import Client, add_legacy_card_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress
 
 
-async def start_card(client: Client, direction: str = "en_ru") -> dict[str, Any]:
-    response = await client.post(
-        "/api/training/sessions", json={"mode": "cards", "direction": direction, "size": 1}
+async def start_card(app: FastAPI, client: Client, direction: str = "en_ru") -> dict[str, Any]:
+    word = (await client.get("/api/words")).json()[0]
+    return await add_legacy_card_item(app, client, word["id"], direction)
+
+
+@pytest.mark.parametrize("direction", ["en_ru", "ru_en"])
+async def test_new_cards_are_rejected(alice: Client, direction: str) -> None:
+    response = await alice.post(
+        "/api/training/sessions", json={"mode": "cards", "direction": direction}
     )
-    assert response.status_code == 201, response.text
-    return cast(dict[str, Any], response.json()["items"][0])
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.parametrize(
@@ -27,10 +33,10 @@ async def start_card(client: Client, direction: str = "en_ru") -> dict[str, Any]
     [("en_ru", "cat", ["кот", "кошка"]), ("ru_en", "кот", ["cat"])],
 )
 async def test_cards_hide_answers_until_reveal(
-    alice: Client, direction: str, prompt: str, expected: list[str]
+    app: FastAPI, alice: Client, direction: str, prompt: str, expected: list[str]
 ) -> None:
     await add_word(alice, "cat", "кот", "кошка")
-    item = await start_card(alice, direction)
+    item = await start_card(app, alice, direction)
     assert item == {"id": item["id"], "prompt": prompt, "options": []}
     reveal = f"/api/training/items/{item['id']}/reveal"
     answer = f"/api/training/items/{item['id']}/answer"
@@ -61,7 +67,7 @@ async def test_card_ratings_are_subjective(
 ) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": grade})
     assert response.json() == {
@@ -77,9 +83,11 @@ async def test_card_ratings_are_subjective(
         assert recorded is not None and recorded.is_correct is None
 
 
-async def test_cards_owner_csrf_and_strict_payload(alice: Client, bob: Client) -> None:
+async def test_cards_owner_csrf_and_strict_payload(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
     await add_word(alice, "cat", "кот")
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     reveal = f"/api/training/items/{item['id']}/reveal"
     answer = f"/api/training/items/{item['id']}/answer"
     assert (await bob.post(reveal)).status_code == 404
@@ -104,7 +112,7 @@ async def test_cards_owner_csrf_and_strict_payload(alice: Client, bob: Client) -
 async def test_concurrent_card_scores_apply_once(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     url = f"/api/training/items/{item['id']}/answer"
     responses = await asyncio.gather(
@@ -127,7 +135,7 @@ async def test_card_snapshot_and_frozen_difficulty(app: FastAPI, alice: Client) 
     word = await add_word(alice, "cat", "кот", "кошка")
     await set_progress(app, word["id"], 30)
     await alice.put("/api/auth/settings", json={"difficulty": "very_easy"})
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.put("/api/auth/settings", json={"difficulty": "very_hard"})
     await alice.put(f"/api/words/{word['id']}", json={"headword": "cat", "translations": ["котик"]})
     assert (await alice.post(f"/api/training/items/{item['id']}/reveal")).json() == {
@@ -137,7 +145,7 @@ async def test_card_snapshot_and_frozen_difficulty(app: FastAPI, alice: Client) 
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": "good"})
     assert response.json()["delta"] == 0
     assert response.json()["progress"] == 0
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.put("/api/auth/settings", json={"difficulty": "very_easy"})
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": "good"})
@@ -169,7 +177,7 @@ async def test_each_card_grade_uses_frozen_difficulty(
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
     await alice.put("/api/auth/settings", json={"difficulty": "very_easy"})
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.put("/api/auth/settings", json={"difficulty": "very_hard"})
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": grade})
@@ -187,7 +195,7 @@ async def test_card_progress_has_only_lower_bound(
 ) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], initial)
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     await alice.post(f"/api/training/items/{item['id']}/reveal")
     result = await alice.post(f"/api/training/items/{item['id']}/answer", json={"grade": grade})
     assert result.json()["delta"] == delta
@@ -197,7 +205,7 @@ async def test_card_progress_has_only_lower_bound(
 async def test_card_cosmetic_edit_preserves_snapshot_and_score(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот", "кошка")
     await set_progress(app, word["id"], 30)
-    item = await start_card(alice)
+    item = await start_card(app, alice)
     update = await alice.put(
         f"/api/words/{word['id']}",
         json={"headword": "Cat", "translations": ["Кот", "кошка"], "note": "pet"},

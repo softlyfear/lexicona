@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
-import { TrainingPage } from './TrainingPage'
+import { Run, TrainingPage } from './TrainingPage'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -31,13 +31,31 @@ function renderPage() {
   )
 }
 
+function renderLegacyCard(direction: 'en_ru' | 'ru_en' = 'en_ru') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <Run
+        session={{
+          id: 's',
+          purpose: 'free',
+          mode: 'cards',
+          direction,
+          items: [{ id: 'i', prompt: 'cat', options: [] }],
+        }}
+        requestedSize={10}
+        onFinish={() => {}}
+      />
+    </QueryClientProvider>,
+  )
+}
+
 describe('недоступное задание', () => {
   beforeEach(() => vi.resetAllMocks())
 
   it.each([
     ['choice', 'en_ru', 'Поиск перевода: EN → RU'],
     ['input', 'ru_en', 'Написание слова: RU → EN'],
-    ['cards', 'en_ru', 'Карточки: EN → RU'],
   ] as const)(
     '%s не засчитывает unavailable как ответ или пропуск',
     async (mode, direction, label) => {
@@ -71,8 +89,7 @@ describe('недоступное задание', () => {
       await user.click(screen.getByRole('button', { name: 'Далее' }))
       expect(await screen.findByText('Недоступно: 1')).toBeInTheDocument()
       expect(screen.getByText('Пропущено: 0')).toBeInTheDocument()
-      if (mode === 'cards') expect(screen.getByText('Оценено карточек: 0')).toBeInTheDocument()
-      else {
+      {
         expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
         expect(screen.getByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
         expect(screen.queryByText('0 из 0')).not.toBeInTheDocument()
@@ -96,9 +113,7 @@ describe('недоступное задание', () => {
       progress: 50,
     })
     const user = userEvent.setup()
-    renderPage()
-    await user.click(screen.getByLabelText('Карточки: EN → RU'))
-    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    renderLegacyCard()
     await screen.findByText('cat')
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('group', { name: 'Ответ карточки' })).toHaveTextContent('кот')

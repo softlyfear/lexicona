@@ -184,7 +184,7 @@ export function WordsPage() {
       </div>
 
       <fieldset className={css.tagField}>
-        <legend className={ui.label}>Теги: все выбранные</legend>
+        <legend className={ui.label}>Теги: любой выбранный</legend>
         {tags.isLoading && (
           <p role="status" className={ui.muted}>
             Загружаем теги…
