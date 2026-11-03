@@ -125,6 +125,21 @@ async def test_refs_survival_validation_and_ownership(
     assert cleared.json()["source_refs"] == []
 
 
+def test_wiki_markup_removed_from_lookup_and_choice_candidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "index.sqlite3"
+    marked = TEI.replace(
+        b"<quote>apple translation</quote>",
+        b"<quote>[[simplest|simple]] [[fruit]]</quote>",
+    )
+    build_fixture(monkeypatch, path, archive(marked))
+    assert dictionary.lookup(path, "apple")["matches"][0]["translations"] == ["simple fruit"]
+    candidates = dictionary.choice_candidates(path)
+    apple = next(candidate for candidate in candidates if candidate.headword == "apple")
+    assert apple.translations == (("simple fruit", "simple fruit"),)
+
+
 def test_checksum_rejected_before_parse(tmp_path: Path) -> None:
     path = tmp_path / "index.sqlite3"
     path.write_bytes(b"previous")

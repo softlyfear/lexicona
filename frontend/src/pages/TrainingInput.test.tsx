@@ -61,6 +61,14 @@ describe('письменная тренировка', () => {
         delta: -4,
         progress: 0,
       })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: true,
+        submitted_text: 'собака',
+        expected_answers: ['собака'],
+        delta: 0,
+        progress: 0,
+      })
     renderPage()
     await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
@@ -79,8 +87,15 @@ describe('письменная тренировка', () => {
     expect(await screen.findByText('dog')).toBeInTheDocument()
     await user.type(screen.getByRole('textbox', { name: 'Введите перевод' }), 'волк{Enter}')
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4) · прогресс 0%')
+    expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).not.toHaveTextContent('Ответ: собака')
+    const retry = screen.getByRole('textbox', { name: 'Введите перевод' })
+    expect(retry).toBeEnabled()
+    await user.clear(retry)
+    await user.type(retry, 'собака{Enter}')
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('1 из 2')).toBeInTheDocument()
+    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
   })
 
   it('сохраняет текст после сетевой ошибки и позволяет повторить', async () => {

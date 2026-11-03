@@ -6,10 +6,11 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from lexicona.cloze import mask_example
 from lexicona.config import Settings
 from lexicona.db import Database
 from lexicona.main import create_app
-from lexicona.models import Base, User
+from lexicona.models import Base, TrainingItem, TrainingSession, User, Word, WordProgress
 from lexicona.routers.auth import throttle
 from lexicona.security import hash_password
 
@@ -17,8 +18,6 @@ PASSWORD = "correct horse battery"
 
 
 class Client(AsyncClient):
-    """Test client that remembers the CSRF token after login."""
-
     csrf: str = ""
 
     async def login(self, login: str, password: str = PASSWORD) -> Any:
@@ -31,7 +30,9 @@ class Client(AsyncClient):
 
 @pytest.fixture
 async def app(tmp_path: Path) -> AsyncIterator[FastAPI]:
-    application = create_app(Settings(database_url=f"sqlite+aiosqlite:///{tmp_path}/test.db"))
+    application = create_app(
+        Settings(_env_file=None, database_url=f"sqlite+aiosqlite:///{tmp_path}/test.db")
+    )
     database: Database = application.state.db
     async with database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -85,3 +86,36 @@ async def add_word(client: AsyncClient, headword: str, *translations: str, **ext
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+async def add_legacy_cloze_item(app: FastAPI, client: Client, word_id: str) -> dict[str, Any]:
+    user = (await client.get("/api/auth/me")).json()["user"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        word = await db.get(Word, word_id)
+        assert word is not None and word.owner_id == user["id"]
+        schedule = await db.get(WordProgress, {"owner_id": user["id"], "word_id": word_id})
+        assert schedule is not None
+        prompt = mask_example(word.headword, word.example_en)
+        assert prompt is not None
+        session = TrainingSession(
+            owner_id=user["id"],
+            mode="cloze",
+            direction="en_en",
+            purpose="free",
+            difficulty=user["difficulty"],
+        )
+        item = TrainingItem(
+            word_id=word.id,
+            word_content_version=word.content_version,
+            word_training_version=word.training_version,
+            word_progress_version=schedule.progress_version,
+            position=0,
+            prompt=prompt,
+            options=[],
+            expected_answers=[word.headword],
+        )
+        session.items.append(item)
+        db.add(session)
+        await db.commit()
+        return {"id": item.id, "prompt": prompt, "options": []}

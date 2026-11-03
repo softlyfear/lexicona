@@ -38,7 +38,6 @@ describe('недоступное задание', () => {
     ['choice', 'en_ru', 'Поиск перевода: EN → RU'],
     ['input', 'ru_en', 'Написание слова: RU → EN'],
     ['cards', 'en_ru', 'Карточки: EN → RU'],
-    ['cloze', 'en_en', 'Слово в примере: EN → EN'],
   ] as const)(
     '%s не засчитывает unavailable как ответ или пропуск',
     async (mode, direction, label) => {

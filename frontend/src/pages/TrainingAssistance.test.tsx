@@ -231,6 +231,14 @@ describe('помощь и пропуск', () => {
         delta: -4,
         progress: 0,
       })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: true,
+        submitted_text: 'собака',
+        expected_answers: ['собака'],
+        delta: 0,
+        progress: 0,
+      })
     vi.mocked(api.revealAnswer).mockResolvedValue({
       outcome: 'assisted',
       expected_answers: ['корова'],
@@ -247,6 +255,10 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     await user.type(screen.getByRole('textbox', { name: 'Введите перевод' }), 'кот{Enter}')
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно')
+    const retry = screen.getByRole('textbox', { name: 'Введите перевод' })
+    await user.clear(retry)
+    await user.type(retry, 'собака{Enter}')
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('status')).toHaveTextContent('С помощью')
@@ -254,8 +266,8 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Пропустить' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('1 из 2')).toBeInTheDocument()
-    expect(screen.getByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
+    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+    expect(screen.getByText('Верно: 2 · Неверно: 0')).toBeInTheDocument()
     expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
     expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
   })

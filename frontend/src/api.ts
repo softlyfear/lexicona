@@ -56,9 +56,17 @@ export interface DictionaryMatch {
   match: 'exact' | 'normalized'
 }
 
+export interface MachineTranslation {
+  provider: 'deepl' | 'gemini'
+  text: string
+  alternatives?: string[]
+  transcription?: string | null
+}
+
 export interface DictionaryLookup {
   source: DictionarySource
   matches: DictionaryMatch[]
+  machine_translation?: MachineTranslation | null
 }
 export interface DictionaryNotices {
   source: DictionarySource
@@ -205,9 +213,7 @@ async function request<T>(
       const data: unknown = await response.json()
       if (data && typeof data === 'object' && 'detail' in data && typeof data.detail === 'string')
         detail = data.detail
-    } catch {
-      // Non-JSON error body: keep the status text.
-    }
+    } catch {}
     throw new ApiError(response.status, detail)
   }
   return (response.status === 204 ? undefined : await response.json()) as T
@@ -265,6 +271,10 @@ export const api = {
   },
   lookupDictionary: (headword: string) =>
     request<DictionaryLookup>('POST', '/dictionary/lookup', { headword }),
+  generateExample: (headword: string) =>
+    request<{ example_en: string; example_ru: string }>('POST', '/dictionary/example', {
+      headword,
+    }),
   dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),

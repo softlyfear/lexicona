@@ -1,5 +1,3 @@
-"""Prepare a masked personal example without guessing word forms."""
-
 import unicodedata
 
 _APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "`": "'"})

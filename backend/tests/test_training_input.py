@@ -70,7 +70,16 @@ async def test_input_retries_and_concurrent_answers_apply_once(alice: Client) ->
     first = bodies[0]
     assert (first["correct"], first["delta"], first["progress"]) in {(True, 8, 8), (False, -4, 0)}
     again = await alice.post(url, json={"text": "different answer"})
-    assert again.json() == first
+    if first["correct"]:
+        assert again.json() == first
+    else:
+        assert again.json()["correct"] is False
+        assert again.json()["delta"] == 0
+        assert again.json()["progress"] == 0
+        final = await alice.post(url, json={"text": "кот"})
+        assert final.json()["correct"] is True
+        assert final.json()["delta"] == 0
+        assert final.json()["progress"] == 0
 
 
 async def test_input_snapshot_stale_meaning_and_difficulty(app: FastAPI, alice: Client) -> None:

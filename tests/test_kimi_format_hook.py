@@ -1,5 +1,3 @@
-"""Regression tests for Kimi tool payloads and the formatter filesystem boundary."""
-
 import importlib.util
 import tempfile
 import unittest

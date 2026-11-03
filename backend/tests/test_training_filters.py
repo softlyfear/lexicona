@@ -139,11 +139,7 @@ async def test_failed_filtered_starts_leave_no_partial_sessions(
     tag = word["tags"][0]["id"]
     cases = [
         ({"mode": "choice", "tag_ids": [tag]}, 409, "not_enough_words"),
-        (
-            {"mode": "cloze", "direction": "en_en", "tag_ids": [tag]},
-            409,
-            "no_eligible_cloze_examples",
-        ),
+        ({"mode": "cloze", "direction": "en_en", "tag_ids": [tag]}, 422, None),
         ({"mode": "input", "tag_ids": ["unknown"]}, 404, "tag_not_found"),
         ({"mode": "input", "progress_min": 2, "progress_max": 1}, 422, None),
     ]

@@ -17,7 +17,6 @@ from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
 from lexicona import dictionary, progress, srs
-from lexicona.cloze import mask_example
 from lexicona.db import utcnow
 from lexicona.deps import AppSettings, CurrentAuth, Db
 from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordProgress, WordTag
@@ -32,7 +31,7 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice", "input", "cards", "cloze"] = "choice"
+    mode: Literal["choice", "input", "cards"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
     purpose: Literal["scheduled", "free"] = "free"
     include_new: StrictBool = True
@@ -45,7 +44,7 @@ class SessionIn(BaseModel):
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
-        if (self.mode == "cloze") != (self.direction == "en_en"):
+        if self.direction == "en_en":
             raise ValueError("invalid mode and direction combination")
         if (
             self.progress_min is not None
@@ -315,14 +314,6 @@ async def create_session(
                 continue
             prompt, options, correct = built
             expected_answers = None
-        elif body.mode == "cloze":
-            masked = mask_example(target.headword, target.example_en)
-            if masked is None:
-                continue
-            prompt = masked
-            expected_answers = [target.headword]
-            options = []
-            correct = None
         else:
             prompt = target.headword if body.direction == "en_ru" else target.translations[0].text
             expected_answers = (
@@ -346,8 +337,7 @@ async def create_session(
             )
         )
     if not session.items:
-        detail = "no_eligible_cloze_examples" if body.mode == "cloze" else "not_enough_words"
-        raise HTTPException(status.HTTP_409_CONFLICT, detail)
+        raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_words")
 
     db.add(session)
     await db.commit()
@@ -376,7 +366,7 @@ def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
             )
         assert item.expected_answers is not None
         return AssistedOut(expected_answers=item.expected_answers, progress=word_progress)
-    assert item.outcome == "answered"
+    assert item.outcome in (None, "answered") and item.answered_at is not None
     if item.session.mode == "cards":
         assert item.grade is not None
         assert item.expected_answers is not None
@@ -531,143 +521,144 @@ async def answer_item(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_option")
     if item.outcome is not None:
         return _answer_out(item, word.progress)
-    if item.answered_at is None:
-        if isinstance(body, AnswerIn):
-            correct = body.option == item.correct_option
-            kind = AnswerKind.CHOICE
-            chosen_option = body.option
-            submitted_text = None
-            grade = "good" if correct else "again"
-        elif isinstance(body, TextAnswerIn):
-            assert item.expected_answers is not None
-            correct = normalize(body.text) in {
-                normalize(answer) for answer in item.expected_answers
-            }
-            kind = AnswerKind.TYPED
-            chosen_option = None
-            submitted_text = body.text
-            grade = "good" if correct else "again"
-        else:
-            correct = None  # Card ratings are self-assessment, not objective answers.
-            kind = AnswerKind.CHOICE
-            chosen_option = None
-            submitted_text = None
-            grade = body.grade
-        change = (
-            0
-            if grade == "hard"
-            else progress.delta(
-                item.session.difficulty, kind, correct if correct is not None else grade != "again"
-            )
-        )
-        now = utcnow()
-        # Check content and training eligibility in the same write transaction as the item CAS.
-        current_version = (
-            select(Word.content_version)
-            .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
-            .scalar_subquery()
-        )
-        eligible = _eligible(auth)
-        card_ready = (
-            or_(~eligible, TrainingItem.revealed_at.is_not(None))
-            if item.session.mode == "cards"
-            else true()
-        )
-        # Of concurrent answers to one item only this conditional update can win.
-        claimed = await db.execute(
-            update(TrainingItem)
-            .where(
-                TrainingItem.id == item.id,
-                TrainingItem.session_id.in_(_owned_sessions(auth)),
-                TrainingItem.outcome.is_(None),
-                card_ready,
-            )
-            .values(
-                chosen_option=case((eligible, chosen_option), else_=None),
-                submitted_text=case((eligible, submitted_text), else_=None),
-                grade=case((eligible, grade), else_=None),
-                is_correct=case((eligible, correct), else_=None),
-                delta=case(
-                    (eligible & (current_version == item.word_content_version), change), else_=0
-                ),
-                outcome=case((eligible, "answered"), else_="unavailable"),
-                answered_at=now,
-            )
-        )
-        if claimed.rowcount == 1:  # type: ignore[attr-defined]
-            state = (
-                await db.execute(
-                    select(
-                        Word.content_version,
-                        Word.training_version,
-                        Word.is_excluded,
-                        WordProgress.stage,
-                        WordProgress.success_streak,
-                        WordProgress.review_count,
-                        WordProgress.lapse_count,
-                    )
-                    .join(WordProgress, WordProgress.word_id == Word.id)
-                    .where(
-                        Word.id == item.word_id,
-                        Word.owner_id == auth.user.id,
-                        WordProgress.owner_id == auth.user.id,
-                    )
-                )
-            ).one_or_none()
-            current = (
-                state is not None
-                and not state[2]
-                and state[0] == item.word_content_version
-                and state[1] == item.word_training_version
-            )
-            if current:
-                assert state is not None
-                schedule_update = update(WordProgress).where(
-                    WordProgress.owner_id == auth.user.id,
-                    WordProgress.word_id == item.word_id,
-                    WordProgress.progress_version == item.word_progress_version,
-                )
-                if item.session.purpose == "scheduled":
-                    transition = srs.review(state[3], state[4], cast(Grade, grade), now)
-                    changed = await db.execute(
-                        schedule_update.values(
-                            stage=transition.stage,
-                            has_review=True,
-                            due_at=transition.due_at,
-                            last_review_at=now,
-                            success_streak=transition.success_streak,
-                            review_count=state[5] + 1,
-                            lapse_count=state[6] + int(transition.is_lapse),
-                            progress_version=item.word_progress_version + 1,
-                        )
-                    )
-                else:
-                    # Free practice changes only visible progress and the inter-session version.
-                    changed = await db.execute(
-                        schedule_update.values(progress_version=item.word_progress_version + 1)
-                    )
-                if changed.rowcount != 1:  # type: ignore[attr-defined]
-                    await db.rollback()  # Also undo the item claim above.
-                    raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
-                applied = await db.execute(
-                    update(Word)
-                    .where(
-                        Word.id == word.id,
-                        Word.owner_id == auth.user.id,
-                        Word.is_excluded.is_(False),
-                        Word.training_version == item.word_training_version,
-                        Word.content_version == item.word_content_version,
-                    )
-                    .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
-                )
-                if applied.rowcount != 1:  # type: ignore[attr-defined]
-                    await db.rollback()
-                    raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
-        await db.commit()
-        await db.refresh(item)
-        await db.refresh(word)
 
-    if item.outcome is None:
+    first_attempt = item.answered_at is None
+    if isinstance(body, AnswerIn):
+        correct = body.option == item.correct_option
+        kind = AnswerKind.CHOICE
+        chosen_option = body.option
+        submitted_text = None
+        grade = "good" if correct else "again"
+    elif isinstance(body, TextAnswerIn):
+        assert item.expected_answers is not None
+        correct = normalize(body.text) in {normalize(answer) for answer in item.expected_answers}
+        kind = AnswerKind.TYPED
+        chosen_option = None
+        submitted_text = body.text
+        grade = "good" if correct else "again"
+    else:
+        correct = None  # Card ratings are self-assessment, not objective answers.
+        kind = AnswerKind.CHOICE
+        chosen_option = None
+        submitted_text = None
+        grade = body.grade
+    change = (
+        0
+        if not first_attempt or grade == "hard"
+        else progress.delta(
+            item.session.difficulty, kind, correct if correct is not None else grade != "again"
+        )
+    )
+    now = utcnow()
+    current_version = (
+        select(Word.content_version)
+        .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
+        .scalar_subquery()
+    )
+    eligible = _eligible(auth)
+    card_ready = (
+        or_(~eligible, TrainingItem.revealed_at.is_not(None))
+        if item.session.mode == "cards"
+        else true()
+    )
+    attempt_guard = (
+        (TrainingItem.answered_at.is_(None),)
+        if first_attempt
+        else (TrainingItem.answered_at.is_not(None), TrainingItem.is_correct.is_(False))
+    )
+    claimed = await db.execute(
+        update(TrainingItem)
+        .where(
+            TrainingItem.id == item.id,
+            TrainingItem.session_id.in_(_owned_sessions(auth)),
+            TrainingItem.outcome.is_(None),
+            card_ready,
+            *attempt_guard,
+        )
+        .values(
+            chosen_option=case((eligible, chosen_option), else_=None),
+            submitted_text=case((eligible, submitted_text), else_=None),
+            grade=case((eligible, grade), else_=None),
+            is_correct=case((eligible, correct), else_=None),
+            delta=case(
+                (eligible & (current_version == item.word_content_version), change), else_=0
+            ),
+            outcome=case((eligible, None if correct is False else "answered"), else_="unavailable"),
+            answered_at=func.coalesce(TrainingItem.answered_at, now),
+        )
+    )
+    if claimed.rowcount == 1 and first_attempt:  # type: ignore[attr-defined]
+        state = (
+            await db.execute(
+                select(
+                    Word.content_version,
+                    Word.training_version,
+                    Word.is_excluded,
+                    WordProgress.stage,
+                    WordProgress.success_streak,
+                    WordProgress.review_count,
+                    WordProgress.lapse_count,
+                )
+                .join(WordProgress, WordProgress.word_id == Word.id)
+                .where(
+                    Word.id == item.word_id,
+                    Word.owner_id == auth.user.id,
+                    WordProgress.owner_id == auth.user.id,
+                )
+            )
+        ).one_or_none()
+        current = (
+            state is not None
+            and not state[2]
+            and state[0] == item.word_content_version
+            and state[1] == item.word_training_version
+        )
+        if current:
+            assert state is not None
+            schedule_update = update(WordProgress).where(
+                WordProgress.owner_id == auth.user.id,
+                WordProgress.word_id == item.word_id,
+                WordProgress.progress_version == item.word_progress_version,
+            )
+            if item.session.purpose == "scheduled":
+                transition = srs.review(state[3], state[4], cast(Grade, grade), now)
+                changed = await db.execute(
+                    schedule_update.values(
+                        stage=transition.stage,
+                        has_review=True,
+                        due_at=transition.due_at,
+                        last_review_at=now,
+                        success_streak=transition.success_streak,
+                        review_count=state[5] + 1,
+                        lapse_count=state[6] + int(transition.is_lapse),
+                        progress_version=item.word_progress_version + 1,
+                    )
+                )
+            else:
+                changed = await db.execute(
+                    schedule_update.values(progress_version=item.word_progress_version + 1)
+                )
+            if changed.rowcount != 1:  # type: ignore[attr-defined]
+                await db.rollback()
+                raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
+            applied = await db.execute(
+                update(Word)
+                .where(
+                    Word.id == word.id,
+                    Word.owner_id == auth.user.id,
+                    Word.is_excluded.is_(False),
+                    Word.training_version == item.word_training_version,
+                    Word.content_version == item.word_content_version,
+                )
+                .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
+            )
+            if applied.rowcount != 1:  # type: ignore[attr-defined]
+                await db.rollback()
+                raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
+    await db.commit()
+    await db.refresh(item)
+    await db.refresh(word)
+
+    if item.outcome is None and item.answered_at is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")
-    # A repeated or concurrent answer returns the recorded result without changing anything.
     return _answer_out(item, word.progress)

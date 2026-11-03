@@ -1,5 +1,3 @@
-"""Regression tests for patch payloads and the formatter's filesystem boundary."""
-
 import importlib.util
 import tempfile
 import unittest

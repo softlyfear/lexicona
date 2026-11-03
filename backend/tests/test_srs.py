@@ -220,6 +220,23 @@ async def test_objective_scheduled_answers_map_to_good_or_again(
         assert item is not None and item.grade == ("good" if correct else "again")
 
 
+async def test_scheduled_retry_does_not_change_progress_or_schedule_twice(
+    app: FastAPI, alice: Client
+) -> None:
+    word = await add_word(alice, "cat", "кот")
+    item = (await start(alice, mode="input", purpose="scheduled", size=1))["items"][0]
+    url = f"/api/training/items/{item['id']}/answer"
+    first = await alice.post(url, json={"text": "ошибка"})
+    assert first.json()["delta"] == -4
+    before = progress_tuple(await get_progress(app, word["id"]))
+    retry = await alice.post(url, json={"text": "другая ошибка"})
+    final = await alice.post(url, json={"text": "кот"})
+    assert retry.json()["delta"] == final.json()["delta"] == 0
+    assert final.json()["correct"] is True
+    assert progress_tuple(await get_progress(app, word["id"])) == before
+    assert before[5] == 1
+
+
 async def test_free_practice_and_replay_never_change_schedule(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот")
     due = utcnow() + timedelta(days=5)

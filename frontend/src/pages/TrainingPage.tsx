@@ -22,7 +22,6 @@ const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
   { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
-  { mode: 'cloze', direction: 'en_en', label: 'Слово в примере: EN → EN' },
   { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
   { mode: 'cards', direction: 'ru_en', label: 'Карточки: RU → EN' },
 ]
@@ -326,12 +325,6 @@ function Setup({
         {purpose === 'free' && (
           <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
         )}
-        {mode === 'cloze' && (
-          <p className={ui.muted}>
-            Подходят английские примеры, где слово или выражение встречается ровно один раз целиком.
-            В занятие войдут только подходящие слова.
-          </p>
-        )}
         {start.isError && (
           <p className={ui.error} role="alert">
             {mode !== 'choice' &&
@@ -378,10 +371,12 @@ function Run({
   const [text, setText] = useState('')
   const [revealed, setRevealed] = useState<string[] | null>(null)
   const [results, setResults] = useState<TerminalResult[]>([])
+  const [attempt, setAttempt] = useState<TerminalResult | null>(null)
   const locked = useRef(false)
   const item = session.items[index]
-  const result = results[index] as TerminalResult | undefined
+  const result = attempt ?? undefined
   const done = index >= session.items.length
+  const canRetry = result?.outcome === 'answered' && 'correct' in result && !result.correct
   const action = useMutation({
     mutationFn: (value: Action) => {
       switch (value.kind) {
@@ -401,8 +396,13 @@ function Run({
       if (data.outcome === 'revealed') {
         setRevealed(data.expected_answers)
         locked.current = false
+        return
+      }
+      if (data.outcome === 'answered' && 'submitted_text' in data) setText(data.submitted_text)
+      setAttempt(data)
+      if (data.outcome === 'answered' && 'correct' in data && !data.correct) {
+        locked.current = false
       } else {
-        if (data.outcome === 'answered' && 'submitted_text' in data) setText(data.submitted_text)
         setResults((previous) => [...previous, data])
       }
     },
@@ -416,7 +416,7 @@ function Run({
   }, [queryClient])
 
   function perform(value: Action) {
-    if (locked.current || result) return
+    if (locked.current || (result && !canRetry)) return
     cancelSpeech()
     locked.current = true
     action.mutate(value)
@@ -431,6 +431,7 @@ function Run({
     action.reset()
     setText('')
     setRevealed(null)
+    setAttempt(null)
     setIndex((i) => i + 1)
   }
 
@@ -449,9 +450,9 @@ function Run({
       )
         return
       const n = Number(event.key)
-      if (!result && /^[1-6]$/.test(event.key) && n <= item.options.length)
+      if ((!result || canRetry) && /^[1-6]$/.test(event.key) && n <= item.options.length)
         perform({ kind: 'choice', option: n - 1 })
-      else if (result && (event.key === 'Enter' || event.key === ' ')) {
+      else if (result && !canRetry && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault()
         next()
       }
@@ -499,14 +500,17 @@ function Run({
   const promptLang = session.direction === 'ru_en' ? 'ru' : 'en'
   const answerLang = session.direction === 'en_ru' ? 'ru' : 'en'
   const busy = action.isPending
-  const disabled = busy || !!result
+  const disabled = busy || (!!result && !canRetry)
   const cardAnswer =
     result?.outcome === 'unavailable'
       ? null
       : (revealed ??
         (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null))
   const revealedAnswers =
-    result?.outcome === 'assisted' || (result?.outcome === 'answered' && 'submitted_text' in result)
+    result?.outcome === 'assisted' ||
+    (result?.outcome === 'answered' &&
+      'submitted_text' in result &&
+      (!('correct' in result) || result.correct))
       ? result.expected_answers
       : null
   let label = ''
@@ -560,6 +564,7 @@ function Run({
             let state = ''
             if (
               result &&
+              !canRetry &&
               result.outcome !== 'skipped' &&
               'correct_option' in result &&
               i === result.correct_option
@@ -684,10 +689,13 @@ function Run({
               {label} ({result.delta > 0 ? '+' : ''}
               {result.delta}) · прогресс {result.progress}%
             </span>
-            <button className={ui.primary} onClick={next} autoFocus>
-              Далее
-            </button>
+            {!canRetry && (
+              <button className={ui.primary} onClick={next} autoFocus>
+                Далее
+              </button>
+            )}
           </div>
+          {canRetry && <p>Попробуйте ещё раз. Повторного штрафа не будет.</p>}
           {revealedAnswers && (
             <p className={ui.muted} lang={answerLang}>
               Ответ: {revealedAnswers.join(', ')}

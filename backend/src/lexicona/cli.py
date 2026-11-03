@@ -1,5 +1,3 @@
-"""Account administration: lexicona-admin create-user | set-password | list-users."""
-
 import argparse
 import asyncio
 import getpass

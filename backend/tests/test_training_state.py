@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from lexicona import dictionary
 from lexicona.db import Database
 from lexicona.models import TrainingItem, Word
-from tests.conftest import Client, add_word
+from tests.conftest import Client, add_legacy_cloze_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress
 
@@ -19,8 +19,14 @@ async def set_state(client: Client, word_id: str, excluded: bool) -> Any:
     return await client.patch(f"/api/words/{word_id}/training", json={"is_excluded": excluded})
 
 
-async def start(client: Client, mode: str = "input", progress: int | None = None) -> dict[str, Any]:
-    direction = "en_en" if mode == "cloze" else "en_ru"
+async def start(
+    app: FastAPI, client: Client, mode: str = "input", progress: int | None = None
+) -> dict[str, Any]:
+    if mode == "cloze":
+        words = (await client.get("/api/words", params={"training": "all"})).json()
+        word = next(word for word in words if word["progress"] == progress)
+        return await add_legacy_cloze_item(app, client, word["id"])
+    direction = "en_ru"
     response = await client.post(
         "/api/training/sessions",
         json={
@@ -99,7 +105,7 @@ async def test_all_modes_keep_progress_above_100(
         ]:
             added = await add_word(alice, headword, translation)
             await set_progress(app, added["id"], initial + 10)
-    item = await start(alice, mode, initial)
+    item = await start(app, alice, mode, initial)
     payload: dict[str, Any]
     if mode == "choice":
         database: Database = app.state.db
@@ -136,7 +142,7 @@ async def test_exclusion_invalidates_open_item_without_leaking(
         ]:
             other = await add_word(alice, en, ru)
             await set_progress(app, other["id"], 60)
-    item = await start(alice, mode, 50)
+    item = await start(app, alice, mode, 50)
     base = f"/api/training/items/{item['id']}"
     if mode == "cards" and action == "answer":
         assert (await alice.post(f"{base}/reveal")).json()["outcome"] == "revealed"
@@ -219,9 +225,9 @@ async def test_excluded_word_not_used_even_when_choice_has_enough_active(alice: 
             assert "fox" not in item["options"] and "лиса" not in item["options"]
 
 
-async def test_terminal_result_precedes_later_exclusion(alice: Client) -> None:
+async def test_terminal_result_precedes_later_exclusion(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот")
-    item = await start(alice)
+    item = await start(app, alice)
     base = f"/api/training/items/{item['id']}"
     answer = (await alice.post(f"{base}/answer", json={"text": "кот"})).json()
     assert answer["outcome"] == "answered" and answer["progress"] == 8
@@ -233,7 +239,7 @@ async def test_terminal_result_precedes_later_exclusion(alice: Client) -> None:
 async def test_answer_racing_exclusion_is_serialized(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
-    item = await start(alice)
+    item = await start(app, alice)
     base = f"/api/training/items/{item['id']}"
     answer, excluded = await asyncio.gather(
         alice.post(f"{base}/answer", json={"text": "кот"}),
@@ -255,7 +261,7 @@ async def test_help_or_skip_racing_exclusion_has_one_terminal_result(
 ) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
-    item = await start(alice)
+    item = await start(app, alice)
     base = f"/api/training/items/{item['id']}"
     terminal, excluded = await asyncio.gather(
         alice.post(f"{base}/{action}"), set_state(alice, word["id"], True)
@@ -279,7 +285,7 @@ async def test_parallel_old_item_actions_after_exclusion_and_return_are_unavaila
 ) -> None:
     word = await add_word(alice, "cat", "кот")
     await set_progress(app, word["id"], 50)
-    item = await start(alice)
+    item = await start(app, alice)
     base = f"/api/training/items/{item['id']}"
     assert (await set_state(alice, word["id"], True)).status_code == 200
     assert (await set_state(alice, word["id"], False)).status_code == 200

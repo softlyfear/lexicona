@@ -1,5 +1,3 @@
-"""Deterministic internal review schedule, independent of visible progress."""
-
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -25,7 +23,6 @@ class ReviewTransition:
 
 
 def review(stage: int, success_streak: int, grade: Grade, now: datetime) -> ReviewTransition:
-    """Return the schedule after one graded answer at the supplied naive UTC time."""
     if grade == "again":
         return ReviewTransition(0, now + timedelta(minutes=10), 0, True)
     if grade == "hard":

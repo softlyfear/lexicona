@@ -15,8 +15,6 @@ from lexicona.routers import auth, dictionary, tags, training, words
 
 
 class SpaFiles(StaticFiles):
-    """Static files with index.html fallback for client-side routes."""
-
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
             return await super().get_response(path, scope)

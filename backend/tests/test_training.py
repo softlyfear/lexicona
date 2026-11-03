@@ -119,12 +119,23 @@ async def test_correct_and_wrong_answers_move_progress(app: FastAPI, alice: Clie
     }
 
     other = next(i for i in session["items"] if i["prompt"] == "dog")
-    wrong = (await correct_option(app, other["id"]) + 1) % 6
+    other_right = await correct_option(app, other["id"])
+    wrong = (other_right + 1) % 6
     response = await alice.post(f"/api/training/items/{other['id']}/answer", json={"option": wrong})
     body = response.json()
     assert body["correct"] is False
     assert body["delta"] == -4
     assert body["progress"] == 0  # clamped
+    retry = await alice.post(
+        f"/api/training/items/{other['id']}/answer", json={"option": (wrong + 1) % 6}
+    )
+    assert retry.json()["delta"] == 0
+    final = await alice.post(
+        f"/api/training/items/{other['id']}/answer", json={"option": other_right}
+    )
+    assert final.json()["correct"] is True
+    assert final.json()["delta"] == 0
+    assert final.json()["progress"] == 0
 
 
 async def test_repeated_answer_counts_once(app: FastAPI, alice: Client) -> None:
@@ -208,7 +219,11 @@ async def test_new_options_and_invalid_replay(alice: Client, option: int) -> Non
     first = await alice.post(url, json={"option": option})
     assert first.status_code == 200 and first.json()["chosen_option"] == option
     assert (await alice.post(url, json={"option": 6})).status_code == 422
-    assert (await alice.post(url, json={"option": 0})).json() == first.json()
+    replay = (await alice.post(url, json={"option": 0})).json()
+    if first.json()["correct"]:
+        assert replay == first.json()
+    else:
+        assert replay["correct"] is False and replay["delta"] == 0
 
 
 @pytest.mark.parametrize("option", range(4))

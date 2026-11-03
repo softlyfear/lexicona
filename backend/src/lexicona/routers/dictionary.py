@@ -1,10 +1,11 @@
+import asyncio
 import sqlite3
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, StringConstraints
 
-from lexicona import dictionary
+from lexicona import dictionary, translation
 from lexicona.deps import AppSettings, CurrentAuth
 
 router = APIRouter(prefix="/dictionary", tags=["dictionary"])
@@ -15,11 +16,44 @@ class LookupIn(BaseModel):
 
 
 @router.post("/lookup")
-def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
+async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
     try:
-        return dictionary.lookup(settings.dictionary_path, body.headword)
+        result = dictionary.lookup(settings.dictionary_path, body.headword)
     except OSError, sqlite3.Error, ValueError, TypeError, KeyError:
+        result = None
+    if result is not None and result["matches"]:
+        return {**result, "machine_translation": None}
+    try:
+        machine = await asyncio.to_thread(translation.translate, settings, body.headword)
+    except translation.TranslationError:
         raise HTTPException(503, "dictionary_unavailable") from None
+    if result is None and machine is None:
+        raise HTTPException(503, "dictionary_unavailable")
+    return {
+        **(result or {"source": dictionary.SOURCE, "matches": []}),
+        "machine_translation": (
+            {
+                "provider": machine.provider,
+                "text": machine.text,
+                "alternatives": list(machine.alternatives),
+                "transcription": machine.transcription,
+            }
+            if machine
+            else None
+        ),
+    }
+
+
+@router.post("/example")
+async def example(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, str]:
+    try:
+        generated = await asyncio.to_thread(translation.generate_example, settings, body.headword)
+    except translation.TranslationError:
+        raise HTTPException(503, "examples_unavailable") from None
+    if generated is None:
+        raise HTTPException(503, "examples_unavailable")
+    example_en, example_ru = generated
+    return {"example_en": example_en, "example_ru": example_ru}
 
 
 @router.get("/notices")

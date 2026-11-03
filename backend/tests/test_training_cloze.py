@@ -1,14 +1,13 @@
 import asyncio
 import sqlite3
 from pathlib import Path
-from typing import Any
 
 import pytest
 from alembic import command
 from fastapi import FastAPI
 
 from lexicona.cloze import mask_example
-from tests.conftest import Client, add_word
+from tests.conftest import Client, add_legacy_cloze_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress
 
@@ -55,47 +54,18 @@ def test_hyphenated_word_is_not_a_complete_match(hyphen: str, compound_first: bo
     )
 
 
-@pytest.mark.parametrize("hyphen", ["‐", "‑"])
-async def test_cloze_session_requires_separate_word_with_unicode_hyphen(
-    alice: Client, hyphen: str
-) -> None:
-    word = await add_word(alice, "cat", "кот", example_en=f"A cat{hyphen}like shape.")
-    response = await start(alice)
-    assert response.status_code == 409
-    assert response.json() == {"detail": "no_eligible_cloze_examples"}
-    response = await alice.put(
-        f"/api/words/{word['id']}",
-        json={
-            "headword": "cat",
-            "translations": ["кот"],
-            "example_en": f"A cat{hyphen}like shape and a cat.",
-        },
+async def test_cloze_session_is_not_available(alice: Client) -> None:
+    response = await alice.post(
+        "/api/training/sessions", json={"mode": "cloze", "direction": "en_en"}
     )
-    assert response.status_code == 200
-    response = await start(alice)
-    assert response.status_code == 201
-    assert response.json()["items"][0]["prompt"] == f"A cat{hyphen}like shape and a ____."
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "no-store"
 
 
-async def start(client: Client, size: int = 10) -> Any:
-    return await client.post(
-        "/api/training/sessions", json={"mode": "cloze", "direction": "en_en", "size": size}
-    )
-
-
-async def test_session_filters_pool_and_hides_answer(alice: Client, bob: Client) -> None:
-    await add_word(alice, "dog", "пёс", example_en="dogs bark")
-    await add_word(alice, "cat", "кот", example_en="A Cat sleeps.", example_ru="Кот спит.")
-    await add_word(alice, "cow", "корова", example_en="cow and cow")
-    await add_word(bob, "fox", "лиса", example_en="A fox is here.")
-    result = await start(alice)
-    assert result.status_code == 201 and result.headers["cache-control"] == "no-store"
-    session = result.json()
-    assert session["mode"] == "cloze" and session["direction"] == "en_en"
-    assert len(session["items"]) == 1
-    item = session["items"][0]
+async def test_legacy_snapshot_hides_answer_until_submission(app: FastAPI, alice: Client) -> None:
+    word = await add_word(alice, "cat", "кот", example_en="A Cat sleeps.")
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     assert item == {"id": item["id"], "prompt": "A ____ sleeps.", "options": []}
-    assert "Cat" not in result.text and "Кот" not in result.text and "fox" not in result.text
 
     url = f"/api/training/items/{item['id']}"
     response = await alice.post(f"{url}/answer", json={"text": " CAT. "})
@@ -108,34 +78,6 @@ async def test_session_filters_pool_and_hides_answer(alice: Client, bob: Client)
         "progress": 8,
     }
     assert response.headers["cache-control"] == "no-store"
-
-
-async def test_no_eligible_and_other_owner_only(alice: Client, bob: Client) -> None:
-    await add_word(alice, "cat", "кот", example_en="category")
-    await add_word(bob, "cat", "кот", example_en="a cat sleeps")
-    result = await start(alice)
-    assert result.status_code == 409
-    assert result.json() == {"detail": "no_eligible_cloze_examples"}
-    assert result.headers["cache-control"] == "no-store"
-    assert (await alice.get("/api/words")).json()[0]["progress"] == 0
-    assert (await start(bob)).status_code == 201
-
-
-async def test_size_uses_only_eligible_words(app: FastAPI, alice: Client) -> None:
-    fast = await add_word(alice, "cat", "кот", example_en="a cat sleeps")
-    slow = await add_word(alice, "dog", "пёс", example_en="a dog sleeps")
-    await add_word(alice, "cow", "корова", example_en="many cows sleep")
-    await set_progress(app, fast["id"], 20)
-    await set_progress(app, slow["id"], 5)
-    response = await start(alice, size=1)
-    assert response.status_code == 201
-    items = response.json()["items"]
-    assert len(items) == 1
-    assert items[0]["prompt"] == "a ____ sleeps"
-    result = await alice.post(f"/api/training/items/{items[0]['id']}/reveal")
-    assert result.json()["expected_answers"] in (["cat"], ["dog"])
-    words = {entry["id"]: entry["progress"] for entry in (await alice.get("/api/words")).json()}
-    assert words[fast["id"]] == 20 and words[slow["id"]] == 5
 
 
 @pytest.mark.parametrize(
@@ -155,9 +97,9 @@ async def test_invalid_mode_direction(alice: Client, mode: str, direction: str) 
     assert response.status_code == 422
 
 
-async def test_strict_answers_and_cloze_security(alice: Client, bob: Client) -> None:
+async def test_strict_answers_and_cloze_security(app: FastAPI, alice: Client, bob: Client) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat")
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     base = f"/api/training/items/{item['id']}"
     for endpoint, data in [("answer", {"text": "cat"}), ("reveal", None), ("skip", None)]:
         response = await bob.post(f"{base}/{endpoint}", json=data)
@@ -184,7 +126,7 @@ async def test_typed_deltas_allow_progress_above_100(
 ) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat")
     await set_progress(app, word["id"], initial)
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": answer})
     assert response.json()["correct"] is (answer == "cat")
     assert response.json()["delta"] == delta
@@ -195,7 +137,7 @@ async def test_snapshot_difficulty_and_content_version(app: FastAPI, alice: Clie
     word = await add_word(alice, "cat", "кот", example_en="a cat sleeps")
     await set_progress(app, word["id"], 50)
     await alice.put("/api/auth/settings", json={"difficulty": "very_easy"})
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     await alice.put("/api/auth/settings", json={"difficulty": "very_hard"})
     response = await alice.put(
         f"/api/words/{word['id']}",
@@ -205,7 +147,7 @@ async def test_snapshot_difficulty_and_content_version(app: FastAPI, alice: Clie
     assert item["prompt"] == "a ____ sleeps"
     result = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "cat"})
     assert result.json()["delta"] == 20 and result.json()["progress"] == 70
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     await alice.put(
         f"/api/words/{word['id']}",
         json={"headword": "cat", "translations": ["кошка"], "example_en": "a cat runs"},
@@ -221,7 +163,7 @@ async def test_headword_edit_keeps_private_snapshot_without_progress_effect(
 ) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat sleeps")
     await set_progress(app, word["id"], 50)
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     changed = await alice.put(
         f"/api/words/{word['id']}",
         json={"headword": "dog", "translations": ["кот"], "example_en": "a dog runs"},
@@ -236,9 +178,11 @@ async def test_headword_edit_keeps_private_snapshot_without_progress_effect(
 
 
 @pytest.mark.parametrize("action", ["reveal", "skip"])
-async def test_cloze_assistance_and_skip_are_terminal(alice: Client, action: str) -> None:
-    await add_word(alice, "cat", "кот", example_en="a cat")
-    item = (await start(alice)).json()["items"][0]
+async def test_cloze_assistance_and_skip_are_terminal(
+    app: FastAPI, alice: Client, action: str
+) -> None:
+    word = await add_word(alice, "cat", "кот", example_en="a cat")
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     url = f"/api/training/items/{item['id']}"
     response = await alice.post(f"{url}/{action}")
     body = response.json()
@@ -255,7 +199,7 @@ async def test_cloze_assistance_and_skip_are_terminal(alice: Client, action: str
 async def test_cloze_races_use_one_terminal_result(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat")
     await set_progress(app, word["id"], 50)
-    item = (await start(alice)).json()["items"][0]
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     url = f"/api/training/items/{item['id']}"
     results = await asyncio.gather(
         alice.post(f"{url}/answer", json={"text": "cat"}),
@@ -269,11 +213,11 @@ async def test_cloze_races_use_one_terminal_result(app: FastAPI, alice: Client) 
     assert body["progress"] == 50 + body["delta"]
 
 
-async def test_long_example_is_not_truncated(alice: Client) -> None:
+async def test_long_example_is_not_truncated(app: FastAPI, alice: Client) -> None:
     example = "a cat" + "!" * 1995
     assert len(example) == 2000
-    await add_word(alice, "cat", "кот", example_en=example)
-    item = (await start(alice)).json()["items"][0]
+    word = await add_word(alice, "cat", "кот", example_en=example)
+    item = await add_legacy_cloze_item(app, alice, word["id"])
     assert item["prompt"] == "a ____" + "!" * 1995
 
 

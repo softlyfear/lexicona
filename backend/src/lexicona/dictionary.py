@@ -1,11 +1,10 @@
-"""Build and read the pinned, separate FreeDict dictionary index."""
-
 import argparse
 import hashlib
 import io
 import json
 import lzma
 import os
+import re
 import sqlite3
 import tarfile
 import tempfile
@@ -47,6 +46,14 @@ def key(value: str) -> str:
 
 def display(value: str) -> str:
     return " ".join(unicodedata.normalize("NFC", value).split())
+
+
+def clean_translation(value: str) -> str:
+    return re.sub(
+        r"\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]",
+        lambda match: match.group(2) or match.group(1),
+        value,
+    )
 
 
 def _archive(data: bytes) -> tuple[bytes, bytes]:
@@ -253,7 +260,11 @@ def lookup(path: Path, headword: str) -> dict[str, Any]:
                 "entry_id": entry_id,
                 "headword": spelling,
                 "part_of_speech": pos,
-                "translations": _list_field(translations, 200),
+                "translations": list(
+                    dict.fromkeys(
+                        clean_translation(value) for value in _list_field(translations, 200)
+                    )
+                ),
                 "transcriptions": _list_field(transcriptions, 300),
                 "match": "exact" if spelling == display(headword) else "normalized",
             }
@@ -291,7 +302,7 @@ def choice_candidates(path: Path, limit: int = 120) -> list[ChoiceEntry]:
             raise ValueError("invalid entry")
         translations: dict[str, str] = {}
         for value in _list_field(raw_translations, 200):
-            text = value.replace("\u0301", "")
+            text = clean_translation(value).replace("\u0301", "")
             normalized = normalize(text)
             if normalized:
                 translations.setdefault(normalized, text)

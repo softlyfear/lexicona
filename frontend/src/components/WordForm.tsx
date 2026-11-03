@@ -11,10 +11,45 @@ import {
 import { forgetSession, getSessionRevision } from '../session'
 import { normalizeTagName, parseTranslations, tagKey } from '../words'
 import css from '../pages/pages.module.css'
+import { SpeakButton } from './ui'
 import ui from './ui.module.css'
 import formCss from './WordForm.module.css'
 
 const sourceId = 'freedict-wikdict-eng-rus-2025.11.23' as const
+const partsOfSpeech: Record<string, string> = {
+  n: 'существительное',
+  noun: 'существительное',
+  pn: 'имя собственное',
+  v: 'глагол',
+  verb: 'глагол',
+  adj: 'прилагательное',
+  adjective: 'прилагательное',
+  adv: 'наречие',
+  adverb: 'наречие',
+  pron: 'местоимение',
+  pronoun: 'местоимение',
+  prep: 'предлог',
+  preposition: 'предлог',
+  postposition: 'послелог',
+  symbol: 'символ',
+  conj: 'союз',
+  conjunction: 'союз',
+  int: 'междометие',
+  interj: 'междометие',
+  interjection: 'междометие',
+  num: 'числительное',
+  numeral: 'числительное',
+  art: 'артикль',
+  determiner: 'определитель',
+  particle: 'частица',
+  participle: 'причастие',
+  phraseologicalunit: 'фразеологизм',
+  proverb: 'пословица',
+  abbreviation: 'аббревиатура',
+  prefix: 'приставка',
+  suffix: 'суффикс',
+}
+const partOfSpeech = (value: string) => partsOfSpeech[value.toLowerCase()] ?? value
 const translationKey = (value: string) =>
   tagKey(value)
     .replaceAll('ё', 'е')
@@ -69,17 +104,20 @@ export function WordForm({
   const [lookup, setLookup] = useState<DictionaryLookup | null>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [choiceError, setChoiceError] = useState<string | null>(null)
-  const requestId = useRef(0)
+  const [exampleState, setExampleState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const lookupRequestId = useRef(0)
+  const exampleRequestId = useRef(0)
   const revision = useRef(getSessionRevision())
   useEffect(
     () => () => {
-      requestId.current++
+      lookupRequestId.current++
+      exampleRequestId.current++
     },
     [],
   )
 
   async function findSuggestions() {
-    const id = ++requestId.current
+    const id = ++lookupRequestId.current
     const currentRevision = getSessionRevision()
     revision.current = currentRevision
     setLookup(null)
@@ -87,14 +125,29 @@ export function WordForm({
     setLookupState('loading')
     try {
       const result = await api.lookupDictionary(headword.trim())
-      if (id !== requestId.current || currentRevision !== getSessionRevision()) return
+      if (id !== lookupRequestId.current || currentRevision !== getSessionRevision()) return
       const matches = result.matches.map((match) => ({
         ...match,
         translations: [
           ...new Set(match.translations.map((value) => value.replaceAll('\u0301', ''))),
         ],
       }))
-      setLookup({ ...result, matches })
+      let machineTranslation = result.machine_translation
+      if (machineTranslation) {
+        const values = [
+          ...new Set(
+            [machineTranslation.text, ...(machineTranslation.alternatives ?? [])].map((value) =>
+              value.replaceAll('\u0301', ''),
+            ),
+          ),
+        ]
+        machineTranslation = {
+          ...machineTranslation,
+          text: values[0],
+          alternatives: values.slice(1),
+        }
+      }
+      setLookup({ ...result, matches, machine_translation: machineTranslation })
       const preferred = preferredTranscription(matches)
       if (preferred) {
         setTranscription(preferred.value)
@@ -109,10 +162,13 @@ export function WordForm({
             },
           ].slice(0, 20),
         )
+      } else if (machineTranslation?.transcription) {
+        setTranscription(machineTranslation.transcription)
+        setRefs((current) => current.filter((ref) => ref.field !== 'transcription'))
       }
       setLookupState('idle')
     } catch (error) {
-      if (id !== requestId.current || currentRevision !== getSessionRevision()) return
+      if (id !== lookupRequestId.current || currentRevision !== getSessionRevision()) return
       if (error instanceof ApiError && error.status === 401) {
         forgetSession()
         return
@@ -121,7 +177,28 @@ export function WordForm({
     }
   }
 
-  function chooseTranslation(value: string, entryId: number) {
+  async function addExample() {
+    const id = ++exampleRequestId.current
+    const currentRevision = getSessionRevision()
+    revision.current = currentRevision
+    setExampleState('loading')
+    try {
+      const result = await api.generateExample(headword.trim())
+      if (id !== exampleRequestId.current || currentRevision !== getSessionRevision()) return
+      setExampleEn(result.example_en)
+      setExampleRu(result.example_ru)
+      setExampleState('idle')
+    } catch (error) {
+      if (id !== exampleRequestId.current || currentRevision !== getSessionRevision()) return
+      if (error instanceof ApiError && error.status === 401) {
+        forgetSession()
+        return
+      }
+      setExampleState('error')
+    }
+  }
+
+  function chooseTranslation(value: string, entryId: number | null) {
     if (revision.current !== getSessionRevision()) return
     const current = parseTranslations(translations)
     if (current.some((item) => translationKey(item) === translationKey(value))) {
@@ -134,12 +211,14 @@ export function WordForm({
     }
     setTranslations([...current, value].join('\n'))
     setChoiceError(null)
-    setRefs((current) =>
-      [
-        ...current,
-        { source_id: sourceId, entry_id: entryId, field: 'translation' as const, value },
-      ].slice(0, 20),
-    )
+    if (entryId !== null) {
+      setRefs((current) =>
+        [
+          ...current,
+          { source_id: sourceId, entry_id: entryId, field: 'translation' as const, value },
+        ].slice(0, 20),
+      )
+    }
   }
 
   function addTag(raw: string) {
@@ -190,6 +269,13 @@ export function WordForm({
     })
   }
 
+  const selectedTranslations = new Set(parseTranslations(translations).map(translationKey))
+  const machine = lookup?.machine_translation
+  const machineChoices = machine
+    ? [machine.text, ...(machine.alternatives ?? [])].filter(
+        (value) => !selectedTranslations.has(translationKey(value)),
+      )
+    : []
   const message = localError ?? error
   return (
     <form className={`${ui.card} ${css.form}`} onSubmit={submit} aria-label="Слово">
@@ -200,10 +286,12 @@ export function WordForm({
             className={ui.input}
             value={headword}
             onChange={(e) => {
-              requestId.current++
+              lookupRequestId.current++
+              exampleRequestId.current++
               setHeadword(e.target.value)
               setLookup(null)
               setLookupState('idle')
+              setExampleState('idle')
               setChoiceError(null)
             }}
             maxLength={200}
@@ -230,6 +318,9 @@ export function WordForm({
           />
         </label>
       </div>
+      <div>
+        <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
+      </div>
       <div className={formCss.dictionary}>
         <button
           type="button"
@@ -243,33 +334,52 @@ export function WordForm({
         {lookupState === 'error' && (
           <p role="alert">Словарь недоступен. Попробуйте ещё раз или введите данные вручную.</p>
         )}
-        {lookup && lookup.matches.length === 0 && (
+        {lookup && lookup.matches.length === 0 && !lookup.machine_translation && (
           <p role="status">Варианты не найдены. Можно ввести данные вручную.</p>
+        )}
+        {machine && machineChoices.length > 0 && (
+          <section aria-label="Машинный перевод">
+            <p>Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'Gemini'}</p>
+            <div className={formCss.choices}>
+              {machineChoices.map((value) => (
+                <button
+                  type="button"
+                  className={`${ui.button} ${formCss.dictionaryButton}`}
+                  key={value}
+                  onClick={() => chooseTranslation(value, null)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </section>
         )}
         {lookup && lookup.matches.length > 0 && (
           <div>
-            <p>Варианты из словаря. Порядок источника, не статистика популярности.</p>
+            <p>Варианты из словаря в порядке источника.</p>
             {lookup.matches.map((match) => (
               <section
                 key={match.entry_id}
-                aria-label={`${match.headword}${match.part_of_speech ? `, ${match.part_of_speech}` : ''}`}
+                aria-label={`${match.headword}${match.part_of_speech ? `, ${partOfSpeech(match.part_of_speech)}` : ''}`}
               >
                 <p>
                   <strong>{match.headword}</strong>
-                  {match.part_of_speech && ` — ${match.part_of_speech}`}
+                  {match.part_of_speech && ` — ${partOfSpeech(match.part_of_speech)}`}
                   {match.match === 'normalized' && ' (нормализованное совпадение)'}
                 </p>
                 <div className={formCss.choices}>
-                  {match.translations.map((value) => (
-                    <button
-                      type="button"
-                      className={`${ui.button} ${formCss.dictionaryButton}`}
-                      key={value}
-                      onClick={() => chooseTranslation(value, match.entry_id)}
-                    >
-                      {value}
-                    </button>
-                  ))}
+                  {match.translations
+                    .filter((value) => !selectedTranslations.has(translationKey(value)))
+                    .map((value) => (
+                      <button
+                        type="button"
+                        className={`${ui.button} ${formCss.dictionaryButton}`}
+                        key={value}
+                        onClick={() => chooseTranslation(value, match.entry_id)}
+                      >
+                        {value}
+                      </button>
+                    ))}
                 </div>
               </section>
             ))}
@@ -369,6 +479,22 @@ export function WordForm({
           ))}
         </div>
       </fieldset>
+      <div>
+        <button
+          type="button"
+          className={ui.button}
+          disabled={!headword.trim() || exampleState === 'loading'}
+          onClick={addExample}
+        >
+          Добавить пример
+        </button>
+        {exampleState === 'loading' && <p role="status">Gemini составляет пример…</p>}
+        {exampleState === 'error' && (
+          <p role="alert" className={ui.error}>
+            Не удалось составить пример. Попробуйте ещё раз или введите его вручную.
+          </p>
+        )}
+      </div>
       <div className={css.formRow}>
         <label className={ui.field}>
           <span className={ui.label}>Пример (EN)</span>

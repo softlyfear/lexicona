@@ -1,4 +1,3 @@
-/* Semantic tokens. Components use only these; a new theme redefines them. */
 :root {
   color-scheme: dark;
   --bg: #12141c;

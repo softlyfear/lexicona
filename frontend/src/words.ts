@@ -1,4 +1,3 @@
-/** One translation per line; blank lines and repeats are dropped. */
 export function parseTranslations(text: string): string[] {
   const seen = new Set<string>()
   const result: string[] = []

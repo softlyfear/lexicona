@@ -77,7 +77,6 @@ async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
         ("cards", "ru_en"),
         ("choice", "en_ru"),
         ("choice", "ru_en"),
-        ("cloze", "en_en"),
     ]:
         response = await alice.post(
             "/api/training/sessions", json={"mode": mode, "direction": direction, "size": "all"}
@@ -96,47 +95,22 @@ async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
                 )
             )
         assert len(word_ids) == len(set(word_ids)) == 501
-        if mode != "cloze":
-            assert len({item["prompt"] for item in items}) == 501
+        assert len({item["prompt"] for item in items}) == 501
         assert all(set(item) == {"id", "prompt", "options"} for item in items)
         assert all(len(item["options"]) == (6 if mode == "choice" else 0) for item in items)
 
 
-async def test_excluded_and_ineligible_pools_remain_unavailable(
-    app: FastAPI, alice: Client, bob: Client
-) -> None:
+async def test_excluded_pools_remain_unavailable(app: FastAPI, alice: Client, bob: Client) -> None:
     await seed(app, alice, 3, excluded=True)
     await seed(app, bob, 5)
-    for mode, direction, detail in [
-        ("input", "en_ru", "not_enough_words"),
-        ("cards", "ru_en", "not_enough_words"),
-        ("choice", "en_ru", "not_enough_words"),
-        ("cloze", "en_en", "no_eligible_cloze_examples"),
+    for mode, direction in [
+        ("input", "en_ru"),
+        ("cards", "ru_en"),
+        ("choice", "en_ru"),
     ]:
         response = await alice.post(
             "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 500}
         )
         assert response.status_code == 409
         assert response.headers["cache-control"] == "no-store"
-        assert response.json()["detail"] == detail
-
-
-async def test_partial_cloze_pool_skips_ineligible_and_excluded(
-    app: FastAPI, alice: Client
-) -> None:
-    await seed(app, alice, 7)
-    owner = (await alice.get("/api/auth/me")).json()["user"]["id"]
-    database: Database = app.state.db
-    async with database.sessions() as db:
-        words = list(await db.scalars(select(Word).where(Word.owner_id == owner)))
-        words[0].example_en = "No match in the example."
-        words[1].is_excluded = True
-        await db.commit()
-    response = await alice.post(
-        "/api/training/sessions", json={"mode": "cloze", "direction": "en_en", "size": 500}
-    )
-    assert response.status_code == 201
-    items = response.json()["items"]
-    assert len(items) == 5
-    assert len({item["prompt"] for item in items}) == 1  # only the common masked example is public
-    assert len({item["id"] for item in items}) == 5
+        assert response.json()["detail"] == "not_enough_words"

@@ -70,6 +70,7 @@ it('автоматически подставляет fallback IPA и сохра
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной')
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
   await user.click(screen.getByRole('button', { name: 'книга' }))
+  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -121,18 +122,72 @@ it('убирает ударения и объединяет образовавш
   expect(screen.queryByText(/́/)).not.toBeInTheDocument()
 })
 
-it('отклоняет нормализованный дубль и одиннадцатый перевод', async () => {
+it('скрывает нормализованный дубль и отклоняет одиннадцатый перевод', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   const user = userEvent.setup()
   form({ ...word, translations: ['КНИГА.'] })
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  await user.click(await screen.findByRole('button', { name: 'книга' }))
-  expect(screen.getByRole('alert')).toHaveTextContent('уже добавлен')
+  expect(await screen.findByRole('button', { name: 'книжка' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
   const input = screen.getByLabelText(/Переводы/)
   await user.clear(input)
   await user.type(input, Array.from({ length: 10 }, (_, i) => `слово${i}`).join('\n'))
   await user.click(screen.getByRole('button', { name: 'книжка' }))
   expect(screen.getByRole('alert')).toHaveTextContent('не больше 10')
+})
+
+it('добавляет машинный перевод без ударения и ссылки на словарь', async () => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    source,
+    matches: [],
+    machine_translation: { provider: 'deepl', text: 'притво́рись, пока не получится' },
+  })
+  const user = userEvent.setup()
+  const { submit } = form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByText('Машинный перевод · DeepL')).toBeInTheDocument()
+  expect(screen.queryByText(/Варианты не найдены/)).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'притворись, пока не получится' }))
+  expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной\nпритворись, пока не получится')
+  expect(
+    screen.queryByRole('button', { name: 'притворись, пока не получится' }),
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      translations: ['ручной', 'притворись, пока не получится'],
+      source_refs: [],
+    }),
+  )
+})
+
+it('показывает варианты Gemini и автоматически подставляет US IPA', async () => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    source,
+    matches: [],
+    machine_translation: {
+      provider: 'gemini',
+      text: 'первый перевод',
+      alternatives: ['второй перевод', 'третий перевод'],
+      transcription: '/feɪk ɪt tɪl ju meɪk ɪt/',
+    },
+  })
+  const user = userEvent.setup()
+  const { submit } = form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByText('Машинный перевод · Gemini')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'второй перевод' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'третий перевод' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('/feɪk ɪt tɪl ju meɪk ɪt/')
+  await user.click(screen.getByRole('button', { name: 'второй перевод' }))
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      translations: ['ручной', 'второй перевод'],
+      transcription: '/feɪk ɪt tɪl ju meɪk ɪt/',
+      source_refs: [],
+    }),
+  )
 })
 
 it('позволяет сохранять вручную при пустом результате и ошибке и повторить запрос', async () => {
@@ -217,4 +272,57 @@ it('не показывает результат первого запроса �
   expect(await screen.findByText(/Варианты не найдены/)).toBeInTheDocument()
   await act(async () => resolve(result))
   expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
+})
+
+it('показывает полную часть речи, озвучку и добавляет пример Gemini', async () => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
+  vi.spyOn(api, 'generateExample').mockResolvedValue({
+    example_en: 'I read a book.',
+    example_ru: 'Я читаю книгу.',
+  })
+  const user = userEvent.setup()
+  form()
+  expect(screen.getByRole('button', { name: 'Произнести EN «book»' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('region', { name: 'book, существительное' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  expect(screen.getByLabelText('Пример (EN)')).toHaveValue('I read a book.')
+  expect(screen.getByLabelText('Перевод примера')).toHaveValue('Я читаю книгу.')
+})
+
+it.each([
+  ['pn', 'имя собственное'],
+  ['phraseologicalUnit', 'фразеологизм'],
+  ['preposition', 'предлог'],
+  ['postposition', 'послелог'],
+  ['symbol', 'символ'],
+])('расшифровывает часть речи %s', async (part, label) => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [{ ...result.matches[0], part_of_speech: part }],
+  })
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('region', { name: `book, ${label}` })).toBeInTheDocument()
+})
+
+it('сбрасывает загрузку примера при изменении слова и игнорирует поздний ответ', async () => {
+  let resolve!: (value: { example_en: string; example_ru: string }) => void
+  vi.spyOn(api, 'generateExample').mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }),
+  )
+  const user = userEvent.setup()
+  form()
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  expect(screen.getByRole('status')).toHaveTextContent('Gemini составляет пример')
+  await user.type(screen.getByLabelText(/Слово или выражение/), 's')
+  expect(screen.queryByText('Gemini составляет пример…')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Добавить пример' })).toBeEnabled()
+  await act(async () => resolve({ example_en: 'A book.', example_ru: 'Книга.' }))
+  expect(screen.getByLabelText('Пример (EN)')).toHaveValue('')
+  expect(screen.getByLabelText('Перевод примера')).toHaveValue('')
 })

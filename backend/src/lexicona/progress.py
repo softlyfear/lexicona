@@ -1,9 +1,3 @@
-"""Visible training progress of a word: a non-negative integer.
-
-It is not CEFR and not a probability of knowing the word. Each answer moves it by a
-fixed number of points that depends on the user's difficulty and the exercise kind.
-"""
-
 from enum import StrEnum
 
 MIN_PROGRESS = 0
@@ -18,9 +12,9 @@ class Difficulty(StrEnum):
 
 
 class AnswerKind(StrEnum):
-    CHOICE = "choice"  # choice EN->RU / RU->EN, matching
-    TYPED = "typed"  # typed answer, cloze, dictation
-    PASSIVE = "passive"  # passive listening of a word/translation pair
+    CHOICE = "choice"
+    TYPED = "typed"
+    PASSIVE = "passive"
 
 
 # (choice correct, choice wrong, typed correct, typed wrong, passive)

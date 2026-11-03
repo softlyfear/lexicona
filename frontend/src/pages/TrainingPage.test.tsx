@@ -101,6 +101,14 @@ describe('TrainingPage', () => {
         delta: -4,
         progress: 0,
       })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: true,
+        correct_option: 0,
+        chosen_option: 0,
+        delta: 0,
+        progress: 0,
+      })
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Начать' }))
@@ -110,18 +118,22 @@ describe('TrainingPage', () => {
     await user.click(screen.getByRole('button', { name: /кот/ }))
     expect(api.answer).toHaveBeenCalledWith('i1', 1)
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4) · прогресс 4%')
-    // Answer buttons are locked once answered.
     expect(screen.getByRole('button', { name: /собака/ })).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('dog')).toBeInTheDocument()
 
-    await user.keyboard('3') // keyboard shortcut for the third option
+    await user.keyboard('3')
     expect(api.answer).toHaveBeenLastCalledWith('i2', 2)
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4)')
+    expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
 
     await user.keyboard('{Enter}')
-    expect(await screen.findByText('1 из 2')).toBeInTheDocument()
+    expect(api.answer).toHaveBeenCalledTimes(2)
+    await user.keyboard('1')
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно (0)')
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
   })
 
   it('explains why a session cannot start', async () => {

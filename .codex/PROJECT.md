@@ -32,15 +32,26 @@ Backend/схема прежние; voice localService и ограничения
 eng-rus2025.11.23 (CC-BY-SA3.0), вне пользовательской БД. CLI python -m lexicona.dictionary
 build проверяет SHA256, ограничивает archive/XML, отклоняет entities/чужие DTD и атомарно
 заменяет индекс. Runtime проверяет source manifest/SHA и закрывает каждое соединение.
-POST /dictionary/lookup принимает слово в body с auth/CSRF, не обращается к внешним
-сервисам и не записывает raw query в URL; exact case перед normalized/source ordinal.
-GET /dictionary/notices хранит raw COPYING/teiHeader/credits/transformations, API no-store.
+POST /dictionary/lookup принимает слово в body с auth/CSRF и не записывает raw query в URL;
+exact case перед normalized/source ordinal. При matches=[] внешний перевод вызывается в
+asyncio.to_thread: по умолчанию DeepL Free, при его сбое/отсутствии ключа — Gemini Free;
+provider=gemini выбирает Gemini напрямую. Фиксированный HTTPS endpoint, 15с timeout, без redirects,
+ответ до64KiB и строгий JSON-разбор. Gemini возвращает 1..3 перевода и сгенерированную US IPA.
+Ответ добавляет machine_translation {provider,text,alternatives,transcription}, не связанный
+с FreeDict source_refs; форма показывает все варианты и подставляет IPA. Текст уходит DeepL,
+а при fallback также Gemini; Google может использовать контент Gemini Free для улучшения
+продуктов. POST /dictionary/example отдельно генерирует через Gemini EN-пример и RU-перевод
+с теми же auth/CSRF, transport limits и strict JSON; запись происходит только при submit слова.
+Качество идиом, IPA и примеров не гарантируется. GET /dictionary/notices хранит raw
+COPYING/teiHeader/credits/transformations, API no-store.
 Word.source_refs — nullable JSON, migration c83917f0d52a additive; typed source_id/entry_id/
 field/value сохраняют происхождение выбранных значений. Omitted PUT сохраняет только
 ссылки на оставшиеся точные значения, [] очищает; index для manual save не нужен.
 Downgrade при непустых refs отказывается терять provenance. Редактор явно добавляет
-переводы, удаляя combining acute и точные дубли после его удаления; IPA подставляется
-автоматически из первой записи с транскрипциями. При равном исходном порядке предпочитаются
+переводы, удаляя combining acute и точные дубли после его удаления; wiki-разметка
+[[target|label]]/[[label]] очищается в lookup и built-in distractors. Части речи расшифровываются
+в UI, headword имеет ручную EN-озвучку. Частотных данных в FreeDict нет, исходный порядок не
+выдаётся за популярность. IPA подставляется автоматически из первой записи с транскрипциями. При равном исходном порядке предпочитаются
 US-признаки oʊ и ɹ/r/ɚ/ɝ, иначе берётся первый вариант: разметки диалектов в источнике нет,
 поэтому fallback не гарантирует американский акцент. IPA-кнопки и notices в форме не показываются;
 README и notices API сохраняют атрибуцию. Late responses по-прежнему отбрасываются, а будущий
@@ -125,25 +136,24 @@ Choice distractors смешивают активные личные слова �
 по длине owned snapshot options, поэтому прежние4-option задания продолжают работать.
 UI shortcuts ограничены фактической длиной snapshot, новые задания поддерживают1–6.
 
-Cloze работает только EN→EN; сервер валидирует сочетания mode/direction для всех режимов.
-Чистая mask_example допускает ровно одно целое вхождение headword/фразы в личном example_en,
-учитывая NFC, регистр, whitespace и апострофы, без морфологии и fuzzy matching. Подстроки,
-повторы и примыкание к буквам/цифрам/апострофам/дефисам, включая U+2010/U+2011, исключаются.
-Полный masked prompt хранится как Text; ожидаемый headword — приватный snapshot до
-answer/reveal. Для ответа используются normalize и TYPED-policy, как в input.
+Cloze удалён из запуска новых занятий: POST /training/sessions отклоняет mode=cloze с 422;
+answer/reveal/skip и Run сохраняют поддержку legacy snapshots.
+Сервер по-прежнему валидирует сочетания mode/direction. Чистая mask_example допускает ровно одно
+целое вхождение headword/фразы в личном example_en, учитывая NFC, регистр, whitespace и апострофы,
+без морфологии и fuzzy matching. Для ответа используются normalize и TYPED-policy, как в input.
 
 Карточки используют server-only snapshot оборота; reveal фиксируется отдельно и не
 начисляет прогресс. После раскрытия первая самооценка grade закрывает item через CAS.
 Дельты карточек используют CHOICE-policy: again отрицательная, hard 0, good/easy
 положительная. Самооценка не является объективным correct и не входит в метрику точности.
 
-TrainingItem.outcome хранит терминальный результат answered/assisted/skipped/unavailable;
-NULL — открытый
-item. Полное раскрытие в choice/input/cloze закрывает assisted с delta 0; skip закрывает любое
-задание с delta 0 без выдачи ответа. Первое терминальное действие выигрывает CAS; answer,
-reveal и skip при повторе возвращают фактически сохранённый результат. Штатное карточное
-reveal остаётся нетерминальным. Итог занятия считает помощь, пропуски и недоступные отдельно от
-самостоятельных правильных/неправильных ответов и самооценок карточек.
+TrainingItem.outcome хранит терминальный answered/assisted/skipped/unavailable; NULL — открытый
+item, включая исправляемую первую ошибку. В choice/input/legacy cloze первая ошибка применяет
+дельту и SRS один раз; последующие ответы имеют delta=0, не меняют SRS, а правильный закрывает item.
+answered_at фиксирует первую попытку, CAS разделяет первую и повторные. UI не показывает ответ
+или Далее после ошибки до исправления, reveal/skip остаются доступны. Первый правильный ответ,
+терминальные reveal/skip и карточная самооценка завершаются по-прежнему. Итог учитывает terminal
+outcomes; промежуточные ошибки не добавляются как отдельные завершённые задания.
 
 `srs.py` и one-to-one `WordProgress` хранят отдельное от видимого процента расписание:
 stage 0..6, due_at, has_review, last_review_at, счётчики и progress_version. Миграция
