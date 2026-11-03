@@ -216,7 +216,7 @@ async def test_option_out_of_range(alice: Client) -> None:
 
 
 @pytest.mark.parametrize("option", [4, 5])
-async def test_new_options_and_invalid_replay(alice: Client, option: int) -> None:
+async def test_new_options_and_invalid_replay(app: FastAPI, alice: Client, option: int) -> None:
     await seed(alice)
     item = (await start(alice))["items"][0]
     url = f"/api/training/items/{item['id']}/answer"
@@ -227,7 +227,8 @@ async def test_new_options_and_invalid_replay(alice: Client, option: int) -> Non
     first = await alice.post(url, json={"option": option})
     assert first.status_code == 200 and first.json()["chosen_option"] == option
     assert (await alice.post(url, json={"option": 6})).status_code == 422
-    replay = (await alice.post(url, json={"option": 0})).json()
+    right = await correct_option(app, item["id"])
+    replay = (await alice.post(url, json={"option": (right + 1) % 6})).json()
     if first.json()["correct"]:
         assert replay == first.json()
     else:

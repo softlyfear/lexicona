@@ -15,11 +15,13 @@ import {
 import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
+import { MatchingRun } from './MatchingRun'
 import css from './pages.module.css'
 
 const MODES: { mode: TrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'en_ru', label: 'Поиск перевода: EN → RU' },
   { mode: 'choice', direction: 'ru_en', label: 'Поиск слова: RU → EN' },
+  { mode: 'matching', direction: 'en_ru', label: 'Сопоставление пар: EN → RU' },
   { mode: 'input', direction: 'en_ru', label: 'Написание перевода: EN → RU' },
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
   { mode: 'cards', direction: 'en_ru', label: 'Карточки: EN → RU' },
@@ -47,20 +49,20 @@ export function TrainingPage() {
     session: TrainingSession
     requestedSize: TrainingSize
   } | null>(null)
-  if (started)
-    return (
-      <Run
-        session={started.session}
-        requestedSize={started.requestedSize}
-        onFinish={() => setStarted(null)}
-      />
-    )
+  if (started) {
+    const props = {
+      session: started.session,
+      requestedSize: started.requestedSize,
+      onFinish: () => setStarted(null),
+    }
+    return started.session.mode === 'matching' ? <MatchingRun {...props} /> : <Run {...props} />
+  }
   return (
     <Setup
       onStart={(session, requestedSize) => {
         if (!active.current) return
         setStarted({ session, requestedSize })
-        if (preferences.autoPrompt && session.items[0])
+        if (preferences.autoPrompt && session.mode !== 'matching' && session.items[0])
           speak(session.items[0].prompt, session.direction === 'ru_en' ? 'ru' : 'en')
       }}
     />

@@ -141,6 +141,14 @@ Choice distractors смешивают активные личные слова �
 по длине owned snapshot options, поэтому прежние4-option задания продолжают работать.
 UI shortcuts ограничены фактической длиной snapshot, новые задания поддерживают1–6.
 
+Matching запускается только EN→RU и использует существующие TrainingItem без новой схемы.
+Каждые позиции 0–3, 4–7 и т.д. образуют группу до четырёх пар с общим случайным списком
+уникальных primary RU-переводов; correct_option хранится отдельно для каждого EN-prompt.
+Совпадения normalized headword, primary translation или любого смысла внутри группы исключаются.
+Ответ проходит тот же AnswerIn/CHOICE/CAS/version/replay/SRS write path, что и choice; reveal
+возвращает correct_option, skip не раскрывает ответ. Группы показываются последовательно
+в двух колонках, завершение группы не вызывает API и не начисляет дополнительный прогресс.
+
 Cloze удалён из запуска новых занятий: POST /training/sessions отклоняет mode=cloze с 422;
 answer/reveal/skip и Run сохраняют поддержку legacy snapshots.
 Сервер по-прежнему валидирует сочетания mode/direction. Чистая mask_example допускает ровно одно

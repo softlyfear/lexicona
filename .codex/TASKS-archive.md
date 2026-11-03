@@ -1,5 +1,44 @@
 # Закрытые задачи
 
+## TRAIN-008 — сопоставление английских слов и русских переводов (2026-11-03)
+
+- Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.
+- Новый matching EN→RU использует существующие TrainingItem и общие choice AnswerIn/CHOICE/CAS/
+  version/replay/SRS-пути. Группы до четырёх пар имеют уникальные EN/primary RU и непересекающиеся
+  смыслы; ответ скрыт в server snapshot. Reveal/skip, owner/CSRF/no-store сохранены.
+- UI показывает две колонки, исправление после ошибки без второго штрафа и последовательные
+  группы. Использованные варианты блокируются только в текущей группе. Batch completion не
+  вызывает API и не даёт дополнительного прогресса; reveal/skip учитываются отдельно.
+- Финальный `make check`: exit 0; tooling 17, backend 336, frontend 138. Ruff, mypy,
+  Prettier, oxlint, TypeScript и production build зелёные. Два предыдущих запуска остановились
+  на известном unrelated случайном `test_new_options_and_invalid_replay[4]`; код не менялся.
+- Независимый Kimi code-reviewer: Ship; дополнительно 84 backend training-тестов с исключением
+  только указанного unrelated теста, 23 frontend-теста и `git diff --check` успешны.
+- Live HTTP smoke на временной SQLite/Alembic head и реальном uvicorn: login/CSRF, пять слов,
+  группы 4+1, ошибка -4, исправление delta=0, остальные ответы +4, без batch bonus — PASS.
+- Runtime: Kimi Code k3.1-pro high. Физический браузер не проверялся; новый TTS, Codex и VPS
+  остаются вне scope.
+
+### Завершение Codex после Kimi (попытка 2, 2026-11-03)
+
+- По прямому запросу пользователя завершён оставшийся незакоммиченным срез TRAIN-008;
+  приёмка root: ПРИНЯТО. Реализация backend Kimi сохранена.
+- Backend-agent исправил случайные предположения в тестах неоднозначных групп и choice replay;
+  добавил проверки параллельных ответов/однократного SRS, фильтров/исключения, чужих answer/skip
+  и CSRF. Целевая проверка: 44 passed, Ruff/mypy успешны.
+- Frontend-agent согласовал знаменатель итогов с Run: assisted/skipped/unavailable считаются
+  отдельно; skipped/unavailable не окрашиваются как правильные. Добавлены ожидание запроса
+  и регрессии сетевого сбоя/повтора, блокировки запросов и клавиатуры: 4 matching-теста passed.
+- Root — владелец gate: единый `make check` exit 0; tooling 17, backend 338, frontend 140;
+  Ruff/mypy/Prettier/oxlint/TypeScript/production build успешны. Независимый code-reviewer
+  прочитал весь diff, подтвердил AC, безопасность и gate; Ship, блокирующих замечаний нет.
+- Root smoke: реальный headless Chromium, Alembic head на отдельной временной SQLite,
+  uvicorn и production SPA; вход, пять слов через API, группы 4+1, ошибка/исправление,
+  сохранённый прогресс без batch bonus — PASS. Скриншоты 1280/390 px просмотрены;
+  overflow и pageerror нет. Физические устройства и production не проверялись.
+- Runtime подтверждён по turn_context текущих rollout: Codex gpt-6.1-sol high (root/reviewer),
+  Codex gpt-6.1-terra high (backend/frontend). Настройки Codex/Kimi, VPS и другие режимы вне scope.
+
 ## UX-004 — разнообразные примеры и точное название замены (2026-11-03)
 
 - Статус: done; попытка: 1; приёмка Kimi-оркестратора: ПРИНЯТО.

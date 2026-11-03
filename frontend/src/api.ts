@@ -1,6 +1,6 @@
 export type Difficulty = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard'
 export type Direction = 'en_ru' | 'ru_en' | 'en_en'
-export type TrainingMode = 'choice' | 'input' | 'cards' | 'cloze'
+export type TrainingMode = 'choice' | 'input' | 'cards' | 'matching' | 'cloze'
 export type TrainingPurpose = 'scheduled' | 'free'
 export type CardGrade = 'again' | 'hard' | 'good' | 'easy'
 export type WordSort =

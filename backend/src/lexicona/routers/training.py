@@ -31,7 +31,7 @@ _rng = random.SystemRandom()
 
 
 class SessionIn(BaseModel):
-    mode: Literal["choice", "input", "cards"] = "choice"
+    mode: Literal["choice", "input", "cards", "matching"] = "choice"
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
     purpose: Literal["scheduled", "free"] = "free"
     include_new: StrictBool = True
@@ -44,7 +44,7 @@ class SessionIn(BaseModel):
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
-        if self.direction == "en_en":
+        if self.direction == "en_en" or (self.mode == "matching" and self.direction != "en_ru"):
             raise ValueError("invalid mode and direction combination")
         if (
             self.progress_min is not None
@@ -305,37 +305,74 @@ async def create_session(
         purpose=body.purpose,
         difficulty=auth.user.difficulty,
     )
-    for target in targets:
-        if body.size != "all" and len(session.items) == body.size:
-            break
-        if body.mode == "choice":
-            built = _build_item(target, [*pool, *builtin_pool], body.direction)
-            if built is None:
+    if body.mode == "matching":
+        matching_targets: list[Word] = []
+        current_batch: list[Word] = []
+        for target in targets:
+            if body.size != "all" and len(matching_targets) == body.size:
+                break
+            answer_key = _choice_key(target.translations[0].normalized_text)
+            if any(
+                _choice_key(other.normalized_headword) == _choice_key(target.normalized_headword)
+                or _meanings(other) & _meanings(target)
+                or _choice_key(other.translations[0].normalized_text) == answer_key
+                for other in current_batch
+            ):
                 continue
-            prompt, options, correct = built
-            expected_answers = None
-        else:
-            prompt = target.headword if body.direction == "en_ru" else target.translations[0].text
-            expected_answers = (
-                [translation.text for translation in target.translations]
-                if body.direction == "en_ru"
-                else [target.headword]
+            matching_targets.append(target)
+            current_batch.append(target)
+            if len(current_batch) == 4:
+                current_batch = []
+        for offset in range(0, len(matching_targets), 4):
+            batch = matching_targets[offset : offset + 4]
+            options = _rng.sample([word.translations[0].text for word in batch], len(batch))
+            for target in batch:
+                session.items.append(
+                    TrainingItem(
+                        word_id=target.id,
+                        word_content_version=target.content_version,
+                        word_training_version=target.training_version,
+                        word_progress_version=schedules[target.id].progress_version,
+                        position=len(session.items),
+                        prompt=target.headword,
+                        options=options,
+                        correct_option=options.index(target.translations[0].text),
+                    )
+                )
+    else:
+        for target in targets:
+            if body.size != "all" and len(session.items) == body.size:
+                break
+            if body.mode == "choice":
+                built = _build_item(target, [*pool, *builtin_pool], body.direction)
+                if built is None:
+                    continue
+                prompt, options, correct = built
+                expected_answers = None
+            else:
+                prompt = (
+                    target.headword if body.direction == "en_ru" else target.translations[0].text
+                )
+                expected_answers = (
+                    [translation.text for translation in target.translations]
+                    if body.direction == "en_ru"
+                    else [target.headword]
+                )
+                options = []
+                correct = None
+            session.items.append(
+                TrainingItem(
+                    word_id=target.id,
+                    word_content_version=target.content_version,
+                    word_training_version=target.training_version,
+                    word_progress_version=schedules[target.id].progress_version,
+                    position=len(session.items),
+                    prompt=prompt,
+                    options=options,
+                    correct_option=correct,
+                    expected_answers=expected_answers,
+                )
             )
-            options = []
-            correct = None
-        session.items.append(
-            TrainingItem(
-                word_id=target.id,
-                word_content_version=target.content_version,
-                word_training_version=target.training_version,
-                word_progress_version=schedules[target.id].progress_version,
-                position=len(session.items),
-                prompt=prompt,
-                options=options,
-                correct_option=correct,
-                expected_answers=expected_answers,
-            )
-        )
     if not session.items:
         raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_words")
 
@@ -357,7 +394,7 @@ def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
     if item.outcome == "skipped":
         return SkippedOut(progress=word_progress)
     if item.outcome == "assisted":
-        if item.session.mode == "choice":
+        if item.session.mode in ("choice", "matching"):
             assert item.correct_option is not None
             return ChoiceAssistedOut(
                 expected_answers=[item.options[item.correct_option]],
@@ -512,7 +549,7 @@ async def answer_item(
     item, word = await _owned_item_and_word(item_id, auth, db)
 
     if (
-        (item.session.mode == "choice" and not isinstance(body, AnswerIn))
+        (item.session.mode in ("choice", "matching") and not isinstance(body, AnswerIn))
         or (item.session.mode in ("input", "cloze") and not isinstance(body, TextAnswerIn))
         or (item.session.mode == "cards" and not isinstance(body, GradeAnswerIn))
     ):
