@@ -1,5 +1,31 @@
 # Закрытые задачи
 
+## PWA-001 — установка веб-приложения на телефон и планшет (2026-11-03)
+
+- Статус: done; попытка: 1; приёмка root: ПРИНЯТО.
+- По новому запросу пользователя добавлены manifest с standalone, собственные PNG192/512,
+  maskable512 и apple-touch180. Settings сохраняет browser install prompt до открытия
+  страницы, вызывает его однократно и показывает инструкции Android Chrome/iOS Safari,
+  необходимость HTTPS и интернета. Никаких service worker, кеширования данных или
+  принудительного обновления активного занятия не добавлено.
+- Frontend-agent выполнил frontend/** и 4 поведенческих теста установки. Backend-agent
+  изолировал старый test_excluded_word_not_used_even_when_choice_has_enough_active от
+  встроенного словаря: случайный builtin fox ошибочно ломал проверку исключённого личного
+  fox. Production backend не менялся, проверка не отключена; targeted test/Ruff успешны.
+- Первый make check: 340 passed / 1 failed на указанном тесте. Итоговый root make check
+  после его стабилизации: exit 0, tooling17 / backend341 / frontend144, Ruff/mypy/Prettier/
+  oxlint/TypeScript/production build успешны. Независимый code-reviewer прочитал весь diff
+  и untracked assets, просмотрел PNG, подтвердил AC/безопасность/gate: Ship, дефектов нет.
+- Root smoke: реальный Chromium с постоянным временным профилем, tempSQLite/Alembic head,
+  uvicorn и production SPA; manifest parse и Page.getInstallabilityErrors без ошибок,
+  размеры PNG, login/Settings390px, SW0/cache[], нет overflow/pageerror — PASS. Скриншот
+  и maskable-иконка просмотрены. Физические Android/iOS и публичный HTTPS ещё не проверены.
+- Root обновил scope/очередь согласно прямым исключениям пользователя. Остальные изменения
+  (DeepSeek/OpenRouter, продолжение/статистика/TTS/веб-админка) ожидают ответов на уточнения;
+  ключа OpenRouter в проектном .env/окружении нет. Architect подготовил read-only оценку
+  snapshot/history/races; схема и пользовательские данные этим срезом не менялись.
+- Runtime: Codex gpt-6.1-sol high (root/reviewer/architect), gpt-6.1-terra high (исполнители).
+
 ## UX-005 — учебные режимы и объединение тегов (2026-11-03)
 
 - Статус: done; попытка: 1; приёмка root: ПРИНЯТО.

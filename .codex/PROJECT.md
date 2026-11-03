@@ -13,6 +13,10 @@
   tag_id в API/URL; query key ['words', q, sort, training, tagIds] с sorted/unique ID
   разделяет выдачи, invalidation ['words'] обновляет все порядки и области.
 - Один процесс отдаёт API и собранный frontend. Docker + Caddy — целевая поставка.
+- PWA: manifest, standalone, any/maskable PNG и apple-touch icon; install.ts сохраняет
+  browser install prompt до открытия настроек. Settings вызывает системную установку
+  либо показывает инструкции Android/iOS. Service worker/cache storage отсутствуют;
+  установка не означает offline-обучение и требует HTTPS за пределами localhost.
 - Прогресс — целое >=0 без верхнего clamp 100; content_version защищает от устаревших
   вопросов, повторный ответ
   не должен повторно начислять прогресс. Правильный ответ решает сервер.

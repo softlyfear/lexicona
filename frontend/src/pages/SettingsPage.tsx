@@ -3,6 +3,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { ApiError, api, errorMessage, type Difficulty, type Session, type User } from '../api'
 import ui from '../components/ui.module.css'
 import { SpeechStatus } from '../components/ui'
+import { InstallSettings } from '../components/InstallSettings'
 import { selectVoice, speak, updateSpeechPreferences, useSpeech } from '../speech'
 import {
   changePasswordSession,
@@ -159,6 +160,7 @@ export function SettingsPage({ user }: { user: User }) {
         )}
       </div>
       <SpeechSettings />
+      <InstallSettings />
       <form className={`${ui.card} ${css.form}`} onSubmit={submitPassword} noValidate>
         <h2>Смена пароля</h2>
         <fieldset className={css.choices} disabled={busy}>

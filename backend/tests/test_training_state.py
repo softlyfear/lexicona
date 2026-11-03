@@ -202,7 +202,10 @@ async def test_excluded_words_do_not_enter_choice_pool_or_distractors(
     assert response.status_code == 201 and len(response.json()["items"]) == 6
 
 
-async def test_excluded_word_not_used_even_when_choice_has_enough_active(alice: Client) -> None:
+async def test_excluded_word_not_used_even_when_choice_has_enough_active(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     excluded_id = ""
     for en, ru in [
         ("cat", "кот"),
