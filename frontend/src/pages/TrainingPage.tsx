@@ -8,6 +8,7 @@ import {
   type Direction,
   type TerminalResult,
   type NewTrainingMode,
+  type ResumedItem,
   type TrainingPurpose,
   type TrainingSession,
   type TrainingSize,
@@ -16,6 +17,7 @@ import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
 import { MatchingRun } from './MatchingRun'
+import { resumedResult } from './resume'
 import css from './pages.module.css'
 
 const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = [
@@ -35,6 +37,15 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 
 export function TrainingPage() {
   const { preferences } = useSpeech()
+  const queryClient = useQueryClient()
+  const latest = useQuery({
+    queryKey: ['training', 'latest'],
+    queryFn: api.latestTraining,
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+  })
+  const [setup, setSetup] = useState(false)
   const active = useRef(true)
   useEffect(() => {
     active.current = true
@@ -47,14 +58,90 @@ export function TrainingPage() {
     session: TrainingSession
     requestedSize: TrainingSize
   } | null>(null)
+  const finish = useMutation({
+    mutationFn: (id: string) => api.finishTraining(id),
+    onSuccess: () => {
+      setStarted(null)
+      setSetup(true)
+      queryClient.setQueryData(['training', 'latest'], null)
+      void queryClient.invalidateQueries({ queryKey: ['words'] })
+      void queryClient.invalidateQueries({ queryKey: ['statistics'] })
+    },
+  })
   if (started) {
     const props = {
       session: started.session,
       requestedSize: started.requestedSize,
-      onFinish: () => setStarted(null),
+      onFinish: () => finish.mutate(started.session.id),
+      finishing: finish.isPending,
     }
-    return started.session.mode === 'matching' ? <MatchingRun {...props} /> : <Run {...props} />
+    return (
+      <>
+        {finish.isError && (
+          <p role="alert" className={ui.error}>
+            Не удалось завершить занятие. {errorMessage(finish.error)} Попробуйте ещё раз.
+          </p>
+        )}
+        {finish.isPending && <p role="status">Завершаем занятие…</p>}
+        <div inert={finish.isPending}>
+          {started.session.mode === 'matching' ? <MatchingRun {...props} /> : <Run {...props} />}
+        </div>
+      </>
+    )
   }
+  if (!setup && latest.isPending) return <p role="status">Загружаем последнее занятие…</p>
+  if (!setup && latest.isError)
+    return (
+      <section className={css.stack}>
+        <p role="alert">Не удалось загрузить последнее занятие. {errorMessage(latest.error)}</p>
+        <button className={ui.button} onClick={() => void latest.refetch()}>
+          Повторить
+        </button>
+      </section>
+    )
+  if (!setup && latest.data?.status === 'active')
+    return (
+      <section className={`${ui.card} ${css.stack}`}>
+        <h1>Последнее занятие</h1>
+        <p>
+          {latest.data.resume_error
+            ? 'Занятие нельзя продолжить из-за повреждённых данных.'
+            : latest.data.mode === 'cards' || latest.data.mode === 'cloze'
+              ? 'Этот режим больше недоступен для продолжения.'
+              : 'Продолжите занятие или завершите его, чтобы начать новое.'}{' '}
+          Завершение сохранит начисленный прогресс.
+        </p>
+        {finish.isError && (
+          <p role="alert">Не удалось завершить занятие. {errorMessage(finish.error)}</p>
+        )}
+        <div className={css.actions}>
+          {!latest.data.resume_error &&
+            latest.data.mode !== 'cards' &&
+            latest.data.mode !== 'cloze' && (
+              <button
+                className={ui.primary}
+                disabled={finish.isPending}
+                onClick={() =>
+                  setStarted({
+                    session: latest.data!,
+                    requestedSize: latest.data!.requested_size ?? latest.data!.items.length,
+                  })
+                }
+              >
+                Продолжить
+              </button>
+            )}
+          <button
+            className={ui.button}
+            disabled={finish.isPending}
+            onClick={() => finish.mutate(latest.data!.id)}
+          >
+            Завершить и начать новое
+          </button>
+        </div>
+        {finish.isPending && <p role="status">Завершаем занятие…</p>}
+      </section>
+    )
   return (
     <Setup
       onStart={(session, requestedSize) => {
@@ -360,18 +447,33 @@ export function Run({
   session,
   requestedSize,
   onFinish,
+  finishing = false,
 }: {
   session: TrainingSession
   requestedSize: TrainingSize
   onFinish: () => void
+  finishing?: boolean
 }) {
   const queryClient = useQueryClient()
   const { preferences } = useSpeech()
-  const [index, setIndex] = useState(0)
-  const [text, setText] = useState('')
-  const [revealed, setRevealed] = useState<string[] | null>(null)
-  const [results, setResults] = useState<TerminalResult[]>([])
-  const [attempt, setAttempt] = useState<TerminalResult | null>(null)
+  const snapshots = session.items as (ResumedItem | undefined)[]
+  const first = snapshots.findIndex((item) => item?.state !== 'done')
+  const initialIndex = first < 0 ? session.items.length : first
+  const initial = snapshots[initialIndex]
+  const initialResult = initial && resumedResult(initial)
+  const [index, setIndex] = useState(initialIndex)
+  const [text, setText] = useState(
+    initialResult && 'submitted_text' in initialResult ? initialResult.submitted_text : '',
+  )
+  const [revealed, setRevealed] = useState<string[] | null>(
+    initial?.result?.outcome === 'revealed' ? initial.result.expected_answers : null,
+  )
+  const [results, setResults] = useState<TerminalResult[]>(() =>
+    snapshots.flatMap((item) =>
+      item?.state === 'done' && resumedResult(item) ? [resumedResult(item)!] : [],
+    ),
+  )
+  const [attempt, setAttempt] = useState<TerminalResult | null>(initialResult ?? null)
   const locked = useRef(false)
   const item = session.items[index]
   const result = attempt ?? undefined
@@ -416,7 +518,7 @@ export function Run({
   }, [queryClient])
 
   function perform(value: Action) {
-    if (locked.current || (result && !canRetry)) return
+    if (finishing || locked.current || (result && !canRetry)) return
     cancelSpeech()
     locked.current = true
     action.mutate(value)
@@ -424,15 +526,21 @@ export function Run({
 
   function next() {
     cancelSpeech()
-    const nextItem = session.items[index + 1]
+    const following = snapshots.findIndex(
+      (candidate, position) => position > index && candidate?.state !== 'done',
+    )
+    const nextIndex = following < 0 ? session.items.length : following
+    const nextItem = session.items[nextIndex]
     if (preferences.autoPrompt && nextItem)
       speak(nextItem.prompt, session.direction === 'ru_en' ? 'ru' : 'en')
     locked.current = false
     action.reset()
-    setText('')
-    setRevealed(null)
-    setAttempt(null)
-    setIndex((i) => i + 1)
+    const snapshot = snapshots[nextIndex]
+    const nextResult = snapshot && resumedResult(snapshot)
+    setText(nextResult && 'submitted_text' in nextResult ? nextResult.submitted_text : '')
+    setRevealed(snapshot?.result?.outcome === 'revealed' ? snapshot.result.expected_answers : null)
+    setAttempt(nextResult ?? null)
+    setIndex(nextIndex)
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -443,6 +551,7 @@ export function Run({
   useEffect(() => {
     if (done || session.mode !== 'choice') return
     function onKey(event: KeyboardEvent) {
+      if (finishing) return
       if (
         event.target instanceof HTMLElement &&
         event.target.closest('button') &&
@@ -516,7 +625,10 @@ export function Run({
   let label = ''
   if (result) {
     if (result.outcome === 'unavailable')
-      label = 'Задание недоступно: слово исключалось из обучения'
+      label =
+        result.reason === 'word_deleted'
+          ? 'Задание недоступно: слово удалено'
+          : 'Задание недоступно: слово исключалось из обучения'
     else if (result.outcome === 'skipped') label = 'Пропущено'
     else if (result.outcome === 'assisted') label = 'С помощью'
     else if ('grade' in result)
@@ -700,7 +812,7 @@ export function Run({
               }
             >
               {label} ({result.delta > 0 ? '+' : ''}
-              {result.delta}) · прогресс {result.progress}%
+              {result.delta}){result.progress !== null && <> · прогресс {result.progress}%</>}
             </span>
             {!canRetry && (
               <button className={ui.primary} onClick={next} autoFocus>

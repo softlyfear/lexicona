@@ -9,6 +9,7 @@ import ui from './ui.module.css'
 const LINKS = [
   { to: '/', label: 'Словарь' },
   { to: '/training', label: 'Тренировка' },
+  { to: '/statistics', label: 'Статистика' },
   { to: '/settings', label: 'Настройки' },
 ]
 

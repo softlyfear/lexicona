@@ -11,6 +11,8 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      latestTraining: () => Promise.resolve(null),
+      finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
       answer: vi.fn(),
       revealAnswer: vi.fn(),
@@ -32,6 +34,7 @@ const twoItems: TrainingSession = {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   return render(
     <QueryClientProvider client={client}>
       <TrainingPage />

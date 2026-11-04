@@ -7,7 +7,15 @@ import { TrainingPage } from './TrainingPage'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
-  return { ...actual, api: { startTraining: vi.fn(), listTags: vi.fn() } }
+  return {
+    ...actual,
+    api: {
+      startTraining: vi.fn(),
+      latestTraining: () => Promise.resolve(null),
+      finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
+      listTags: vi.fn(),
+    },
+  }
 })
 
 const session: TrainingSession = {
@@ -19,6 +27,7 @@ const session: TrainingSession = {
 }
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   render(
     <QueryClientProvider client={client}>
       <TrainingPage />

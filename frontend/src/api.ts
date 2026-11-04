@@ -117,6 +117,44 @@ export interface TrainingSession {
   items: TrainingItem[]
 }
 
+export interface RetryableResult {
+  outcome: 'retryable'
+  correct: false
+  chosen_option?: number
+  submitted_text?: string
+  delta: number
+  progress: number
+}
+
+export interface ResumedItem extends TrainingItem {
+  state: 'open' | 'retryable' | 'revealed' | 'done'
+  result: RetryableResult | RevealResult | null
+}
+
+export interface ResumedSession extends Omit<TrainingSession, 'items'> {
+  status: 'active' | 'finished'
+  created_at: string
+  finished_at: string | null
+  requested_size: TrainingSize | null
+  resume_error?: 'invalid_matching_snapshot'
+  items: ResumedItem[]
+}
+
+export type StatisticsPeriod = '30d' | 'year' | 'all'
+export interface Statistics {
+  period: StatisticsPeriod
+  history_started_at: string | null
+  total_words: number
+  learned_words: number
+  unlearned_words: number
+  total_answers: number
+  correct_answers: number
+  accuracy_percent: number | null
+  average_answers_per_day: number
+  active_days: number
+  days: { date: string; answers: number; correct: number }[]
+}
+
 export interface AnswerResult {
   outcome: 'answered'
   correct: boolean
@@ -164,9 +202,9 @@ export interface SkippedResult {
 
 export interface UnavailableResult {
   outcome: 'unavailable'
-  reason: 'training_state_changed'
+  reason: 'training_state_changed' | 'word_deleted'
   delta: 0
-  progress: number
+  progress: number | null
 }
 
 export type TerminalResult =
@@ -302,6 +340,15 @@ export const api = {
       include_new: includeNew,
       ...filters,
     }),
+  latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
+  getTraining: (id: string) => request<ResumedSession>('GET', `/training/sessions/${id}`),
+  finishTraining: (id: string) =>
+    request<{ id: string; status: 'finished'; finished_at: string }>(
+      'POST',
+      `/training/sessions/${id}/finish`,
+    ),
+  statistics: (period: StatisticsPeriod) =>
+    request<Statistics>('GET', `/statistics?period=${period}`),
   answer: (itemId: string, option: number) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>

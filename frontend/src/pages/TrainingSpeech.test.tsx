@@ -14,7 +14,13 @@ vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
   return {
     ...actual,
-    api: { startTraining: vi.fn(), listTags: () => Promise.resolve([]), answer: vi.fn() },
+    api: {
+      startTraining: vi.fn(),
+      latestTraining: () => Promise.resolve(null),
+      finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
+      listTags: () => Promise.resolve([]),
+      answer: vi.fn(),
+    },
   }
 })
 vi.mock('../speech', async (original) => {
@@ -34,6 +40,7 @@ const session: TrainingSession = {
 }
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   return render(
     <StrictMode>
       <QueryClientProvider client={client}>

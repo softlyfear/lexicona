@@ -189,16 +189,23 @@ async def test_answer_after_meaning_edit_does_not_count(app: FastAPI, alice: Cli
     assert response.json()["progress"] == 0
 
 
-async def test_items_of_deleted_words_disappear(app: FastAPI, alice: Client) -> None:
+async def test_items_of_deleted_words_remain_unavailable(app: FastAPI, alice: Client) -> None:
     words = await seed(alice)
     item = (await start(alice))["items"][0]
     word_id = next(w["id"] for en, w in words.items() if en == item["prompt"])
     await alice.delete(f"/api/words/{word_id}")
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"option": 0})
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json() == {
+        "outcome": "unavailable",
+        "reason": "word_deleted",
+        "delta": 0,
+        "progress": None,
+    }
     database: Database = app.state.db
     async with database.sessions() as db:
-        assert await db.scalar(select(TrainingItem).where(TrainingItem.id == item["id"])) is None
+        saved = await db.scalar(select(TrainingItem).where(TrainingItem.id == item["id"]))
+        assert saved is not None and saved.word_id is None
 
 
 async def test_cannot_answer_someone_elses_item(alice: Client, bob: Client) -> None:

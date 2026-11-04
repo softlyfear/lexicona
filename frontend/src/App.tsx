@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import ui from './components/ui.module.css'
 import { LoginPage } from './pages/LoginPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { StatisticsPage } from './pages/StatisticsPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { WordsPage } from './pages/WordsPage'
 import { useSession } from './session'
@@ -28,6 +29,7 @@ export function App() {
         <Route element={<Layout user={user} />}>
           <Route index element={<WordsPage />} />
           <Route path="training" element={<TrainingPage />} />
+          <Route path="statistics" element={<StatisticsPage />} />
           <Route path="settings" element={<SettingsPage user={user} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

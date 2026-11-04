@@ -1,7 +1,7 @@
 import asyncio
 import random
 import sqlite3
-from typing import Annotated, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import (
@@ -19,7 +19,15 @@ from sqlalchemy.sql.selectable import Exists
 from lexicona import dictionary, progress, srs
 from lexicona.db import utcnow
 from lexicona.deps import AppSettings, CurrentAuth, Db
-from lexicona.models import Tag, TrainingItem, TrainingSession, Word, WordProgress, WordTag
+from lexicona.models import (
+    AnswerEvent,
+    Tag,
+    TrainingItem,
+    TrainingSession,
+    Word,
+    WordProgress,
+    WordTag,
+)
 from lexicona.normalize import normalize
 from lexicona.progress import AnswerKind
 from lexicona.srs import Grade
@@ -100,7 +108,7 @@ class AnswerOut(BaseModel):
     correct_option: int
     chosen_option: int
     delta: int
-    progress: int
+    progress: int | None
 
 
 class TextAnswerOut(BaseModel):
@@ -109,7 +117,7 @@ class TextAnswerOut(BaseModel):
     submitted_text: str
     expected_answers: list[str]
     delta: int
-    progress: int
+    progress: int | None
 
 
 class RevealOut(BaseModel):
@@ -122,14 +130,14 @@ class GradeAnswerOut(BaseModel):
     grade: Grade
     expected_answers: list[str]
     delta: int
-    progress: int
+    progress: int | None
 
 
 class AssistedOut(BaseModel):
     outcome: Literal["assisted"] = "assisted"
     expected_answers: list[str]
     delta: Literal[0] = 0
-    progress: int
+    progress: int | None
 
 
 class ChoiceAssistedOut(AssistedOut):
@@ -139,14 +147,14 @@ class ChoiceAssistedOut(AssistedOut):
 class SkippedOut(BaseModel):
     outcome: Literal["skipped"] = "skipped"
     delta: Literal[0] = 0
-    progress: int
+    progress: int | None
 
 
 class UnavailableOut(BaseModel):
     outcome: Literal["unavailable"] = "unavailable"
-    reason: Literal["training_state_changed"] = "training_state_changed"
+    reason: Literal["training_state_changed", "word_deleted"] = "training_state_changed"
     delta: Literal[0] = 0
-    progress: int
+    progress: int | None
 
 
 TerminalOut = (
@@ -303,6 +311,7 @@ async def create_session(
         direction=body.direction,
         purpose=body.purpose,
         difficulty=auth.user.difficulty,
+        requested_size=str(body.size),
     )
     if body.mode == "matching":
         matching_targets: list[Word] = []
@@ -386,7 +395,156 @@ async def create_session(
     )
 
 
-def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
+async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db) -> dict[str, Any]:
+    items = session.items
+    if session.mode == "matching":
+        offset = 0
+        while offset < len(items):
+            options = items[offset].options
+            size = len(options)
+            batch = items[offset : offset + size]
+            if (
+                not 1 <= size <= 8
+                or len(batch) != size
+                or any(
+                    item.position != offset + index
+                    or item.options != options
+                    or item.correct_option is None
+                    or not 0 <= item.correct_option < size
+                    for index, item in enumerate(batch)
+                )
+            ):
+                raise HTTPException(409, "invalid_matching_snapshot")
+            offset += size
+    words = {
+        word.id: word
+        for word in await db.scalars(
+            select(Word).where(
+                Word.owner_id == auth.user.id,
+                Word.id.in_([item.word_id for item in items if item.word_id]),
+            )
+        )
+    }
+    output = []
+    for item in items:
+        word = words.get(item.word_id) if item.word_id else None
+        result: dict[str, Any] | None = None
+        if word is None and item.outcome is not None and item.outcome != "unavailable":
+            state = "done"
+            result = _answer_out(item, None).model_dump()
+        elif word is None:
+            state = "done"
+            result = UnavailableOut(reason="word_deleted", progress=None).model_dump()
+        elif item.outcome is not None:
+            state = "done"
+            result = _answer_out(item, word.progress).model_dump()
+        elif item.answered_at is not None:
+            state = "retryable"
+            result = {
+                "outcome": "retryable",
+                "correct": False,
+                "delta": item.delta,
+                "progress": word.progress,
+            }
+            if item.chosen_option is not None:
+                result["chosen_option"] = item.chosen_option
+            if item.submitted_text is not None:
+                result["submitted_text"] = item.submitted_text
+        elif item.revealed_at is not None:
+            state = "revealed"
+            result = RevealOut(expected_answers=item.expected_answers or []).model_dump()
+        else:
+            state = "open"
+        output.append(
+            {
+                "id": item.id,
+                "prompt": item.prompt,
+                "options": item.options,
+                "state": state,
+                "result": result,
+            }
+        )
+    return {
+        "id": session.id,
+        "mode": session.mode,
+        "direction": session.direction,
+        "purpose": session.purpose,
+        "status": session.status,
+        "created_at": session.created_at,
+        "finished_at": session.finished_at,
+        "requested_size": int(session.requested_size)
+        if session.requested_size and session.requested_size != "all"
+        else session.requested_size,
+        "items": output,
+    }
+
+
+@router.get("/sessions/latest")
+async def latest_session(auth: CurrentAuth, db: Db) -> dict[str, Any] | None:
+    session = await db.scalar(
+        select(TrainingSession)
+        .where(TrainingSession.owner_id == auth.user.id)
+        .order_by(TrainingSession.created_at.desc(), TrainingSession.id.desc())
+        .limit(1)
+    )
+    if session is None:
+        return None
+    try:
+        return await _session_snapshot(session, auth, db)
+    except HTTPException as error:
+        if error.detail != "invalid_matching_snapshot":
+            raise
+        return {
+            "id": session.id,
+            "mode": session.mode,
+            "direction": session.direction,
+            "purpose": session.purpose,
+            "status": session.status,
+            "created_at": session.created_at,
+            "finished_at": session.finished_at,
+            "requested_size": int(session.requested_size)
+            if session.requested_size and session.requested_size != "all"
+            else session.requested_size,
+            "resume_error": "invalid_matching_snapshot",
+            "items": [],
+        }
+
+
+@router.get("/sessions/{session_id}")
+async def get_session(session_id: str, auth: CurrentAuth, db: Db) -> dict[str, Any]:
+    session = await db.scalar(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id, TrainingSession.owner_id == auth.user.id
+        )
+    )
+    if session is None:
+        raise HTTPException(404, "session_not_found")
+    return await _session_snapshot(session, auth, db)
+
+
+@router.post("/sessions/{session_id}/finish")
+async def finish_session(session_id: str, auth: CurrentAuth, db: Db) -> dict[str, Any]:
+    await db.execute(
+        update(TrainingSession)
+        .where(
+            TrainingSession.id == session_id,
+            TrainingSession.owner_id == auth.user.id,
+            TrainingSession.status == "active",
+        )
+        .values(status="finished", finished_at=utcnow())
+    )
+    await db.commit()
+    session = await db.scalar(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id, TrainingSession.owner_id == auth.user.id
+        )
+    )
+    if session is None:
+        raise HTTPException(404, "session_not_found")
+    return {"id": session.id, "status": session.status, "finished_at": session.finished_at}
+
+
+def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:
     assert item.delta is not None
     if item.outcome == "unavailable":
         return UnavailableOut(progress=word_progress)
@@ -436,7 +594,7 @@ def _answer_out(item: TrainingItem, word_progress: int) -> TerminalOut:
 
 async def _owned_item_and_word(
     item_id: str, auth: CurrentAuth, db: Db
-) -> tuple[TrainingItem, Word]:
+) -> tuple[TrainingItem, Word | None]:
     item = await db.scalar(
         select(TrainingItem)
         .join(TrainingSession)
@@ -447,13 +605,13 @@ async def _owned_item_and_word(
     word = await db.scalar(
         select(Word).where(Word.id == item.word_id, Word.owner_id == auth.user.id)
     )
-    if word is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "item_not_found")
     return item, word
 
 
 def _owned_sessions(auth: CurrentAuth) -> Select[str]:
-    return select(TrainingSession.id).where(TrainingSession.owner_id == auth.user.id)
+    return select(TrainingSession.id).where(
+        TrainingSession.owner_id == auth.user.id, TrainingSession.status == "active"
+    )
 
 
 def _eligible(auth: CurrentAuth) -> Exists:
@@ -472,6 +630,13 @@ def _eligible(auth: CurrentAuth) -> Exists:
 @router.post("/items/{item_id}/reveal")
 async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | TerminalOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
+
+    if word is None:
+        if item.outcome is not None and item.outcome != "unavailable":
+            return _answer_out(item, None)
+        if item.session.status != "active" and item.outcome is None:
+            raise HTTPException(409, "session_finished")
+        return UnavailableOut(reason="word_deleted", progress=None)
 
     if item.outcome is not None:
         return _answer_out(item, word.progress)
@@ -512,6 +677,13 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | Te
     await db.refresh(item)
     await db.refresh(word)
 
+    session_status = await db.scalar(
+        select(TrainingSession.status).where(TrainingSession.id == item.session_id)
+    )
+    await db.refresh(item, ["session"])
+    if session_status != "active" and item.outcome is None:
+        raise HTTPException(409, "session_finished")
+
     if item.outcome is not None:
         return _answer_out(item, word.progress)
     assert item.expected_answers is not None
@@ -521,6 +693,12 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | Te
 @router.post("/items/{item_id}/skip")
 async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
+    if word is None:
+        if item.outcome is not None and item.outcome != "unavailable":
+            return _answer_out(item, None)
+        if item.session.status != "active" and item.outcome is None:
+            raise HTTPException(409, "session_finished")
+        return UnavailableOut(reason="word_deleted", progress=None)
     if item.outcome is None:
         await db.execute(
             update(TrainingItem)
@@ -538,6 +716,14 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
         await db.commit()
         await db.refresh(item)
         await db.refresh(word)
+        session_status = await db.scalar(
+            select(TrainingSession.status).where(TrainingSession.id == item.session_id)
+        )
+        await db.refresh(item, ["session"])
+    else:
+        session_status = item.session.status
+    if session_status != "active" and item.outcome is None:
+        raise HTTPException(409, "session_finished")
     return _answer_out(item, word.progress)
 
 
@@ -546,6 +732,13 @@ async def answer_item(
     item_id: str, body: AnswerIn | TextAnswerIn | GradeAnswerIn, auth: CurrentAuth, db: Db
 ) -> TerminalOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
+
+    if word is None:
+        if item.outcome is not None and item.outcome != "unavailable":
+            return _answer_out(item, None)
+        if item.session.status != "active" and item.outcome is None:
+            raise HTTPException(409, "session_finished")
+        return UnavailableOut(reason="word_deleted", progress=None)
 
     if (
         (item.session.mode in ("choice", "matching") and not isinstance(body, AnswerIn))
@@ -691,9 +884,31 @@ async def answer_item(
             if applied.rowcount != 1:  # type: ignore[attr-defined]
                 await db.rollback()
                 raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
+            if correct is not None:
+                db.add(
+                    AnswerEvent(
+                        owner_id=auth.user.id,
+                        item_id=item.id,
+                        session_id=item.session_id,
+                        word_id=word.id,
+                        created_at=now,
+                        mode=item.session.mode,
+                        direction=item.session.direction,
+                        purpose=item.session.purpose,
+                        correct=correct,
+                        delta=change,
+                    )
+                )
     await db.commit()
     await db.refresh(item)
     await db.refresh(word)
+
+    session_status = await db.scalar(
+        select(TrainingSession.status).where(TrainingSession.id == item.session_id)
+    )
+    await db.refresh(item, ["session"])
+    if session_status != "active" and claimed.rowcount != 1 and item.outcome is None:  # type: ignore[attr-defined]
+        raise HTTPException(409, "session_finished")
 
     if item.outcome is None and item.answered_at is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "card_not_revealed")

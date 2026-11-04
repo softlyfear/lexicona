@@ -111,7 +111,8 @@ async def test_strict_answers_and_cloze_security(app: FastAPI, alice: Client, bo
     for invalid in [{"option": 1}, {"grade": "good"}, {"text": ""}, {"text": "cat", "option": 0}]:
         assert (await alice.post(f"{base}/answer", json=invalid)).status_code == 422
     assert (await alice.delete(f"/api/words/{word['id']}")).status_code == 204
-    assert (await alice.post(f"{base}/reveal")).status_code == 404
+    deleted = await alice.post(f"{base}/reveal")
+    assert deleted.status_code == 200 and deleted.json()["reason"] == "word_deleted"
 
 
 @pytest.mark.parametrize(

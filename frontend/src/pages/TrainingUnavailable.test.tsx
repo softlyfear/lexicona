@@ -11,6 +11,8 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      latestTraining: () => Promise.resolve(null),
+      finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
       answer: vi.fn(),
       answerText: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock('../api', async (original) => {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   return render(
     <QueryClientProvider client={client}>
       <TrainingPage />
@@ -33,6 +36,7 @@ function renderPage() {
 
 function renderLegacyCard(direction: 'en_ru' | 'ru_en' = 'en_ru') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   return render(
     <QueryClientProvider client={client}>
       <Run

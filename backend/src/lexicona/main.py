@@ -11,7 +11,7 @@ from starlette.types import Scope
 from lexicona.config import Settings
 from lexicona.db import Database
 from lexicona.deps import Db
-from lexicona.routers import auth, dictionary, tags, training, words
+from lexicona.routers import auth, dictionary, statistics, tags, training, words
 
 
 class SpaFiles(StaticFiles):
@@ -61,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(dictionary.router)
     api.include_router(tags.router)
     api.include_router(training.router)
+    api.include_router(statistics.router)
     app.include_router(api)
 
     if settings.static_dir is not None:

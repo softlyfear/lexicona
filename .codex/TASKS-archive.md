@@ -1,5 +1,27 @@
 # Закрытые задачи
 
+## TRAIN-009 / STATS-001 — продолжение занятий и первые ответы (2026-11-04)
+
+- Статус: done; попытка: 1; приёмка root: ПРИНЯТО.
+- Latest/by-id/finish, публичные state/results для восстановления Run/Matching, finished SQL
+  guard и nullable SET NULL snapshots сохраняют занятие после reload/удаления слова.
+  Latest — строго последнее, без fallback; удалённые modes/corrupt snapshots не продолжаются,
+  но могут завершаться. Прежние API-сессии совместимы, уникальность active не заявляется.
+- Immutable first-objective AnswerEvent unique(item_id) записывается вместе с CAS/прогрессом/
+  SRS только для актуального слова; retries не меняют первую правильность. Legacy не бэкфиллятся.
+- Статистика30д/год/all по московским дням, нули/график/таблица, счётчики и граница достоверной
+  истории, без reset. Mobile навигация исправлена root на2x2 после реального overflow390px.
+- Исполнители backend/frontend; root gate/миграция/smoke/приёмка. После квотной ошибки
+  frontend-agent финальный CSS исправил root. Итоговый make check exit0:17/360/157,
+  Ruff/mypy/Prettier/oxlint/TS/build успешны. Независимый reviewer прочитал весь diff: Ship.
+- Root Chromium tempSQLite/Alembic+uvicorn+SPA PASS: wrong→reload→correct, partial matching
+  reload, first attempts2/correct1, finish409, snapshots/history после удаления, одиночная точка
+  графика и1280/390px без overflow/pageerror. Скриншоты просмотрены.
+- Реальная локальная БД мигрирована на e65adf970121. Перед миграцией сохранена одноразовая
+  согласованная локальная копия; все прежние row counts сохранены, FK/integrity checks OK.
+  Журнал начинает достоверную историю с обновления. Внешний VPS не менялся.
+- Runtime: Codex gpt-6.1-sol high (root/reviewer/architect), gpt-6.1-terra high (исполнители).
+
 ## TRANSLATE-002 — DeepSeek Flash Latest вместо Gemini (2026-11-03)
 
 - Статус реализации: принята; попытка: 1. Внешняя live-проверка остаётся в TASKS.md:
@@ -15,6 +37,12 @@
   формат/линтеры/mypy/TS/build успешны. Независимый reviewer прочитал полный diff, официальные
   contracts/router, проверил gitignore/diff: Ship для кода, без заявления о live-успехе.
 - Runtime: Codex gpt-6.1-sol high (root/reviewer), gpt-6.1-terra high (исполнители).
+
+### Live-проверка после обновления ключа пользователем
+
+Root вызвал реальный ~deepseek/deepseek-flash-latest: EN/RU-пример для cat получен за1.41с,
+перевод make yourself at home с альтернативами и US IPA — за0.59с. Оба запроса PASS;
+секрет не выводился, ограничение401 устранено обновлением ключа.
 
 ## PWA-001 — установка веб-приложения на телефон и планшет (2026-11-03)
 

@@ -9,12 +9,19 @@ vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
   return {
     ...actual,
-    api: { startTraining: vi.fn(), listTags: () => Promise.resolve([]), skipItem: vi.fn() },
+    api: {
+      startTraining: vi.fn(),
+      latestTraining: () => Promise.resolve(null),
+      finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
+      listTags: () => Promise.resolve([]),
+      skipItem: vi.fn(),
+    },
   }
 })
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['training', 'latest'], null)
   return render(
     <QueryClientProvider client={client}>
       <TrainingPage />

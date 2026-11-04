@@ -189,3 +189,18 @@ Free сохраняет прежние фильтры и случайный от
 в scheduled применяет grade и интервалы 10 минут либо 1/3/7/14/30/60 дней; assist, skip,
 unavailable, reveal и replay расписание не меняют. Смысловая правка сбрасывает SRS и повышает
 progress_version; stale межсессионный ответ получает 409 PROGRESS_CHANGED без записи результата.
+
+TRAIN-009 добавляет status/finished_at/requested_size занятия и nullable SET NULL word_id
+для сохранения snapshots после удаления слова (миграция e65adf970121). Latest выбирает строго
+последнюю owner-сессию по created_at/id, не ищет более старую незавершённую. Это UI/read-модель,
+не уникальность всех исполнимых старых сессий. Finish идемпотентен, SQL write guard запрещает
+новый эффект в finished. Resume возвращает все public items/state/results, не раскрывая
+correct_option/expected_answers неверного открытого ответа. Повреждённый matching latest
+возвращает только metadata/resume_error для завершения; удалённые режимы не продолжаются.
+
+AnswerEvent сохраняет immutable первую актуальную объективную попытку unique(item_id)
+в одной транзакции с CAS/прогрессом/SRS. Повторное исправление не меняет её correct/delta.
+Исторические item/word/session IDs не имеют каскадных FK; owner-FK сохраняет изоляцию.
+User.statistics_started_at отмечает границу достоверности, legacy first attempts не бэкфиллятся.
+GET /statistics?period=30d|year|all считает московские дни (UTC+3), нулевые дни и all-time
+счётчики. Word.progress>=100 означает выученное в этих счётчиках, без исключения из занятий.

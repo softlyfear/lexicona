@@ -179,7 +179,7 @@ async def test_input_answer_length_and_deleted_item(alice: Client) -> None:
     item = await start_input(alice)
     assert (await alice.delete(f"/api/words/{word['id']}")).status_code == 204
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кот"})
-    assert response.status_code == 404
+    assert response.status_code == 200 and response.json()["reason"] == "word_deleted"
 
 
 def test_migration_preserves_choice_and_refuses_loss_of_typed_items(tmp_path: Any) -> None:

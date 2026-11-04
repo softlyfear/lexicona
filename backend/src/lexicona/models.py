@@ -36,6 +36,9 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(default=False)
     difficulty: Mapped[Difficulty] = mapped_column(String(16), default=Difficulty.MEDIUM)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    statistics_started_at: Mapped[datetime] = mapped_column(
+        default=utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class AuthSession(Base):
@@ -165,6 +168,9 @@ class TrainingSession(Base):
     # Frozen at session start: changing the setting affects only new sessions.
     difficulty: Mapped[Difficulty] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    finished_at: Mapped[datetime | None]
+    requested_size: Mapped[str | None] = mapped_column(String(32))
 
     items: Mapped[list[TrainingItem]] = relationship(
         back_populates="session",
@@ -181,7 +187,9 @@ class TrainingItem(Base):
     session_id: Mapped[str] = mapped_column(
         ForeignKey("training_sessions.id", ondelete="CASCADE"), index=True
     )
-    word_id: Mapped[str] = mapped_column(ForeignKey("words.id", ondelete="CASCADE"), index=True)
+    word_id: Mapped[str | None] = mapped_column(
+        ForeignKey("words.id", ondelete="SET NULL"), index=True
+    )
     word_content_version: Mapped[int]
     word_training_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     word_progress_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
@@ -200,3 +208,19 @@ class TrainingItem(Base):
     answered_at: Mapped[datetime | None]
 
     session: Mapped[TrainingSession] = relationship(back_populates="items", lazy="joined")
+
+
+class AnswerEvent(Base):
+    __tablename__ = "answer_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(String(32), unique=True)
+    session_id: Mapped[str] = mapped_column(String(32))
+    word_id: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    mode: Mapped[str] = mapped_column(String(16))
+    direction: Mapped[str] = mapped_column(String(8))
+    purpose: Mapped[str] = mapped_column(String(16))
+    correct: Mapped[bool]
+    delta: Mapped[int]

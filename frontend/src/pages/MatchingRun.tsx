@@ -5,6 +5,7 @@ import {
   api,
   errorMessage,
   type TerminalResult,
+  type ResumedItem,
   type TrainingItem,
   type TrainingSession,
   type TrainingSize,
@@ -12,6 +13,7 @@ import {
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
+import { resumedResult } from './resume'
 
 function isTerminal(result: TerminalResult | undefined): result is TerminalResult {
   return !!result && (result.outcome !== 'answered' || !('correct' in result) || result.correct)
@@ -25,24 +27,38 @@ export function MatchingRun({
   session,
   requestedSize,
   onFinish,
+  finishing = false,
 }: {
   session: TrainingSession
   requestedSize: TrainingSize
   onFinish: () => void
+  finishing?: boolean
 }) {
   const queryClient = useQueryClient()
-  const [batchIndex, setBatchIndex] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [answers, setAnswers] = useState<Record<string, TerminalResult>>({})
-  const [notice, setNotice] = useState('')
-  const [done, setDone] = useState(false)
-  const locked = useRef(false)
   const batches: TrainingItem[][] = []
   for (let offset = 0; offset < session.items.length;) {
     const size = Math.max(1, session.items[offset].options.length)
     batches.push(session.items.slice(offset, offset + size))
     offset += size
   }
+  const firstBatch = batches.findIndex((batch) =>
+    batch.some((item) => (item as ResumedItem).state !== 'done'),
+  )
+  const [batchIndex, setBatchIndex] = useState(
+    firstBatch < 0 ? Math.max(0, batches.length - 1) : firstBatch,
+  )
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [answers, setAnswers] = useState<Record<string, TerminalResult>>(() =>
+    Object.fromEntries(
+      (session.items as ResumedItem[]).flatMap((item) => {
+        const result = resumedResult(item)
+        return result ? [[item.id, result]] : []
+      }),
+    ),
+  )
+  const [notice, setNotice] = useState('')
+  const [done, setDone] = useState(firstBatch < 0)
+  const locked = useRef(false)
   const batchCount = batches.length
   const batch = batches[batchIndex] ?? []
   const selected = batch.find((item) => item.id === selectedId)
@@ -70,7 +86,7 @@ export function MatchingRun({
   }, [queryClient])
 
   function perform(value: MatchingAction) {
-    if (locked.current || isTerminal(answers[value.item.id])) return
+    if (finishing || locked.current || isTerminal(answers[value.item.id])) return
     cancelSpeech()
     setNotice('')
     locked.current = true
@@ -90,8 +106,11 @@ export function MatchingRun({
     action.reset()
     setSelectedId(null)
     setNotice('')
-    if (batchIndex + 1 === batchCount) setDone(true)
-    else setBatchIndex((index) => index + 1)
+    const following = batches.findIndex(
+      (group, index) => index > batchIndex && group.some((item) => !isTerminal(answers[item.id])),
+    )
+    if (following < 0) setDone(true)
+    else setBatchIndex(following)
   }
 
   if (done) {
@@ -249,7 +268,9 @@ export function MatchingRun({
                 }
               >
                 {selectedResult.outcome === 'unavailable'
-                  ? 'Задание недоступно: слово исключалось из обучения'
+                  ? selectedResult.reason === 'word_deleted'
+                    ? 'Задание недоступно: слово удалено'
+                    : 'Задание недоступно: слово исключалось из обучения'
                   : selectedResult.outcome === 'skipped'
                     ? 'Пропущено'
                     : selectedResult.outcome === 'assisted'
@@ -258,7 +279,8 @@ export function MatchingRun({
                         ? 'Верно'
                         : 'Неверно'}{' '}
                 ({selectedResult.delta > 0 ? '+' : ''}
-                {selectedResult.delta}) · прогресс {selectedResult.progress}%
+                {selectedResult.delta})
+                {selectedResult.progress !== null && <> · прогресс {selectedResult.progress}%</>}
               </p>
               {selectedResult.outcome === 'answered' &&
                 'correct' in selectedResult &&

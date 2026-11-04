@@ -211,7 +211,8 @@ async def test_assistance_endpoints_owner_csrf_no_store_and_deleted_item(
     alice.headers["X-CSRF-Token"] = alice.csrf
     assert (await alice.delete(f"/api/words/{word['id']}")).status_code == 204
     response = await alice.post(url)
-    assert response.status_code == 404 and response.headers["cache-control"] == "no-store"
+    assert response.status_code == 200 and response.json()["reason"] == "word_deleted"
+    assert response.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.parametrize("outcome", ["assisted", "skipped"])
