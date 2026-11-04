@@ -225,6 +225,13 @@ export class ApiError extends Error {
   }
 }
 
+export interface ServerVoice {
+  id: string
+  name: string
+  language: 'en-US' | 'en-GB' | 'ru-RU'
+  gender: 'female' | 'male'
+}
+
 // Kept in memory only: never persisted to browser storage.
 let csrfToken = ''
 
@@ -237,6 +244,8 @@ async function request<T>(
   path: string,
   body?: unknown,
   csrfOverride?: string,
+  signal?: AbortSignal,
+  binary = false,
 ): Promise<T> {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -246,6 +255,7 @@ async function request<T>(
     headers,
     credentials: 'same-origin',
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
   if (!response.ok) {
     let detail = response.statusText
@@ -256,7 +266,9 @@ async function request<T>(
     } catch {}
     throw new ApiError(response.status, detail)
   }
-  return (response.status === 204 ? undefined : await response.json()) as T
+  return (
+    response.status === 204 ? undefined : binary ? await response.blob() : await response.json()
+  ) as T
 }
 
 function validSession(value: unknown): value is Session {
@@ -286,6 +298,23 @@ async function sessionRequest(method: string, path: string, body?: unknown): Pro
 }
 
 export const api = {
+  listSpeechVoices: (signal?: AbortSignal) =>
+    request<{ voices: ServerVoice[]; available: boolean }>(
+      'GET',
+      '/speech/voices',
+      undefined,
+      undefined,
+      signal,
+    ),
+  synthesizeSpeech: (text: string, voiceId: string, rate: 1 | 0.75, signal: AbortSignal) =>
+    request<Blob>(
+      'POST',
+      '/speech/synthesize',
+      { text, voice_id: voiceId, rate },
+      undefined,
+      signal,
+      true,
+    ),
   me: () => sessionRequest('GET', '/auth/me'),
   login: (login: string, password: string) =>
     sessionRequest('POST', '/auth/login', { login, password }),

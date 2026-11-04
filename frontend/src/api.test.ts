@@ -17,6 +17,19 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('sends speech synthesis with CSRF and abort signal and returns binary audio', async () => {
+    setCsrfToken('secret')
+    const fetchMock = vi.fn(async () => new Response('wav', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    const blob = await api.synthesizeSpeech('hello', 'voice', 0.75, controller.signal)
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/speech/synthesize')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(init.body).toBe(JSON.stringify({ text: 'hello', voice_id: 'voice', rate: 0.75 }))
+    expect(init.signal).toBe(controller.signal)
+    expect(blob.size).toBe(3)
+  })
   it('sends the CSRF token only on mutations', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, [])

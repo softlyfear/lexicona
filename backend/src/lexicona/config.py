@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LEXICONA_", env_file=_ENV_FILE, extra="ignore")
 
     dictionary_path: Path = Path("data/dictionaries/eng-rus-2025.11.23.sqlite3")
+    tts_dir: Path = Path("data/tts")
     database_url: str = "sqlite+aiosqlite:///./data/lexicona.db"
     translation_provider: Literal["deepl", "openrouter"] = "deepl"
     deepl_api_key: SecretStr | None = None

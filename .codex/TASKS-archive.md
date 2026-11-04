@@ -1,5 +1,33 @@
 # Закрытые задачи
 
+## SPEECH-002 — локальные CPU-голоса Piper (2026-11-04)
+
+- Статус: done; приёмка root: ПРИНЯТО; попытка: 2. Выполнены backend/frontend/devops части.
+- Piper1.8.0,10 реальных голосов: US Lessac/Kristin/Ryan/Joe,GB Alba/Jenny/Alan/Northern,
+  RU Denis/Dmitri. По2м/2ж на каждый EN accent; root установил модели локально внеGit,
+  pinned HF revision/SHA256 и оригинальные MODEL_CARD сохраняются. CLI make voices повторно
+  использует проверенные файлы; runtime не делает сетевых загрузок и внешних TTS вызовов.
+- GET voices/POST WAV защищены auth/CSRF/no-store; allowlist, text<=2000,rate1/.75,
+  процесс без shell/GPU,30с/16MiB, sync semaphore до kill/wait, temp cleanup.
+- Единый speech controller поддерживает auto/server/browser, preferences US/GB/RU по owner,
+  отмену fetch/audio и revoke Blob URL. NotAllowedError сохраняет готовое аудио только в памяти;
+  повторный tap вызывает play синхронно без второго synthesize. В Settings полные status/Stop,
+  на остальных страницах только уведомления о требуемом действии.
+- Первое независимое No-Ship P2: legacy en-AU терял browser voice при ready US/GB сервере.
+  Исправлен auto fallback только к browser тому же locale; explicit server/missing saved server
+  ID не подменяются. Reviewer лично повторил legacyAU/нетAU/explicitserver: Ship, новых дефектов нет.
+- Финальный root make check exit0: tooling17/backend382/frontend167; Ruff/mypy/Prettier/
+  oxlint/TypeScript/production build успешны. Реальный HTTP synthesis всех10голосов дал
+  WAV22050Hz/no-store. Chromium Settings/serverGB/Alan: Audio ended,1fetch, prefs reload,
+  390px без overflow/pageerror, прогресс не изменился. Скриншот просмотрен root.
+- Devops make voices/compose config и CPU WAV в python3.14-slim PASS. После первого прерванного
+  медленного build повтор конечного кода завершился успешно: lexicona-speech-local-check,
+  image ae0b00eb6033. В итоговом образе без сети/портов проверены lexicona.tts, package manifest
+  и реальный Ryan WAV32300байт с моделями read-only — PASS. Медленные слои не были ошибками кода.
+- Локальный backend перезапущен с10голосами; backend/проксиhealth200, speech безauth401.
+  Физические Android/iOS и внешний VPS не менялись/не проверялись.
+- Runtime: Codex gpt-6.1-sol high (root/reviewer), gpt-6.1-terra high (исполнители/devops).
+
 ## TRAIN-009 / STATS-001 — продолжение занятий и первые ответы (2026-11-04)
 
 - Статус: done; попытка: 1; приёмка root: ПРИНЯТО.

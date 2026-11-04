@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { api } from './api'
 import { cancelSpeech, setSpeechOwner, speak, updateSpeechPreferences, useSpeech } from './speech'
 
 const voice = (lang: string, voiceURI: string, defaultVoice = false) =>
@@ -33,6 +34,7 @@ class Utterance {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.spyOn(api, 'listSpeechVoices').mockImplementation(() => new Promise(() => {}))
   localStorage.clear()
   voices = []
   engine.speak.mockClear()
@@ -42,22 +44,28 @@ beforeEach(() => {
 afterEach(() => {
   setSpeechOwner(null)
   vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   Reflect.deleteProperty(window, 'speechSynthesis')
 })
+
+function browserSpeak(text: string, lang: 'en' | 'ru') {
+  updateSpeechPreferences({ engine: 'browser' })
+  speak(text, lang)
+}
 
 describe('браузерная речь', () => {
   it('ожидает голоса ограниченно и не запускает просроченную речь', () => {
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     expect(result.current.status).toContain('Ожидание')
     act(() => vi.advanceTimersByTime(2000))
     expect(result.current.status).toContain('не найден')
     voices = [voice('en-US', 'english')]
     act(() => changed())
     expect(engine.speak).not.toHaveBeenCalled()
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     expect(engine.speak).toHaveBeenCalledOnce()
     expect(current.voice?.voiceURI).toBe('english')
   })
@@ -67,10 +75,10 @@ describe('браузерная речь', () => {
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
     act(() => updateSpeechPreferences({ enVoiceURI: 'ru', enLocale: 'en-GB' }))
-    act(() => speak('first', 'en'))
+    act(() => browserSpeak('first', 'en'))
     const old = current
     expect(old.voice?.voiceURI).toBe('gb')
-    act(() => speak('второй', 'ru'))
+    act(() => browserSpeak('второй', 'ru'))
     expect(current.voice?.voiceURI).toBe('ru')
     act(() => old.onerror?.({} as SpeechSynthesisErrorEvent))
     expect(result.current.status).toContain('Ожидание')
@@ -89,6 +97,10 @@ describe('браузерная речь', () => {
       ruVoiceURI: null,
       rate: 0.75,
       autoPrompt: false,
+      engine: 'auto',
+      serverEnUS: null,
+      serverEnGB: null,
+      serverRu: null,
     })
     setSpeechOwner('b')
     const { result } = renderHook(() => useSpeech())
@@ -102,13 +114,13 @@ describe('браузерная речь', () => {
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
     act(() => updateSpeechPreferences({ rate: 0.75 }))
-    act(() => speak('x'.repeat(1800), 'en'))
+    act(() => browserSpeak('x'.repeat(1800), 'en'))
     expect(current.rate).toBe(0.75)
     act(() => vi.advanceTimersByTime(20000))
     expect(result.current.status).not.toContain('не завершилось')
     act(() => vi.advanceTimersByTime(295000))
     expect(result.current.status).toContain('не завершилось')
-    act(() => speak('retry', 'en'))
+    act(() => browserSpeak('retry', 'en'))
     expect(engine.speak).toHaveBeenCalledTimes(2)
   })
 
@@ -116,11 +128,11 @@ describe('браузерная речь', () => {
     voices = [voice('ru-RU', 'ru'), voice('', 'unknown')]
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     expect(result.current.status).toContain('EN голос не найден')
     expect(engine.speak).not.toHaveBeenCalled()
     Reflect.deleteProperty(window, 'speechSynthesis')
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     expect(result.current.status).toContain('недоступно')
   })
 
@@ -143,7 +155,7 @@ describe('браузерная речь', () => {
     voices = [voice('en-US', 'english')]
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     act(() => current.onerror?.({ error: 'not-allowed' } as SpeechSynthesisErrorEvent))
     expect(result.current.status).toContain('Не удалось')
     act(() => current.onend?.({} as SpeechSynthesisEvent))
@@ -151,7 +163,7 @@ describe('браузерная речь', () => {
     engine.speak.mockImplementationOnce(() => {
       throw new Error('not allowed')
     })
-    act(() => speak('retry', 'en'))
+    act(() => browserSpeak('retry', 'en'))
     expect(result.current.status).toContain('Не удалось')
   })
 
@@ -163,12 +175,12 @@ describe('браузерная речь', () => {
     voices = []
     act(() => changed())
     expect(result.current.voiceState).toBe('unavailable')
-    act(() => speak('hello', 'en'))
+    act(() => browserSpeak('hello', 'en'))
     expect(result.current.status).toContain('не найден')
     const getVoices = vi.spyOn(engine, 'getVoices').mockImplementation(() => {
       throw new Error('browser failure')
     })
-    act(() => speak('retry', 'en'))
+    act(() => browserSpeak('retry', 'en'))
     expect(result.current.voiceState).toBe('unavailable')
     expect(result.current.status).toContain('не найден')
     expect(engine.speak).not.toHaveBeenCalled()

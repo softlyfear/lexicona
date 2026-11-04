@@ -124,7 +124,9 @@ describe('профиль и смена пароля', () => {
     await user.keyboard('{Enter}')
     expect(change).toHaveBeenCalledTimes(1)
     await act(async () => resolve(rotated))
-    expect(await screen.findByRole('status')).toHaveTextContent('Остальные сеансы завершены')
+    expect(
+      await screen.findByText('Пароль изменён. Остальные сеансы завершены.'),
+    ).toBeInTheDocument()
     expect(screen.getByLabelText('Текущий пароль')).toHaveValue('')
     expect(screen.getByLabelText('Новый пароль')).toHaveValue('')
     expect(screen.getByLabelText('Повторите новый пароль')).toHaveValue('')
@@ -189,7 +191,9 @@ describe('профиль и смена пароля', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось подтвердить смену пароля',
     )
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Пароль изменён. Остальные сеансы завершены.'),
+    ).not.toBeInTheDocument()
     expect(change).toHaveBeenCalledTimes(1)
     expect(me).toHaveBeenCalledOnce()
     expect(queryClient.getQueryData(['session'])).toEqual(rotated)
@@ -204,7 +208,9 @@ describe('профиль и смена пароля', () => {
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(await screen.findByText('Вход')).toBeInTheDocument()
     expect(sessionStorage.getItem('require-explicit-login')).toBe('1')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Пароль изменён. Остальные сеансы завершены.'),
+    ).not.toBeInTheDocument()
   })
 
   it('поздняя сверка me после смены аккаунта не восстанавливает прежнюю сессию', async () => {
@@ -234,7 +240,9 @@ describe('профиль и смена пароля', () => {
       await queued
     })
     expect(queryClient.getQueryData(['session'])).toEqual(bob)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Пароль изменён. Остальные сеансы завершены.'),
+    ).not.toBeInTheDocument()
   })
 
   it('поздний ответ после выхода и входа другого аккаунта не восстанавливает прежний', async () => {

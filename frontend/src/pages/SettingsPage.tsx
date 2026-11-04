@@ -4,7 +4,15 @@ import { ApiError, api, errorMessage, type Difficulty, type Session, type User }
 import ui from '../components/ui.module.css'
 import { SpeechStatus } from '../components/ui'
 import { InstallSettings } from '../components/InstallSettings'
-import { selectVoice, speak, updateSpeechPreferences, useSpeech } from '../speech'
+import {
+  hasServerLocale,
+  refreshServerVoices,
+  selectServerVoice,
+  selectVoice,
+  speak,
+  updateSpeechPreferences,
+  useSpeech,
+} from '../speech'
 import {
   changePasswordSession,
   forgetSession,
@@ -216,12 +224,15 @@ export function SettingsPage({ user }: { user: User }) {
 }
 
 function SpeechSettings() {
-  const { preferences, voices, voiceState, storageError } = useSpeech()
+  const { preferences, voices, voiceState, storageError, serverVoices, serverState } = useSpeech()
+  const serverReady = preferences.engine !== 'browser' && serverState === 'ready'
   const locales = [
     ...new Set([
       'en-US',
       'en-GB',
-      ...voices.filter((v) => v.lang.toLowerCase().split('-')[0] === 'en').map((v) => v.lang),
+      ...(preferences.engine === 'server'
+        ? []
+        : voices.filter((v) => v.lang.toLowerCase().split('-')[0] === 'en').map((v) => v.lang)),
     ]),
   ]
   const describe = (v: SpeechSynthesisVoice) =>
@@ -230,10 +241,39 @@ function SpeechSettings() {
     <section className={`${ui.card} ${css.form}`} aria-labelledby="speech-heading">
       <h2 id="speech-heading">Озвучивание</h2>
       <p className={ui.muted}>
-        Настройки действуют только для этого аккаунта в этом браузере. Список и пол голосов зависят
-        от браузера и операционной системы; приложение не может добавить отсутствующие голоса.
-        Сетевой голос может передавать текст внешнему сервису.
+        Настройки действуют только для этого аккаунта в этом браузере. Серверные голоса работают на
+        сервере приложения. Браузерные голоса зависят от устройства; сетевой голос браузера может
+        передавать текст внешнему сервису.
       </p>
+      <label className={ui.field}>
+        <span className={ui.label}>Источник озвучивания</span>
+        <select
+          className={ui.input}
+          value={preferences.engine}
+          onChange={(e) => {
+            const engine = e.target.value as 'auto' | 'server' | 'browser'
+            updateSpeechPreferences({ engine })
+          }}
+        >
+          <option value="auto">Автоматически</option>
+          <option value="server">Серверные голоса</option>
+          <option value="browser">Голоса браузера</option>
+        </select>
+      </label>
+      {serverState === 'loading' && <p role="status">Загружаем серверные голоса…</p>}
+      {serverState === 'unavailable' && (
+        <div>
+          <p>
+            Серверные голоса недоступны.{' '}
+            {preferences.engine === 'auto'
+              ? 'Используются голоса браузера.'
+              : 'Можно выбрать голоса браузера.'}
+          </p>
+          <button type="button" className={ui.button} onClick={refreshServerVoices}>
+            Повторить загрузку голосов
+          </button>
+        </div>
+      )}
       {storageError && (
         <p role="alert" className={ui.error}>
           Не удалось прочитать или сохранить настройки браузера; они действуют только до закрытия
@@ -262,11 +302,87 @@ function SpeechSettings() {
         </select>
       </label>
       {(['en', 'ru'] as const).map((lang) => {
+        const useServer =
+          serverReady &&
+          (preferences.engine === 'server' || hasServerLocale(serverVoices, lang, preferences))
+        if (!serverReady && preferences.engine === 'server') return null
+        if (useServer) {
+          const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
+          const key =
+            lang === 'ru'
+              ? 'serverRu'
+              : locale.toLowerCase() === 'en-gb'
+                ? 'serverEnGB'
+                : 'serverEnUS'
+          const uri = preferences[key]
+          const available = serverVoices.filter(
+            (voice) => voice.language.toLowerCase() === locale.toLowerCase(),
+          )
+          const selected = selectServerVoice(serverVoices, lang, preferences)
+          const describeServer = (voice: (typeof serverVoices)[number]) =>
+            `${voice.name} (${voice.language}, ${voice.gender === 'female' ? 'женский' : 'мужской'})`
+          return (
+            <div key={lang} className={css.form}>
+              <label className={ui.field}>
+                <span className={ui.label}>Голос {lang.toUpperCase()}</span>
+                <select
+                  className={ui.input}
+                  value={uri ?? ''}
+                  onChange={(event) =>
+                    updateSpeechPreferences({ [key]: event.target.value || null })
+                  }
+                >
+                  <option value="">Автоматически</option>
+                  {uri && !available.some((voice) => voice.id === uri) && (
+                    <option value={uri}>Сохранённый голос недоступен</option>
+                  )}
+                  {available.map((voice) => (
+                    <option key={voice.id} value={voice.id}>
+                      {describeServer(voice)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className={ui.muted}>
+                {selected
+                  ? `Используется: ${describeServer(selected)}`
+                  : `Подходящий серверный ${lang.toUpperCase()} голос не найден.`}
+              </p>
+              <div>
+                <button
+                  type="button"
+                  className={ui.button}
+                  onClick={() =>
+                    speak(
+                      lang === 'en'
+                        ? 'Hello. This is an English voice test.'
+                        : 'Проверка русского голоса.',
+                      lang,
+                    )
+                  }
+                >
+                  Проверить {lang.toUpperCase()}
+                </button>
+              </div>
+            </div>
+          )
+        }
         const uri = lang === 'en' ? preferences.enVoiceURI : preferences.ruVoiceURI
-        const available = voices.filter((v) => v.lang.toLowerCase().split('-')[0] === lang)
-        const selected = selectVoice(voices, lang, preferences)
+        const exactLocale = serverReady && preferences.engine === 'auto'
+        const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
+        const available = voices.filter((v) =>
+          exactLocale
+            ? v.lang.toLowerCase() === locale.toLowerCase()
+            : v.lang.toLowerCase().split('-')[0] === lang,
+        )
+        const selected = selectVoice(available, lang, preferences)
         return (
           <div key={lang} className={css.form}>
+            {serverReady && preferences.engine === 'auto' && (
+              <p className={ui.muted}>
+                Для этого языка нет серверного голоса. Используется голос браузера.
+              </p>
+            )}
             <label className={ui.field}>
               <span className={ui.label}>Голос {lang.toUpperCase()}</span>
               <select

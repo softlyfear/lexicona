@@ -61,6 +61,16 @@
   padding: 1.25rem 1rem 3rem;
 }
 
+.speechStatus {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+}
+
+.speechStatus p {
+  margin: 0;
+}
+
 @media (max-width: 560px) {
   .nav {
     display: grid;

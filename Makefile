@@ -1,4 +1,4 @@
-.PHONY: install dictionary fmt check check-backend check-frontend check-tooling codex-models codex kimi
+.PHONY: install dictionary voices fmt check check-backend check-frontend check-tooling codex-models codex kimi
 
 install:
 	cd backend && uv sync --locked
@@ -6,6 +6,9 @@ install:
 
 dictionary:
 	cd backend && uv run --locked python -m lexicona.dictionary build
+
+voices:
+	cd backend && uv run --locked python -m lexicona.tts download
 
 fmt:
 	cd backend && uv run --locked ruff check --fix ../.codex/hooks ../.kimi-code/hooks ../tests ../scripts && uv run --locked ruff format ../.codex/hooks ../.kimi-code/hooks ../tests ../scripts

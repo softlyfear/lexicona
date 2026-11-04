@@ -1,0 +1,145 @@
+{
+  "revision": "e7229f7d33a10e145e109b886d661984201ac3c4",
+  "voices": {
+    "en_US-ryan-medium": [
+      {
+        "file": "en_US-ryan-medium.onnx",
+        "sha256": "abf4c274862564ed647ba0d2c47f8ee7c9b717d27bdad9219100eb310db4047a"
+      },
+      {
+        "file": "en_US-ryan-medium.onnx.json",
+        "sha256": "44034c056cb15681b2ad494307c7f3f2e4499d1253c700c711fa0a4607ffe78d"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "3a24ae5f7aa856199f338ad9af784cda796734f397f7e1b4a1bd3c07d06945b1"
+      }
+    ],
+    "en_US-joe-medium": [
+      {
+        "file": "en_US-joe-medium.onnx",
+        "sha256": "58afce0321b8d9c46d7cdf9c16500cc55a793b4220212dba6b70fb788b3baf06"
+      },
+      {
+        "file": "en_US-joe-medium.onnx.json",
+        "sha256": "3d6d5410b3795cb1950595247ef8f06190719e6fdbfa3a2356d8ec368e1aad33"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "d2caa63aca0fccb155105e959e393e5c0c0f03a1f388ef5ba217b83ef860c760"
+      }
+    ],
+    "en_US-lessac-medium": [
+      {
+        "file": "en_US-lessac-medium.onnx",
+        "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+      },
+      {
+        "file": "en_US-lessac-medium.onnx.json",
+        "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "ce49eb457742208166d399a40cdec2c7fa9db77960930031564ab56f12882645"
+      }
+    ],
+    "en_US-kristin-medium": [
+      {
+        "file": "en_US-kristin-medium.onnx",
+        "sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+      },
+      {
+        "file": "en_US-kristin-medium.onnx.json",
+        "sha256": "5681426d4aead22195de70531eeeeddb46493cfaffc5764b2ea3db73428b651c"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "8c181b1d5f7d8152b914faab941fcbe6b8f0495e63e5189d6f27b8c68c8393fc"
+      }
+    ],
+    "en_GB-alba-medium": [
+      {
+        "file": "en_GB-alba-medium.onnx",
+        "sha256": "401369c4a81d09fdd86c32c5c864440811dbdcc66466cde2d64f7133a66ad03b"
+      },
+      {
+        "file": "en_GB-alba-medium.onnx.json",
+        "sha256": "aa965a2f02ecced632c2694e1fc72bbff6d65f265fab567ca945918c73dd89f4"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "fa166b1779404c470b0b6b4ba0238bc4a35bf89d2cd130c6788f697188b737d6"
+      }
+    ],
+    "en_GB-jenny_dioco-medium": [
+      {
+        "file": "en_GB-jenny_dioco-medium.onnx",
+        "sha256": "469c630d209e139dd392a66bf4abde4ab86390a0269c1e47b4e5d7ce81526b01"
+      },
+      {
+        "file": "en_GB-jenny_dioco-medium.onnx.json",
+        "sha256": "a9a7a93a317c9a3cb6563e37eb057df9ef09c06188a8a4341b0fcb58cba54dd4"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "bc8aec32196ab14f46260ab6e002cf004b0793ddd7886011145fe00106e20d45"
+      }
+    ],
+    "en_GB-alan-medium": [
+      {
+        "file": "en_GB-alan-medium.onnx",
+        "sha256": "0a309668932205e762801f1efc2736cd4b0120329622adf62be09e56339d3330"
+      },
+      {
+        "file": "en_GB-alan-medium.onnx.json",
+        "sha256": "c0f0d124e5895c00e7c03b35dcc8287f319a6998a365b182deb5c8e752ee8c1e"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "abcbc3e961124398911436acd9eaaa0ab167cdf221d5a24146aa08732c52630f"
+      }
+    ],
+    "en_GB-northern_english_male-medium": [
+      {
+        "file": "en_GB-northern_english_male-medium.onnx",
+        "sha256": "57a219ae8e638873db7d18893304be5069c42868f392bb95c3ff17f0690d0689"
+      },
+      {
+        "file": "en_GB-northern_english_male-medium.onnx.json",
+        "sha256": "69557ed3d974463453e9b0c09dd99a7ed0e52b8b87b64b357dbeeb2540a97d47"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "75661c3a50c0ba82b32b3a438e54103d8dfe5bbe8fbb864ac687a040e79948bb"
+      }
+    ],
+    "ru_RU-dmitri-medium": [
+      {
+        "file": "ru_RU-dmitri-medium.onnx",
+        "sha256": "f073356ebc4bd0f80c5af58df2953a5988bd5bdab1eb38635ce960b071fbefcb"
+      },
+      {
+        "file": "ru_RU-dmitri-medium.onnx.json",
+        "sha256": "667ef3117bc642c2892dff7690d8bdc8ca4228aeaa783b2dc1416df632855e0d"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "6d59c756776d57860232cea6484e1b2ea1fc1c8d2c3446ef246f706fd9875821"
+      }
+    ],
+    "ru_RU-denis-medium": [
+      {
+        "file": "ru_RU-denis-medium.onnx",
+        "sha256": "15fab56e11a097858ee115545d0f697fc2a316c41a291a5362349fb870411b0a"
+      },
+      {
+        "file": "ru_RU-denis-medium.onnx.json",
+        "sha256": "831c860dac0b5073eaa81610a0a638ec23d90a6cf8e5f871b4485c2cec3767c8"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "8b5d685dd80f8ad3f8dbbe1c56b16bb0809f00c144af3642dbcf3b707eb89c12"
+      }
+    ]
+  }
+}

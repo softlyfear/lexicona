@@ -204,3 +204,15 @@ AnswerEvent сохраняет immutable первую актуальную об�
 User.statistics_started_at отмечает границу достоверности, legacy first attempts не бэкфиллятся.
 GET /statistics?period=30d|year|all считает московские дни (UTC+3), нулевые дни и all-time
 счётчики. Word.progress>=100 означает выученное в этих счётчиках, без исключения из занятий.
+
+SPEECH-002 добавляет локальный CPU Piper1.8.0: GET /speech/voices, POST /speech/synthesize
+с auth/CSRF/no-store, fixed voice allowlist10, text<=2000/rate1/.75. Изолированный CLI процесс,
+sync semaphore сохраняется до kill/wait при отмене HTTP; timeout30с, WAV<=16MiB, temp cleanup.
+Runtime не скачивает модели. Отдельный CLI download использует pinned HF revision/SHA256,
+атомарные файлы и сохраняет MODEL_CARD; модели в data/tts (/data/tts в Docker), вне Git.
+Общий speech.ts использует fetch/audio/Blob URL только в памяти, отмену generation/owner,
+предпочтения auto/server/browser и US/GB/RU voice IDs. После NotAllowedError готовый Audio
+повторно запускается синхронно по ручному нажатию без fetch; cancel очищает его. Полные
+status/Stop остаются в Settings, на остальных страницах видны только actionable ошибки.
+В auto неподдерживаемый сервером locale (например старый en-AU) использует браузерный
+голос строго того же locale; явный server или недоступный сохранённый server ID не подменяются.

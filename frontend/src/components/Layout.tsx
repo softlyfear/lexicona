@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { cancelSpeech, setSpeechOwner } from '../speech'
+import { cancelSpeech, setSpeechOwner, useSpeech } from '../speech'
 import { type User } from '../api'
 import { logoutSession } from '../session'
 import css from './Layout.module.css'
@@ -15,6 +15,7 @@ const LINKS = [
 
 export function Layout({ user }: { user: User }) {
   const { pathname } = useLocation()
+  const { notice } = useSpeech()
   useEffect(() => {
     setSpeechOwner(user.id)
     const hide = () => {
@@ -55,6 +56,11 @@ export function Layout({ user }: { user: User }) {
             </button>
           </div>
         </div>
+        {notice && pathname !== '/settings' && (
+          <div className={css.speechStatus}>
+            <p role="status">{notice}</p>
+          </div>
+        )}
       </header>
       <main className={css.main}>
         <Outlet />

@@ -24,6 +24,7 @@ RUN useradd --system --uid 10001 lexicona && mkdir /data && chown lexicona /data
 USER lexicona
 ENV LEXICONA_DATABASE_URL=sqlite+aiosqlite:////data/lexicona.db \
     LEXICONA_DICTIONARY_PATH=/app/dictionaries/eng-rus-2025.11.23.sqlite3 \
+    LEXICONA_TTS_DIR=/data/tts \
     LEXICONA_STATIC_DIR=/app/static \
     LEXICONA_COOKIE_SECURE=true
 VOLUME /data
