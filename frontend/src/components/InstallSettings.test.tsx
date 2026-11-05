@@ -21,30 +21,28 @@ describe('установка приложения', () => {
     expect(event.defaultPrevented).toBe(true)
     render(<InstallSettings />)
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Установить приложение' }))
+    expect(screen.getByRole('region', { name: 'Установка' })).toHaveTextContent('Установка')
+    await user.click(screen.getByRole('button', { name: 'Установка' }))
     expect(prompt).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('button', { name: 'Установить приложение' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Android, Chrome/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
   })
 
-  it('показывает инструкции без системного приглашения и сообщает об ошибке', async () => {
-    render(<InstallSettings />)
-    expect(screen.getByText(/iPhone или iPad, Safari/)).toBeInTheDocument()
-    expect(screen.getByText(/HTTPS/)).toBeInTheDocument()
-    expect(screen.getByText(/подключение к интернету/)).toBeInTheDocument()
+  it('без системного приглашения ничего не показывает и скрывает сбой диалога', async () => {
+    const { container } = render(<InstallSettings />)
+    expect(container).toBeEmptyDOMElement()
     const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
       prompt: vi.fn().mockRejectedValue(new Error('failed')),
     })
     act(() => window.dispatchEvent(event))
-    await userEvent.click(screen.getByRole('button', { name: 'Установить приложение' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось открыть установку')
+    await userEvent.click(screen.getByRole('button', { name: 'Установка' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
   })
 
-  it('скрывает инструкции в standalone и очищает приглашение после установки', () => {
+  it('скрывает кнопку в standalone и после установки', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }))
-    const { unmount } = render(<InstallSettings />)
-    expect(screen.getByText(/Приложение открыто или установлено/)).toBeInTheDocument()
-    expect(screen.queryByText(/Android, Chrome/)).not.toBeInTheDocument()
+    const { unmount, container } = render(<InstallSettings />)
+    expect(container).toBeEmptyDOMElement()
     unmount()
     vi.stubGlobal('matchMedia', () => ({ matches: false }))
     const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
@@ -52,10 +50,9 @@ describe('установка приложения', () => {
     })
     window.dispatchEvent(event)
     render(<InstallSettings />)
-    expect(screen.getByRole('button', { name: 'Установить приложение' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Установка' })).toBeInTheDocument()
     act(() => window.dispatchEvent(new Event('appinstalled')))
-    expect(screen.queryByRole('button', { name: 'Установить приложение' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Приложение открыто или установлено/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
   })
 
   it('удаляет слушатели при завершении работы', () => {
@@ -63,7 +60,7 @@ describe('установка приложения', () => {
     const event = new Event('beforeinstallprompt', { cancelable: true })
     window.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(false)
-    render(<InstallSettings />)
-    expect(screen.queryByRole('button', { name: 'Установить приложение' })).not.toBeInTheDocument()
+    const { container } = render(<InstallSettings />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
