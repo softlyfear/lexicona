@@ -32,7 +32,8 @@ it('показывает установленные голоса по акцен
     </QueryClientProvider>,
   )
   const user = userEvent.setup()
-  expect(screen.getByLabelText('Источник озвучивания')).toHaveValue('auto')
+  expect(screen.getByLabelText('Источник EN')).toHaveValue('auto')
+  expect(screen.getByLabelText('Источник RU')).toHaveValue('auto')
   expect(screen.getByRole('button', { name: 'Остановить речь' })).toBeInTheDocument()
   expect(
     within(screen.getByLabelText('Голос EN')).getByRole('option', {
@@ -60,8 +61,14 @@ it('показывает установленные голоса по акцен
   ).not.toBeInTheDocument()
   await user.selectOptions(screen.getByLabelText('Голос EN'), 'gb')
   expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).serverEnGB).toBe('gb')
-  await user.selectOptions(screen.getByLabelText('Источник озвучивания'), 'browser')
-  expect(screen.getByLabelText('Источник озвучивания')).toHaveValue('browser')
+  expect(screen.getByRole('option', { name: 'Очень медленная' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Быстрая' })).toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Скорость'), '1.5')
+  expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).rate).toBe(1.5)
+  await user.selectOptions(screen.getByLabelText('Источник RU'), 'browser')
+  expect(screen.getByLabelText('Источник EN')).toHaveValue('auto')
+  expect(screen.getByLabelText('Источник RU')).toHaveValue('browser')
+  expect(screen.getByLabelText('Голос EN')).toHaveValue('gb')
   expect(screen.getByLabelText('Английский')).toBeChecked()
   expect(screen.getByLabelText('Русский')).toBeChecked()
   await user.click(screen.getByLabelText('Русский'))

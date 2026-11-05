@@ -306,7 +306,12 @@ export const api = {
       undefined,
       signal,
     ),
-  synthesizeSpeech: (text: string, voiceId: string, rate: 1 | 0.75, signal: AbortSignal) =>
+  synthesizeSpeech: (
+    text: string,
+    voiceId: string,
+    rate: 0.5 | 0.75 | 1 | 1.25 | 1.5,
+    signal: AbortSignal,
+  ) =>
     request<Blob>(
       'POST',
       '/speech/synthesize',

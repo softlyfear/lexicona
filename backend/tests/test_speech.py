@@ -71,6 +71,26 @@ async def test_speech_auth_csrf_and_partial_voices(
     assert calls == [(tmp_path, VOICE, "test", 0.75)]
 
 
+@pytest.mark.parametrize("rate", [0.5, 1, 1.25, 1.5])
+async def test_speech_accepts_playback_rates(
+    app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rate: float
+) -> None:
+    app.state.settings.tts_dir = tmp_path
+    fake_model(tmp_path)
+    monkeypatch.setattr(tts, "runtime_available", lambda: True)
+    seen: list[float] = []
+
+    def synthesize(directory: Path, voice_id: str, text: str, playback: float) -> bytes:
+        seen.append(playback)
+        return wav_bytes()
+
+    monkeypatch.setattr(tts, "synthesize", synthesize)
+    response = await alice.post(
+        "/api/speech/synthesize", json={"text": "test", "voice_id": VOICE, "rate": rate}
+    )
+    assert response.status_code == 200 and seen == [rate]
+
+
 async def test_missing_voice_and_runtime(
     app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -97,7 +117,7 @@ async def test_missing_voice_and_runtime(
         {"text": 1},
         {"rate": True},
         {"rate": "1"},
-        {"rate": 0.5},
+        {"rate": 2},
         {"extra": "x"},
         {"text": " " * 2001},
     ],

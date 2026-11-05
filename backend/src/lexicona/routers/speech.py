@@ -8,6 +8,7 @@ from lexicona import tts
 from lexicona.deps import AppSettings, CurrentAuth
 
 router = APIRouter(prefix="/speech", tags=["speech"])
+SPEECH_RATES = (0.5, 0.75, 1, 1.25, 1.5)
 
 
 class SpeechIn(BaseModel):
@@ -39,7 +40,7 @@ class SpeechIn(BaseModel):
     @field_validator("rate", mode="before")
     @classmethod
     def valid_rate(cls, value: object) -> object:
-        if type(value) not in (int, float) or value not in (1, 0.75):
+        if type(value) not in (int, float) or value not in SPEECH_RATES:
             raise ValueError("invalid rate")
         return value
 

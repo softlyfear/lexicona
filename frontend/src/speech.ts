@@ -1,15 +1,19 @@
 import { useSyncExternalStore } from 'react'
 import { api, ApiError, type ServerVoice } from './api'
 
+export const SPEECH_RATES = [0.5, 0.75, 1, 1.25, 1.5] as const
+export type SpeechRate = (typeof SPEECH_RATES)[number]
+export type SpeechEngine = 'auto' | 'server' | 'browser'
 export type SpeechPreferences = {
   enLocale: string
   enVoiceURI: string | null
   ruVoiceURI: string | null
-  rate: 1 | 0.75
+  rate: SpeechRate
   autoPrompt: boolean
   speakEn: boolean
   speakRu: boolean
-  engine: 'auto' | 'server' | 'browser'
+  engineEn: SpeechEngine
+  engineRu: SpeechEngine
   serverEnUS: string | null
   serverEnGB: string | null
   serverRu: string | null
@@ -22,10 +26,17 @@ const defaults: SpeechPreferences = {
   autoPrompt: true,
   speakEn: true,
   speakRu: true,
-  engine: 'auto',
+  engineEn: 'auto',
+  engineRu: 'auto',
   serverEnUS: null,
   serverEnGB: null,
   serverRu: null,
+}
+function isSpeechRate(value: unknown): value is SpeechRate {
+  return typeof value === 'number' && (SPEECH_RATES as readonly number[]).includes(value)
+}
+function isSpeechEngine(value: unknown): value is SpeechEngine {
+  return value === 'auto' || value === 'server' || value === 'browser'
 }
 type Snapshot = {
   preferences: SpeechPreferences
@@ -69,6 +80,13 @@ const problem = (message: string) => notify({ status: message, notice: message }
 const synthesis = () =>
   typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null
 const primary = (lang: string) => lang.toLowerCase().split('-')[0]
+
+export function languageEngine(
+  lang: 'en' | 'ru',
+  preferences: SpeechPreferences = snapshot.preferences,
+) {
+  return lang === 'en' ? preferences.engineEn : preferences.engineRu
+}
 
 export function speechEnabled(
   lang: 'en' | 'ru',
@@ -193,14 +211,13 @@ export function setSpeechOwner(id: string | null) {
           !/^en(?:-[a-z0-9]+)*$/iu.test(p.enLocale) ||
           !(p.enVoiceURI === null || typeof p.enVoiceURI === 'string') ||
           !(p.ruVoiceURI === null || typeof p.ruVoiceURI === 'string') ||
-          !(p.rate === 1 || p.rate === 0.75) ||
+          !isSpeechRate(p.rate) ||
           typeof p.autoPrompt !== 'boolean' ||
           (p.speakEn !== undefined && typeof p.speakEn !== 'boolean') ||
           (p.speakRu !== undefined && typeof p.speakRu !== 'boolean') ||
-          (p.engine !== undefined &&
-            p.engine !== 'auto' &&
-            p.engine !== 'server' &&
-            p.engine !== 'browser') ||
+          (p.engine !== undefined && !isSpeechEngine(p.engine)) ||
+          (p.engineEn !== undefined && !isSpeechEngine(p.engineEn)) ||
+          (p.engineRu !== undefined && !isSpeechEngine(p.engineRu)) ||
           [p.serverEnUS, p.serverEnGB, p.serverRu].some(
             (value) => value !== undefined && value !== null && typeof value !== 'string',
           )
@@ -214,7 +231,16 @@ export function setSpeechOwner(id: string | null) {
           autoPrompt: p.autoPrompt,
           speakEn: typeof p.speakEn === 'boolean' ? p.speakEn : true,
           speakRu: typeof p.speakRu === 'boolean' ? p.speakRu : true,
-          engine: p.engine === 'browser' || p.engine === 'server' ? p.engine : 'auto',
+          engineEn: isSpeechEngine(p.engineEn)
+            ? p.engineEn
+            : isSpeechEngine(p.engine)
+              ? p.engine
+              : 'auto',
+          engineRu: isSpeechEngine(p.engineRu)
+            ? p.engineRu
+            : isSpeechEngine(p.engine)
+              ? p.engine
+              : 'auto',
           serverEnUS: typeof p.serverEnUS === 'string' ? p.serverEnUS : null,
           serverEnGB: typeof p.serverEnGB === 'string' ? p.serverEnGB : null,
           serverRu: typeof p.serverRu === 'string' ? p.serverRu : null,
@@ -289,7 +315,8 @@ export function updateSpeechPreferences(patch: Partial<SpeechPreferences>) {
 }
 export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boolean }) {
   if (!options?.force && !speechEnabled(lang)) return
-  if (audio && readyFingerprint && snapshot.preferences.engine !== 'browser') {
+  const choice = languageEngine(lang)
+  if (audio && readyFingerprint && choice !== 'browser') {
     const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences)
     const fingerprint = JSON.stringify([text, lang, voice?.id, snapshot.preferences.rate])
     if (fingerprint === readyFingerprint) {
@@ -302,20 +329,19 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
   }
   cancelSpeech()
   const token = generation
-  if (snapshot.preferences.engine !== 'browser') {
+  if (choice !== 'browser') {
     if (snapshot.serverState === 'loading') {
       problem('Загружаем серверные голоса. Попробуйте ещё раз.')
       return
     }
     if (
       snapshot.serverState === 'ready' &&
-      (snapshot.preferences.engine === 'server' ||
-        hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences))
+      (choice === 'server' || hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences))
     ) {
       speakServer(text, lang, token)
       return
     }
-    if (snapshot.preferences.engine === 'server') {
+    if (choice === 'server') {
       problem('Серверные голоса недоступны. Выберите браузерное озвучивание в настройках.')
       return
     }
@@ -330,7 +356,7 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
     if (timer) clearTimeout(timer)
     timer = null
     const exactLocale =
-      snapshot.preferences.engine === 'auto' &&
+      choice === 'auto' &&
       snapshot.serverState === 'ready' &&
       !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences)
     const locale = lang === 'ru' ? 'ru-RU' : snapshot.preferences.enLocale

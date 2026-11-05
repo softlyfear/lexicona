@@ -50,7 +50,7 @@ afterEach(() => {
 })
 
 function browserSpeak(text: string, lang: 'en' | 'ru') {
-  updateSpeechPreferences({ engine: 'browser' })
+  updateSpeechPreferences({ engineEn: 'browser', engineRu: 'browser' })
   speak(text, lang)
 }
 
@@ -99,7 +99,8 @@ describe('браузерная речь', () => {
       autoPrompt: false,
       speakEn: true,
       speakRu: true,
-      engine: 'auto',
+      engineEn: 'auto',
+      engineRu: 'auto',
       serverEnUS: null,
       serverEnGB: null,
       serverRu: null,
@@ -130,7 +131,7 @@ describe('браузерная речь', () => {
     voices = [voice('ru-RU', 'ru'), voice('en-US', 'en')]
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
-    act(() => updateSpeechPreferences({ engine: 'browser', speakRu: false }))
+    act(() => updateSpeechPreferences({ engineEn: 'browser', engineRu: 'browser', speakRu: false }))
     act(() => speak('кот', 'ru'))
     expect(engine.speak).not.toHaveBeenCalled()
     expect(result.current.status).toBe('')
@@ -139,6 +140,26 @@ describe('браузерная речь', () => {
     expect(current.text).toBe('кот')
     act(() => speak('hello', 'en'))
     expect(engine.speak).toHaveBeenCalledTimes(2)
+  })
+
+  it('старый общий источник применяется к обоим языкам', () => {
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-US',
+        enVoiceURI: null,
+        ruVoiceURI: null,
+        rate: 1,
+        autoPrompt: true,
+        engine: 'browser',
+      }),
+    )
+    setSpeechOwner('a')
+    const { result } = renderHook(() => useSpeech())
+    expect(result.current.preferences.engineEn).toBe('browser')
+    expect(result.current.preferences.engineRu).toBe('browser')
+    expect(result.current.storageError).toBe(false)
   })
 
   it('старые настройки без выбора языка озвучивают оба языка', () => {

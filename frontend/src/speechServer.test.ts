@@ -254,10 +254,57 @@ describe('серверная речь', () => {
     browser.getVoices = () => [{ ...australian, lang: 'en-US', voiceURI: 'us' }]
     act(() => speak('hello again', 'en'))
     expect(browser.speak).toHaveBeenCalledOnce()
-    act(() => updateSpeechPreferences({ engine: 'server' }))
+    act(() => updateSpeechPreferences({ engineEn: 'server' }))
     act(() => speak('hello', 'en'))
     expect(browser.speak).toHaveBeenCalledOnce()
     expect(synthesize).not.toHaveBeenCalled()
+    Reflect.deleteProperty(window, 'speechSynthesis')
+  })
+
+  it('оставляет английский на сервере, когда русский переключён на браузер', async () => {
+    const synthesize = vi.spyOn(api, 'synthesizeSpeech').mockResolvedValue(new Blob(['wav']))
+    const russian = {
+      lang: 'ru-RU',
+      voiceURI: 'browser-ru',
+      name: 'Browser RU',
+      default: true,
+      localService: true,
+    } as SpeechSynthesisVoice
+    let spoken: SpeechSynthesisUtterance | undefined
+    const browser = {
+      getVoices: () => [russian],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      cancel: vi.fn(),
+      speak: vi.fn((utterance: SpeechSynthesisUtterance) => {
+        spoken = utterance
+      }),
+    }
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: browser })
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string
+        voice: SpeechSynthesisVoice | null = null
+        lang = ''
+        rate = 1
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+    )
+    await owner()
+    act(() => updateSpeechPreferences({ engineEn: 'server', engineRu: 'browser', rate: 1.25 }))
+    await act(async () => {
+      speak('hello', 'en')
+      await Promise.resolve()
+    })
+    expect(synthesize).toHaveBeenCalledWith('hello', 'us', 1.25, expect.any(AbortSignal))
+    expect(browser.speak).not.toHaveBeenCalled()
+    act(() => speak('кот', 'ru'))
+    expect(synthesize).toHaveBeenCalledOnce()
+    expect(browser.speak).toHaveBeenCalledOnce()
+    expect(spoken).toMatchObject({ text: 'кот', rate: 1.25, lang: 'ru-RU' })
     Reflect.deleteProperty(window, 'speechSynthesis')
   })
 })
