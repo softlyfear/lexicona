@@ -377,6 +377,53 @@
   text-align: right;
 }
 
+.chart {
+  display: block;
+  width: min(100%, 26rem);
+  height: auto;
+  aspect-ratio: 360 / 180;
+  flex: none;
+}
+
+.dayTableWrap {
+  max-width: 22rem;
+  max-height: 11rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dayTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dayTable th,
+.dayTable td {
+  padding: 0.28rem 0.75rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dayTable th:first-child,
+.dayTable td:first-child {
+  text-align: left;
+}
+
+.dayTable th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.dayTable tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-raised) 65%, transparent);
+}
+
 @media (max-width: 560px) {
   .wordRow {
     flex-direction: column;

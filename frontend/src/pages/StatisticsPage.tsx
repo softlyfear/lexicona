@@ -77,8 +77,7 @@ export function StatisticsPage() {
               Первые попытки старых занятий неизвестны и не учитываются.
             </p>
           </section>
-          <section className={`${ui.card} ${css.stack}`} aria-labelledby="chart-title">
-            <h2 id="chart-title">Первые ответы по дням</h2>
+          <section className={`${ui.card} ${css.stack}`} aria-label="График">
             {stats.data.days.length === 0 || stats.data.days.every((day) => day.answers === 0) ? (
               <p>За этот период ответов нет.</p>
             ) : null}
@@ -91,7 +90,8 @@ export function StatisticsPage() {
 }
 
 function Chart({ days }: { days: { date: string; answers: number; correct: number }[] }) {
-  const max = Math.max(1, ...days.map((day) => day.answers))
+  const peak = days.reduce((highest, day) => Math.max(highest, day.answers), 0)
+  const max = Math.max(1, peak)
   const x = (i: number) => (days.length === 1 ? 195 : 45 + (i / (days.length - 1)) * 295)
   const y = (value: number) => 145 - (value / max) * 120
   const points = days.map((day, i) => `${x(i)},${y(day.answers)}`).join(' ')
@@ -106,10 +106,10 @@ function Chart({ days }: { days: { date: string; answers: number; correct: numbe
   return (
     <>
       <svg
+        className={css.chart}
         role="img"
         aria-label="График первых ответов по дням; подробные значения приведены в таблице ниже"
         viewBox="0 0 360 180"
-        width="100%"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -163,29 +163,30 @@ function Chart({ days }: { days: { date: string; answers: number; correct: numbe
         )}
       </svg>
       <p className={ui.muted}>
-        От {days[0].date} до {days[days.length - 1].date}; максимум за день:{' '}
-        {max === 1 && days.every((day) => day.answers === 0) ? 0 : max}.
+        От {days[0].date} до {days[days.length - 1].date}; максимум за день: {peak}.
       </p>
       <details>
         <summary>Таблица по дням</summary>
-        <table>
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>Ответы</th>
-              <th>Правильные</th>
-            </tr>
-          </thead>
-          <tbody>
-            {days.map((day) => (
-              <tr key={day.date}>
-                <td>{day.date}</td>
-                <td>{day.answers}</td>
-                <td>{day.correct}</td>
+        <div className={css.dayTableWrap}>
+          <table className={css.dayTable}>
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Ответы</th>
+                <th>Правильные</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {days.map((day) => (
+                <tr key={day.date}>
+                  <td>{day.date}</td>
+                  <td>{day.answers}</td>
+                  <td>{day.correct}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </details>
     </>
   )
