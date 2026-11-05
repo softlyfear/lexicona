@@ -163,3 +163,25 @@ it('при отключённой автоозвучке доступна руч
   await user.click(screen.getByRole('button', { name: 'Произнести RU «кот»' }))
   expect(speak).toHaveBeenCalledExactlyOnceWith('кот', 'ru')
 })
+
+it('не озвучивает русский вопрос и скрывает кнопку, если русский выключен', async () => {
+  localStorage.setItem(
+    'lexicona:speech:v1:a',
+    JSON.stringify({
+      version: 1,
+      enLocale: 'en-US',
+      enVoiceURI: null,
+      ruVoiceURI: null,
+      rate: 1,
+      autoPrompt: true,
+      speakEn: true,
+      speakRu: false,
+    }),
+  )
+  const user = userEvent.setup()
+  renderPage()
+  await user.click(screen.getByRole('button', { name: 'Начать' }))
+  expect(await screen.findByText('кот')).toBeInTheDocument()
+  expect(speak).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: 'Произнести RU «кот»' })).not.toBeInTheDocument()
+})

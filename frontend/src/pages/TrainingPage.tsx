@@ -15,7 +15,7 @@ import {
 } from '../api'
 import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
-import { cancelSpeech, speak, speechGeneration, useSpeech } from '../speech'
+import { cancelSpeech, speak, speechEnabled, speechGeneration, useSpeech } from '../speech'
 import { MatchingRun } from './MatchingRun'
 import { resumedResult } from './resume'
 import css from './pages.module.css'
@@ -147,8 +147,14 @@ export function TrainingPage() {
       onStart={(session, requestedSize) => {
         if (!active.current) return
         setStarted({ session, requestedSize })
-        if (preferences.autoPrompt && session.mode !== 'matching' && session.items[0])
-          speak(session.items[0].prompt, session.direction === 'ru_en' ? 'ru' : 'en')
+        const promptLanguage = session.direction === 'ru_en' ? 'ru' : 'en'
+        if (
+          preferences.autoPrompt &&
+          speechEnabled(promptLanguage, preferences) &&
+          session.mode !== 'matching' &&
+          session.items[0]
+        )
+          speak(session.items[0].prompt, promptLanguage)
       }}
     />
   )
@@ -531,8 +537,9 @@ export function Run({
     )
     const nextIndex = following < 0 ? session.items.length : following
     const nextItem = session.items[nextIndex]
-    if (preferences.autoPrompt && nextItem)
-      speak(nextItem.prompt, session.direction === 'ru_en' ? 'ru' : 'en')
+    const promptLanguage = session.direction === 'ru_en' ? 'ru' : 'en'
+    if (preferences.autoPrompt && speechEnabled(promptLanguage, preferences) && nextItem)
+      speak(nextItem.prompt, promptLanguage)
     locked.current = false
     action.reset()
     const snapshot = snapshots[nextIndex]

@@ -56,6 +56,12 @@ it('показывает установленные голоса по акцен
   expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).serverEnGB).toBe('gb')
   await user.selectOptions(screen.getByLabelText('Источник озвучивания'), 'browser')
   expect(screen.getByLabelText('Источник озвучивания')).toHaveValue('browser')
+  expect(screen.getByLabelText('Английский')).toBeChecked()
+  expect(screen.getByLabelText('Русский')).toBeChecked()
+  await user.click(screen.getByLabelText('Русский'))
+  expect(screen.getByLabelText('Русский')).not.toBeChecked()
+  expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).speakRu).toBe(false)
+  expect(screen.getByRole('button', { name: 'Проверить RU' })).toBeEnabled()
 })
 
 it('показывает браузерный en-AU и серверный RU для старых настроек', async () => {

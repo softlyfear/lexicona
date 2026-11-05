@@ -358,6 +358,7 @@ function SpeechSettings() {
                         ? 'Hello. This is an English voice test.'
                         : 'Проверка русского голоса.',
                       lang,
+                      { force: true },
                     )
                   }
                 >
@@ -424,6 +425,7 @@ function SpeechSettings() {
                       ? 'Hello. This is an English voice test.'
                       : 'Проверка русского голоса.',
                     lang,
+                    { force: true },
                   )
                 }
               >
@@ -447,6 +449,29 @@ function SpeechSettings() {
           <option value="0.75">Медленная</option>
         </select>
       </label>
+      <fieldset className={css.choices}>
+        <legend className={ui.label}>Какие языки озвучивать</legend>
+        <label className={css.choice}>
+          <input
+            type="checkbox"
+            checked={preferences.speakEn}
+            onChange={(event) => updateSpeechPreferences({ speakEn: event.target.checked })}
+          />
+          Английский
+        </label>
+        <label className={css.choice}>
+          <input
+            type="checkbox"
+            checked={preferences.speakRu}
+            onChange={(event) => updateSpeechPreferences({ speakRu: event.target.checked })}
+          />
+          Русский
+        </label>
+      </fieldset>
+      <p className={ui.muted}>
+        Снятый язык не озвучивается в словаре и на тренировке. Кнопка «Проверить» выше по-прежнему
+        произносит образец.
+      </p>
       <label className={css.choice}>
         <input
           type="checkbox"

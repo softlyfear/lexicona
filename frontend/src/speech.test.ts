@@ -97,6 +97,8 @@ describe('браузерная речь', () => {
       ruVoiceURI: null,
       rate: 0.75,
       autoPrompt: false,
+      speakEn: true,
+      speakRu: true,
       engine: 'auto',
       serverEnUS: null,
       serverEnGB: null,
@@ -122,6 +124,63 @@ describe('браузерная речь', () => {
     expect(result.current.status).toContain('не завершилось')
     act(() => browserSpeak('retry', 'en'))
     expect(engine.speak).toHaveBeenCalledTimes(2)
+  })
+
+  it('не озвучивает выключенный язык, пока проверка не запрошена явно', () => {
+    voices = [voice('ru-RU', 'ru'), voice('en-US', 'en')]
+    setSpeechOwner('a')
+    const { result } = renderHook(() => useSpeech())
+    act(() => updateSpeechPreferences({ engine: 'browser', speakRu: false }))
+    act(() => speak('кот', 'ru'))
+    expect(engine.speak).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('')
+    act(() => speak('кот', 'ru', { force: true }))
+    expect(engine.speak).toHaveBeenCalledOnce()
+    expect(current.text).toBe('кот')
+    act(() => speak('hello', 'en'))
+    expect(engine.speak).toHaveBeenCalledTimes(2)
+  })
+
+  it('старые настройки без выбора языка озвучивают оба языка', () => {
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-US',
+        enVoiceURI: null,
+        ruVoiceURI: null,
+        rate: 1,
+        autoPrompt: true,
+      }),
+    )
+    voices = [voice('ru-RU', 'ru')]
+    setSpeechOwner('a')
+    const { result } = renderHook(() => useSpeech())
+    expect(result.current.preferences.speakEn).toBe(true)
+    expect(result.current.preferences.speakRu).toBe(true)
+    expect(result.current.storageError).toBe(false)
+    act(() => browserSpeak('кот', 'ru'))
+    expect(engine.speak).toHaveBeenCalledOnce()
+  })
+
+  it('повреждённый флаг языка сбрасывает чтение настроек к значениям по умолчанию', () => {
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-US',
+        enVoiceURI: null,
+        ruVoiceURI: null,
+        rate: 1,
+        autoPrompt: true,
+        speakRu: 'no',
+      }),
+    )
+    setSpeechOwner('a')
+    const { result } = renderHook(() => useSpeech())
+    expect(result.current.storageError).toBe(true)
+    expect(result.current.preferences.speakEn).toBe(true)
+    expect(result.current.preferences.speakRu).toBe(true)
   })
 
   it('без подходящего языка или API сообщает ошибку и не запускает речь', () => {

@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cancelSpeech, speak, useSpeech } from '../speech'
+import { cancelSpeech, speak, speechEnabled, useSpeech } from '../speech'
 import ui from './ui.module.css'
 
 export function ProgressBar({ value }: { value: number }) {
@@ -24,11 +24,14 @@ export function SpeakButton({
   lang,
   ...props
 }: { text: string; lang: 'en-US' | 'ru-RU' } & ComponentProps<'button'>) {
+  const code = lang === 'en-US' ? 'en' : 'ru'
+  const { preferences } = useSpeech()
+  if (!speechEnabled(code, preferences)) return null
   return (
     <button
       type="button"
       className={ui.ghost}
-      onClick={() => speak(text, lang === 'en-US' ? 'en' : 'ru')}
+      onClick={() => speak(text, code)}
       aria-label={`Произнести ${lang === 'en-US' ? 'EN' : 'RU'} «${text}»`}
       {...props}
     >

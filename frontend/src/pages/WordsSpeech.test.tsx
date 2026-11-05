@@ -63,8 +63,36 @@ beforeEach(() => {
 })
 afterEach(() => {
   setSpeechOwner(null)
+  localStorage.clear()
   vi.unstubAllGlobals()
   Reflect.deleteProperty(window, 'speechSynthesis')
+})
+
+it('скрывает русскую кнопку, если русский выключен', async () => {
+  localStorage.setItem(
+    'lexicona:speech:v1:a',
+    JSON.stringify({
+      version: 1,
+      enLocale: 'en-US',
+      enVoiceURI: null,
+      ruVoiceURI: null,
+      rate: 1,
+      autoPrompt: true,
+      speakEn: true,
+      speakRu: false,
+    }),
+  )
+  setSpeechOwner('a')
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <WordsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByRole('button', { name: 'Произнести EN «cat»' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Произнести RU «кот»' })).not.toBeInTheDocument()
 })
 
 it.each(['Добавить слово', 'Изменить «cat»'])('%s отменяет текущую речь', async (action) => {
