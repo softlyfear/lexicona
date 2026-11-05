@@ -5,7 +5,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona import dictionary
+from lexicona import dictionary, distractors
 from lexicona.db import Database
 from lexicona.models import TrainingItem, TrainingSession, Word
 from lexicona.normalize import normalize
@@ -45,7 +45,7 @@ async def correct_option(app: FastAPI, item_id: str) -> int:
 async def test_without_builtin_pool_needs_six_distinct_words(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     for en, ru in ANIMALS[:5]:
         await add_word(alice, en, ru)
     response = await alice.post("/api/training/sessions", json={})
@@ -68,7 +68,7 @@ async def test_session_has_six_unique_options_and_hides_answer(alice: Client) ->
 async def test_every_translation_is_shown_in_both_directions(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     await add_word(alice, "damage", "вред", "ущерб", "нанести ущерб")
     await seed(alice)
     gloss = "вред, ущерб, нанести ущерб"
@@ -95,9 +95,9 @@ async def test_same_visible_gloss_is_not_offered_twice(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        dictionary,
+        distractors,
         "choice_candidates",
-        lambda path: [
+        lambda: [
             dictionary.ChoiceEntry(
                 entry_id=1,
                 headword="harm",
@@ -115,7 +115,7 @@ async def test_same_visible_gloss_is_not_offered_twice(
 
 
 async def test_ru_en_direction(alice: Client, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     await seed(alice)
     session = await start(alice, direction="ru_en")
     english = {en for en, _ in ANIMALS}
@@ -333,7 +333,7 @@ async def test_legacy_four_option_snapshot(
 async def test_ambiguous_pool_creates_no_partial_session(
     app: FastAPI, alice: Client, direction: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     for en, ru in ANIMALS:
         await add_word(alice, en, ru, "общее")
     response = await alice.post("/api/training/sessions", json={"direction": direction})

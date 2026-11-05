@@ -17,6 +17,7 @@ vi.mock('../api', async (original) => {
       updateWord: vi.fn(),
       deleteWord: vi.fn(),
       setWordTraining: vi.fn(),
+      setWordLearned: vi.fn(),
     },
   }
 })
@@ -27,6 +28,7 @@ const word = (id: string, headword: string): Word => ({
   translations: ['перевод'],
   progress: 10,
   is_excluded: false,
+  is_learned: false,
   transcription: null,
   example_en: null,
   example_ru: null,
@@ -48,13 +50,13 @@ function Navigation() {
   )
 }
 
-function renderPage(url = '/') {
+function renderPage(url = '/', userId = 'alice') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
         <Navigation />
-        <WordsPage />
+        <WordsPage userId={userId} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -66,6 +68,7 @@ function params() {
 
 describe('сортировка словаря', () => {
   beforeEach(() => {
+    localStorage.clear()
     vi.resetAllMocks()
     vi.mocked(api.listTags).mockResolvedValue([])
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
@@ -126,6 +129,85 @@ describe('сортировка словаря', () => {
     await user.click(screen.getByRole('button', { name: 'Вперёд' }))
     expect(input).toHaveValue('cats')
     expect(params().get('sort')).toBe('progress_asc')
+  })
+
+  it('сохраняет сортировку, обучение и теги этого аккаунта после выхода', async () => {
+    vi.mocked(api.listTags).mockResolvedValue([
+      { id: 'home', name: 'Дом' },
+      { id: 'work', name: 'Работа' },
+    ])
+    const user = userEvent.setup()
+    const first = renderPage('/?q=cat')
+    await screen.findByText('cat')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'progress_desc')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'excluded')
+    await user.click(await screen.findByRole('checkbox', { name: 'Дом' }))
+    expect(params().get('q')).toBe('cat')
+    first.unmount()
+
+    const restored = renderPage('/')
+    expect(screen.getByRole('searchbox', { name: 'Поиск' })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('progress_desc')
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('excluded')
+    expect(await screen.findByRole('checkbox', { name: 'Дом' })).toBeChecked()
+    await waitFor(() => expect(params().get('sort')).toBe('progress_desc'))
+    expect(params().get('training')).toBe('excluded')
+    expect(params().getAll('tag_id')).toEqual(['home'])
+    expect(params().has('q')).toBe(false)
+    expect(JSON.parse(localStorage.getItem('lexicona:words:v1:alice')!).tagIds).toEqual(['home'])
+    restored.unmount()
+
+    renderPage('/', 'bob')
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('created_desc')
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('active')
+    expect(await screen.findByRole('checkbox', { name: 'Дом' })).not.toBeChecked()
+  })
+
+  it('испорченное сохранение фильтров не подменяет адрес', async () => {
+    localStorage.setItem('lexicona:words:v1:alice', '{broken')
+    renderPage('/?q=cat')
+    expect(await screen.findByText('cat')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('created_desc')
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('active')
+    expect(params().toString()).toBe('q=cat')
+  })
+
+  it('выбор значений по умолчанию не возвращает прежнее сохранение', async () => {
+    localStorage.setItem(
+      'lexicona:words:v1:alice',
+      JSON.stringify({
+        version: 1,
+        sort: 'progress_desc',
+        training: 'excluded',
+        tagIds: ['home'],
+      }),
+    )
+    vi.mocked(api.listTags).mockResolvedValue([{ id: 'home', name: 'Дом' }])
+    const user = userEvent.setup()
+    const first = renderPage('/')
+    expect(await screen.findByRole('checkbox', { name: 'Дом' })).toBeChecked()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'created_desc')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'active')
+    await user.click(screen.getByRole('button', { name: 'Снять фильтр тегов' }))
+    await waitFor(() => expect(params().toString()).toBe(''))
+    first.unmount()
+
+    renderPage('/')
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('created_desc')
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('active')
+    expect(await screen.findByRole('checkbox', { name: 'Дом' })).not.toBeChecked()
+    expect(params().toString()).toBe('')
+  })
+
+  it('шаг назад показывает прежний вид и запоминает его', async () => {
+    const user = userEvent.setup()
+    renderPage('/')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'progress_desc')
+    await waitFor(() => expect(params().get('sort')).toBe('progress_desc'))
+    await user.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('created_desc')
+    await waitFor(() => expect(params().has('sort')).toBe(false))
+    expect(JSON.parse(localStorage.getItem('lexicona:words:v1:alice')!).sort).toBe('created_desc')
   })
 
   it('при неизвестной сортировке использует безопасный default и позволяет выбрать все шесть', async () => {
@@ -230,6 +312,62 @@ describe('сортировка словаря', () => {
     expect(filter).toHaveValue('all')
     await user.selectOptions(filter, 'active')
     expect(params().has('training')).toBe(false)
+  })
+
+  it('показывает и запоминает слова, отмеченные как выученные', async () => {
+    vi.mocked(api.listWords).mockResolvedValue([])
+    const user = userEvent.setup()
+    const first = renderPage('/')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'learned')
+    expect(await screen.findByText('Нет выученных слов.')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(api.listWords).toHaveBeenCalledWith('', 'created_desc', 'learned', []),
+    )
+    expect(params().get('training')).toBe('learned')
+    first.unmount()
+
+    renderPage('/')
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('learned')
+  })
+
+  it('игнорирует неизвестный фильтр обучения в сохранении', async () => {
+    localStorage.setItem(
+      'lexicona:words:v1:alice',
+      JSON.stringify({ version: 1, sort: 'created_desc', training: 'mastered', tagIds: [] }),
+    )
+    renderPage('/')
+    expect(await screen.findByText('cat')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('active')
+    expect(params().has('training')).toBe(false)
+  })
+
+  it('отмечает слово выученным при любом прогрессе и снимает отметку', async () => {
+    let learned = false
+    vi.mocked(api.listWords).mockImplementation(async () => [
+      { ...word('1', 'cat'), progress: 36, is_learned: learned },
+    ])
+    vi.mocked(api.setWordLearned).mockImplementation(async (_id, isLearned) => {
+      learned = isLearned
+      return { ...word('1', 'cat'), progress: 36, is_learned: isLearned }
+    })
+    const user = userEvent.setup()
+    renderPage('/')
+    await screen.findByText('cat')
+    expect(screen.getByText('36%')).toBeInTheDocument()
+    const mark = screen.getByRole('button', { name: 'Отметить «cat» как выученное' })
+    expect(mark).toHaveAttribute('aria-pressed', 'false')
+    expect(mark).toHaveTextContent('Выучено')
+    await user.click(mark)
+    const clear = await screen.findByRole('button', { name: 'Снять отметку «выучено» с «cat»' })
+    expect(clear).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('36%')).toBeInTheDocument()
+    expect(api.setWordLearned).toHaveBeenCalledWith('1', true)
+    await user.click(clear)
+    expect(
+      await screen.findByRole('button', { name: 'Отметить «cat» как выученное' }),
+    ).toHaveAttribute('aria-pressed', 'false')
+    expect(api.setWordLearned).toHaveBeenLastCalledWith('1', false)
+    expect(screen.getByText('36%')).toBeInTheDocument()
   })
 
   it('исключает и возвращает слово без сброса прогресса; ошибка допускает повтор', async () => {

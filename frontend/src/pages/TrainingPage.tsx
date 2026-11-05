@@ -218,203 +218,232 @@ function Setup({
     <section className={css.stack}>
       <h1 className={css.title}>Тренировка</h1>
       <form className={`${ui.card} ${css.form}`} onSubmit={submit} noValidate>
-        <fieldset
-          className={css.choices}
-          disabled={start.isPending}
-          aria-describedby="training-purpose-hint"
-        >
-          <legend className={ui.label}>Тип занятия</legend>
-          <label className={css.choice}>
-            <input
-              type="radio"
-              name="purpose"
-              checked={purpose === 'free'}
-              onChange={() => {
-                start.reset()
-                setPurpose('free')
-              }}
-            />
-            Свободная практика
-          </label>
-          <label className={css.choice}>
-            <input
-              type="radio"
-              name="purpose"
-              checked={purpose === 'scheduled'}
-              onChange={() => {
-                start.reset()
-                setPurpose('scheduled')
-              }}
-            />
-            По расписанию
-          </label>
-          {purpose === 'scheduled' && (
+        <div className={css.group}>
+          <h2 className={css.sectionTitle} id="training-purpose-title">
+            Тип занятия
+          </h2>
+          <fieldset
+            className={css.choices}
+            disabled={start.isPending}
+            aria-labelledby="training-purpose-title"
+            aria-describedby="training-purpose-hint"
+          >
             <label className={css.choice}>
               <input
-                type="checkbox"
-                checked={includeNew}
-                onChange={(event) => {
-                  start.reset()
-                  setIncludeNew(event.target.checked)
-                }}
-              />
-              Включать новые слова
-            </label>
-          )}
-          <p id="training-purpose-hint" className={ui.muted}>
-            {purpose === 'scheduled'
-              ? 'Сначала — слова с наступившим сроком повторения, затем — до 10 новых слов.'
-              : 'Свободная практика не меняет расписание повторений.'}
-          </p>
-        </fieldset>
-        <fieldset className={css.choices} disabled={start.isPending}>
-          <legend className={ui.label}>Режим</legend>
-          {MODES.map((d) => (
-            <label key={`${d.mode}-${d.direction}`} className={css.choice}>
-              <input
                 type="radio"
-                name="direction"
-                checked={mode === d.mode && direction === d.direction}
+                name="purpose"
+                checked={purpose === 'free'}
                 onChange={() => {
                   start.reset()
-                  setMode(d.mode)
-                  setDirection(d.direction)
+                  setPurpose('free')
                 }}
               />
-              {d.label}
+              Свободная практика
             </label>
-          ))}
-        </fieldset>
-        <fieldset className={css.choices} disabled={start.isPending}>
-          <legend className={ui.label}>Слов в занятии</legend>
-          <label className={css.choice}>
-            <input
-              type="radio"
-              name="size-mode"
-              checked={sizeMode === 'all'}
-              onChange={() => setSizeMode('all')}
-            />
-            Все подходящие слова
-          </label>
-          <label className={css.choice}>
-            <input
-              type="radio"
-              name="size-mode"
-              checked={sizeMode === 'number'}
-              onChange={() => setSizeMode('number')}
-            />
-            Заданное число слов
-          </label>
-          <div className={css.actions}>
-            {SIZES.map((n) => (
-              <button
-                key={n}
-                type="button"
-                disabled={sizeMode === 'all'}
-                className={
-                  sizeMode === 'number' && validSize && n === size ? ui.primary : ui.button
-                }
-                aria-pressed={sizeMode === 'number' && validSize && n === size}
-                onClick={() => setSizeText(String(n))}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <label className={`${ui.field} ${css.trainingSize}`}>
-            <span className={ui.label}>Своё число слов</span>
-            <input
-              className={ui.input}
-              type="text"
-              inputMode="numeric"
-              value={sizeText}
-              disabled={sizeMode === 'all'}
-              onChange={(event) => setSizeText(event.target.value)}
-              aria-invalid={sizeMode === 'number' && !validSize}
-              aria-describedby="training-size-hint"
-            />
-          </label>
-          <p
-            id="training-size-hint"
-            className={sizeMode === 'all' || validSize ? ui.muted : ui.error}
-          >
-            Введите положительное целое число.
-          </p>
-        </fieldset>
-        <fieldset className={css.choices} disabled={start.isPending}>
-          <legend className={ui.label}>Фильтры слов</legend>
-          <p className={ui.muted}>Теги: любой выбранный</p>
-          {tags.isLoading && (
-            <p role="status" className={ui.muted}>
-              Загружаем теги…
-            </p>
-          )}
-          {tags.isError && (
-            <p role="alert" className={ui.error}>
-              {errorMessage(tags.error)} Не удалось загрузить теги; можно начать без них.
-            </p>
-          )}
-          <div className={css.tagList}>
-            {tags.data?.map((tag) => (
-              <label className={css.tag} key={tag.id}>
+            <label className={css.choice}>
+              <input
+                type="radio"
+                name="purpose"
+                checked={purpose === 'scheduled'}
+                onChange={() => {
+                  start.reset()
+                  setPurpose('scheduled')
+                }}
+              />
+              По расписанию
+            </label>
+            {purpose === 'scheduled' && (
+              <label className={css.choice}>
                 <input
                   type="checkbox"
-                  checked={tagIds.includes(tag.id)}
-                  disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
-                  onChange={(event) =>
-                    setTagIds((ids) =>
-                      event.target.checked ? [...ids, tag.id] : ids.filter((id) => id !== tag.id),
-                    )
-                  }
+                  checked={includeNew}
+                  onChange={(event) => {
+                    start.reset()
+                    setIncludeNew(event.target.checked)
+                  }}
                 />
-                {tag.name}
+                Включать новые слова
+              </label>
+            )}
+            <p id="training-purpose-hint" className={ui.muted}>
+              {purpose === 'scheduled'
+                ? 'Сначала — слова с наступившим сроком повторения, затем — до 10 новых слов.'
+                : 'Свободная практика не меняет расписание повторений.'}
+            </p>
+          </fieldset>
+        </div>
+        <div className={css.group}>
+          <h2 className={css.sectionTitle} id="training-mode-title">
+            Режим
+          </h2>
+          <fieldset
+            className={css.choices}
+            disabled={start.isPending}
+            aria-labelledby="training-mode-title"
+          >
+            {MODES.map((d) => (
+              <label key={`${d.mode}-${d.direction}`} className={css.choice}>
+                <input
+                  type="radio"
+                  name="direction"
+                  checked={mode === d.mode && direction === d.direction}
+                  onChange={() => {
+                    start.reset()
+                    setMode(d.mode)
+                    setDirection(d.direction)
+                  }}
+                />
+                {d.label}
               </label>
             ))}
-          </div>
-          <p className={ui.muted}>Можно указать диапазон выученности</p>
-          <div className={css.trainingBounds}>
-            <label className={ui.field}>
-              <span className={ui.label}>Прогресс от, %</span>
+          </fieldset>
+        </div>
+        <div className={css.group}>
+          <h2 className={css.sectionTitle} id="training-size-title">
+            Слов в занятии
+          </h2>
+          <fieldset
+            className={css.choices}
+            disabled={start.isPending}
+            aria-labelledby="training-size-title"
+          >
+            <label className={css.choice}>
+              <input
+                type="radio"
+                name="size-mode"
+                checked={sizeMode === 'all'}
+                onChange={() => setSizeMode('all')}
+              />
+              Все подходящие слова
+            </label>
+            <label className={css.choice}>
+              <input
+                type="radio"
+                name="size-mode"
+                checked={sizeMode === 'number'}
+                onChange={() => setSizeMode('number')}
+              />
+              Заданное число слов
+            </label>
+            <div className={css.actions}>
+              {SIZES.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  disabled={sizeMode === 'all'}
+                  className={
+                    sizeMode === 'number' && validSize && n === size ? ui.primary : ui.button
+                  }
+                  aria-pressed={sizeMode === 'number' && validSize && n === size}
+                  onClick={() => setSizeText(String(n))}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <label className={`${ui.field} ${css.trainingSize}`}>
+              <span className={ui.label}>Своё число слов</span>
               <input
                 className={ui.input}
                 type="text"
                 inputMode="numeric"
-                value={minimum}
-                onChange={(event) => setMinimum(event.target.value)}
-                aria-invalid={!validBounds}
-                aria-describedby="training-progress-hint"
+                value={sizeText}
+                disabled={sizeMode === 'all'}
+                onChange={(event) => setSizeText(event.target.value)}
+                aria-invalid={sizeMode === 'number' && !validSize}
+                aria-describedby="training-size-hint"
               />
             </label>
-            <label className={ui.field}>
-              <span className={ui.label}>Прогресс до, %</span>
-              <input
-                className={ui.input}
-                type="text"
-                inputMode="numeric"
-                value={maximum}
-                onChange={(event) => setMaximum(event.target.value)}
-                aria-invalid={!validBounds}
-                aria-describedby="training-progress-hint"
-              />
-            </label>
-          </div>
-          <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
-            {validBounds ? '' : 'Введите неотрицательные целые числа: от меньшего к большему.'}
-          </p>
-          <div>
-            <button
-              type="button"
-              className={ui.button}
-              onClick={() => {
-                setTagIds([])
-                setMinimum('')
-                setMaximum('')
-              }}
+            <p
+              id="training-size-hint"
+              className={sizeMode === 'all' || validSize ? ui.muted : ui.error}
             >
-              Очистить фильтры
-            </button>
-          </div>
-        </fieldset>
+              Введите положительное целое число.
+            </p>
+          </fieldset>
+        </div>
+        <div className={css.group}>
+          <h2 className={css.sectionTitle} id="training-filters-title">
+            Фильтры слов
+          </h2>
+          <fieldset
+            className={css.choices}
+            disabled={start.isPending}
+            aria-labelledby="training-filters-title"
+          >
+            <p className={ui.muted}>Теги: любой выбранный</p>
+            {tags.isLoading && (
+              <p role="status" className={ui.muted}>
+                Загружаем теги…
+              </p>
+            )}
+            {tags.isError && (
+              <p role="alert" className={ui.error}>
+                {errorMessage(tags.error)} Не удалось загрузить теги; можно начать без них.
+              </p>
+            )}
+            <div className={css.tagList}>
+              {tags.data?.map((tag) => (
+                <label className={css.tag} key={tag.id}>
+                  <input
+                    type="checkbox"
+                    checked={tagIds.includes(tag.id)}
+                    disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                    onChange={(event) =>
+                      setTagIds((ids) =>
+                        event.target.checked ? [...ids, tag.id] : ids.filter((id) => id !== tag.id),
+                      )
+                    }
+                  />
+                  {tag.name}
+                </label>
+              ))}
+            </div>
+            <p className={ui.muted}>Можно указать диапазон выученности</p>
+            <div className={css.trainingBounds}>
+              <label className={ui.field}>
+                <span className={ui.label}>Прогресс от, %</span>
+                <input
+                  className={ui.input}
+                  type="text"
+                  inputMode="numeric"
+                  value={minimum}
+                  onChange={(event) => setMinimum(event.target.value)}
+                  aria-invalid={!validBounds}
+                  aria-describedby="training-progress-hint"
+                />
+              </label>
+              <label className={ui.field}>
+                <span className={ui.label}>Прогресс до, %</span>
+                <input
+                  className={ui.input}
+                  type="text"
+                  inputMode="numeric"
+                  value={maximum}
+                  onChange={(event) => setMaximum(event.target.value)}
+                  aria-invalid={!validBounds}
+                  aria-describedby="training-progress-hint"
+                />
+              </label>
+            </div>
+            <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
+              {validBounds ? '' : 'Введите неотрицательные целые числа: от меньшего к большему.'}
+            </p>
+            <div>
+              <button
+                type="button"
+                className={ui.button}
+                onClick={() => {
+                  setTagIds([])
+                  setMinimum('')
+                  setMaximum('')
+                }}
+              >
+                Очистить фильтры
+              </button>
+            </div>
+          </fieldset>
+        </div>
         {purpose === 'free' && (
           <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
         )}
@@ -720,7 +749,7 @@ export function Run({
                 lang={answerLang}
               >
                 <span className={css.optionKey}>{i + 1}</span>
-                {option}
+                <span className={css.optionText}>{option}</span>
               </button>
             )
           })}

@@ -72,6 +72,8 @@ class Word(Base):
     note: Mapped[str | None] = mapped_column(Text)
     progress: Mapped[int] = mapped_column(default=0)
     is_excluded: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Explicit mark. Independent of progress and of exclusion from training.
+    is_learned: Mapped[bool] = mapped_column(default=False, server_default=false())
     training_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     # Bumped on every meaningful edit so stale training answers stop counting.
     content_version: Mapped[int] = mapped_column(default=1)

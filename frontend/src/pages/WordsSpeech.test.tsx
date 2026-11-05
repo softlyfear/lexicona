@@ -18,6 +18,7 @@ const word: Word = {
   translations: ['кот'],
   progress: 0,
   is_excluded: false,
+  is_learned: false,
   transcription: null,
   example_en: null,
   example_ru: null,
@@ -87,7 +88,7 @@ it('скрывает русскую кнопку, если русский вык
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <WordsPage />
+        <WordsPage userId="a" />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -103,7 +104,7 @@ it.each(['Добавить слово', 'Изменить «cat»'])('%s отм�
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <WordsPage />
+        <WordsPage userId="a" />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -127,7 +128,7 @@ it.each(['Добавить слово', 'Изменить «cat»'])('%s отм�
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <WordsPage />
+        <WordsPage userId="a" />
       </MemoryRouter>
     </QueryClientProvider>,
   )

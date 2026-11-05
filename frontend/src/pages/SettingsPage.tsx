@@ -1,9 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
-import { useRef, useState, type FormEvent } from 'react'
+import { useRef, useState } from 'react'
 import { ApiError, api, errorMessage, type Difficulty, type Session, type User } from '../api'
 import ui from '../components/ui.module.css'
 import { SpeechStatus } from '../components/ui'
-import { InstallSettings } from '../components/InstallSettings'
 import {
   hasServerLocale,
   languageEngine,
@@ -16,13 +15,7 @@ import {
   useSpeech,
   type SpeechRate,
 } from '../speech'
-import {
-  changePasswordSession,
-  forgetSession,
-  getSessionRevision,
-  isCurrentSession,
-  queryClient,
-} from '../session'
+import { forgetSession, getSessionRevision, isCurrentSession, queryClient } from '../session'
 import css from './pages.module.css'
 
 const LEVELS: { value: Difficulty; label: string; choice: number; typed: number }[] = [
@@ -36,12 +29,6 @@ const LEVELS: { value: Difficulty; label: string; choice: number; typed: number 
 type Result<T> = { data: T } | { error: unknown }
 
 export function SettingsPage({ user }: { user: User }) {
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmation, setConfirmation] = useState('')
-  const [validation, setValidation] = useState('')
-  const [passwordError, setPasswordError] = useState('')
-  const [success, setSuccess] = useState('')
   const [difficultyError, setDifficultyError] = useState('')
   const locked = useRef(false)
 
@@ -75,36 +62,7 @@ export function SettingsPage({ user }: { user: User }) {
     },
   })
 
-  const change = useMutation({
-    mutationFn: (revision: number) =>
-      changePasswordSession(revision, user.id, currentPassword, newPassword),
-    onSuccess: (result, revision) => {
-      if (result.kind === 'stale') return
-      if (result.kind === 'success') {
-        setCurrentPassword('')
-        setNewPassword('')
-        setConfirmation('')
-        setValidation('')
-        setSuccess('Пароль изменён. Остальные сеансы завершены.')
-        return
-      }
-      if (result.kind === 'uncertain') {
-        if (result.recovered)
-          setPasswordError(
-            'Не удалось подтвердить смену пароля. Проверьте пароль при следующем входе.',
-          )
-        return
-      }
-      if (!isCurrentSession(revision, user.id)) return
-      if (result.error instanceof ApiError && result.error.status === 401) forgetSession()
-      else setPasswordError(errorMessage(result.error))
-    },
-    onSettled: () => {
-      locked.current = false
-    },
-  })
-
-  const busy = update.isPending || change.isPending
+  const busy = update.isPending
   function updateDifficulty(difficulty: Difficulty) {
     if (locked.current) return
     locked.current = true
@@ -112,36 +70,9 @@ export function SettingsPage({ user }: { user: User }) {
     update.mutate({ difficulty, revision: getSessionRevision() })
   }
 
-  function submitPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (locked.current) return
-    setValidation('')
-    setPasswordError('')
-    setSuccess('')
-    const currentLength = [...currentPassword].length
-    const length = [...newPassword].length
-    if (currentLength < 1 || currentLength > 256) {
-      setValidation('Введите текущий пароль длиной от 1 до 256 символов.')
-      return
-    }
-    if (length < 12 || length > 128) {
-      setValidation('Новый пароль должен содержать от 12 до 128 символов.')
-      return
-    }
-    if (newPassword !== confirmation) {
-      setValidation('Пароли не совпадают.')
-      return
-    }
-    locked.current = true
-    change.mutate(getSessionRevision())
-  }
-
   return (
     <section className={css.stack}>
       <h1 className={css.title}>Настройки</h1>
-      <p>
-        Аккаунт: <strong>{user.login}</strong>
-      </p>
       <div className={`${ui.card} ${css.form}`}>
         <fieldset className={css.choices} disabled={busy}>
           <legend className={ui.label}>Сложность</legend>
@@ -171,57 +102,6 @@ export function SettingsPage({ user }: { user: User }) {
         )}
       </div>
       <SpeechSettings />
-      <InstallSettings />
-      <form className={`${ui.card} ${css.form}`} onSubmit={submitPassword} noValidate>
-        <h2>Смена пароля</h2>
-        <fieldset className={css.choices} disabled={busy}>
-          <label className={ui.field}>
-            <span className={ui.label}>Текущий пароль</span>
-            <input
-              className={ui.input}
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-            />
-          </label>
-          <label className={ui.field}>
-            <span className={ui.label}>Новый пароль</span>
-            <input
-              className={ui.input}
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              aria-describedby="password-hint"
-            />
-          </label>
-          <p id="password-hint" className={ui.muted}>
-            От 12 до 128 символов, включая пробелы.
-          </p>
-          <label className={ui.field}>
-            <span className={ui.label}>Повторите новый пароль</span>
-            <input
-              className={ui.input}
-              type="password"
-              autoComplete="new-password"
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-            />
-          </label>
-        </fieldset>
-        {(validation || passwordError) && (
-          <p className={ui.error} role="alert">
-            {validation || passwordError}
-          </p>
-        )}
-        {success && <p role="status">{success}</p>}
-        <div>
-          <button type="submit" className={ui.primary} disabled={busy}>
-            Сменить пароль
-          </button>
-        </div>
-      </form>
     </section>
   )
 }
@@ -240,14 +120,32 @@ function SpeechSettings() {
   ]
   const describe = (v: SpeechSynthesisVoice) =>
     `${v.name} (${v.lang}, ${v.localService ? 'локальный' : 'сетевой'})`
+  const englishVariant = (
+    <label className={css.setting}>
+      <span className={css.settingLabel}>Вариант английского</span>
+      <select
+        className={ui.input}
+        value={preferences.enLocale}
+        onChange={(e) => updateSpeechPreferences({ enLocale: e.target.value, enVoiceURI: null })}
+      >
+        {!locales.includes(preferences.enLocale) && (
+          <option value={preferences.enLocale}>{preferences.enLocale}</option>
+        )}
+        {locales.map((locale) => (
+          <option key={locale} value={locale}>
+            {locale === 'en-US'
+              ? 'Американский (en-US)'
+              : locale === 'en-GB'
+                ? 'Британский (en-GB)'
+                : locale}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
   return (
     <section className={`${ui.card} ${css.form}`} aria-labelledby="speech-heading">
       <h2 id="speech-heading">Озвучивание</h2>
-      <p className={ui.muted}>
-        Настройки действуют только для этого аккаунта в этом браузере. Серверные голоса работают на
-        сервере приложения. Браузерные голоса зависят от устройства; сетевой голос браузера может
-        передавать текст внешнему сервису.
-      </p>
       {serverState === 'loading' && <p role="status">Загружаем серверные голоса…</p>}
       {serverState === 'unavailable' &&
         (preferences.engineEn !== 'browser' || preferences.engineRu !== 'browser') && (
@@ -267,27 +165,6 @@ function SpeechSettings() {
           страницы.
         </p>
       )}
-      <label className={ui.field}>
-        <span className={ui.label}>Вариант английского</span>
-        <select
-          className={ui.input}
-          value={preferences.enLocale}
-          onChange={(e) => updateSpeechPreferences({ enLocale: e.target.value, enVoiceURI: null })}
-        >
-          {!locales.includes(preferences.enLocale) && (
-            <option value={preferences.enLocale}>{preferences.enLocale}</option>
-          )}
-          {locales.map((locale) => (
-            <option key={locale} value={locale}>
-              {locale === 'en-US'
-                ? 'Американский (en-US)'
-                : locale === 'en-GB'
-                  ? 'Британский (en-GB)'
-                  : locale}
-            </option>
-          ))}
-        </select>
-      </label>
       {(['en', 'ru'] as const).map((lang) => {
         const choice = languageEngine(lang, preferences)
         const useServer =
@@ -295,8 +172,8 @@ function SpeechSettings() {
           serverReady &&
           (choice === 'server' || hasServerLocale(serverVoices, lang, preferences))
         const source = (
-          <label className={ui.field}>
-            <span className={ui.label}>Источник {lang.toUpperCase()}</span>
+          <label className={css.setting}>
+            <span className={css.settingLabel}>Источник {lang.toUpperCase()}</span>
             <select
               className={ui.input}
               value={choice}
@@ -333,7 +210,8 @@ function SpeechSettings() {
         )
         if (choice === 'server' && !serverReady) {
           return (
-            <div key={lang} className={css.form}>
+            <div key={lang} className={css.group}>
+              {lang === 'en' && englishVariant}
               {source}
               <p className={ui.muted}>
                 {serverState === 'loading'
@@ -365,10 +243,11 @@ function SpeechSettings() {
           const describeServer = (voice: (typeof serverVoices)[number]) =>
             `${voice.name} (${voice.language}, ${genderLabel[voice.gender]})`
           return (
-            <div key={lang} className={css.form}>
+            <div key={lang} className={css.group}>
+              {lang === 'en' && englishVariant}
               {source}
-              <label className={ui.field}>
-                <span className={ui.label}>Голос {lang.toUpperCase()}</span>
+              <label className={css.setting}>
+                <span className={css.settingLabel}>Голос {lang.toUpperCase()}</span>
                 <select
                   className={ui.input}
                   value={uri ?? ''}
@@ -407,15 +286,16 @@ function SpeechSettings() {
         )
         const selected = selectVoice(available, lang, preferences)
         return (
-          <div key={lang} className={css.form}>
+          <div key={lang} className={css.group}>
+            {lang === 'en' && englishVariant}
             {source}
             {exactLocale && (
               <p className={ui.muted}>
                 Для этого языка нет серверного голоса. Используется голос браузера.
               </p>
             )}
-            <label className={ui.field}>
-              <span className={ui.label}>Голос {lang.toUpperCase()}</span>
+            <label className={css.setting}>
+              <span className={css.settingLabel}>Голос {lang.toUpperCase()}</span>
               <select
                 className={ui.input}
                 value={uri ?? ''}
@@ -450,56 +330,58 @@ function SpeechSettings() {
         )
       })}
       {voiceState === 'unavailable' && voices.length === 0 && <p>Голоса не найдены.</p>}
-      <label className={ui.field}>
-        <span className={ui.label}>Скорость</span>
-        <select
-          className={ui.input}
-          value={preferences.rate}
-          onChange={(event) => {
-            const rate = Number(event.target.value)
-            if ((SPEECH_RATES as readonly number[]).includes(rate))
-              updateSpeechPreferences({ rate: rate as SpeechRate })
-          }}
-        >
-          <option value="0.5">Очень медленная</option>
-          <option value="0.75">Медленная</option>
-          <option value="1">Обычная</option>
-          <option value="1.25">Быстрее</option>
-          <option value="1.5">Быстрая</option>
-        </select>
-      </label>
-      <fieldset className={css.choices}>
-        <legend className={ui.label}>Какие языки озвучивать</legend>
+      <div className={css.group}>
+        <label className={css.setting}>
+          <span className={css.settingLabel}>Скорость</span>
+          <select
+            className={ui.input}
+            value={preferences.rate}
+            onChange={(event) => {
+              const rate = Number(event.target.value)
+              if ((SPEECH_RATES as readonly number[]).includes(rate))
+                updateSpeechPreferences({ rate: rate as SpeechRate })
+            }}
+          >
+            <option value="0.5">Очень медленная</option>
+            <option value="0.75">Медленная</option>
+            <option value="1">Обычная</option>
+            <option value="1.25">Быстрее</option>
+            <option value="1.5">Быстрая</option>
+          </select>
+        </label>
+        <fieldset className={css.choices}>
+          <legend className={css.settingLabel}>Какие языки озвучивать</legend>
+          <label className={css.choice}>
+            <input
+              type="checkbox"
+              checked={preferences.speakEn}
+              onChange={(event) => updateSpeechPreferences({ speakEn: event.target.checked })}
+            />
+            Английский
+          </label>
+          <label className={css.choice}>
+            <input
+              type="checkbox"
+              checked={preferences.speakRu}
+              onChange={(event) => updateSpeechPreferences({ speakRu: event.target.checked })}
+            />
+            Русский
+          </label>
+        </fieldset>
+        <p className={ui.muted}>
+          Снятый язык не озвучивается в словаре и на тренировке. Кнопка «Проверить» выше по-прежнему
+          произносит образец.
+        </p>
         <label className={css.choice}>
           <input
             type="checkbox"
-            checked={preferences.speakEn}
-            onChange={(event) => updateSpeechPreferences({ speakEn: event.target.checked })}
-          />
-          Английский
+            checked={preferences.autoPrompt}
+            onChange={(e) => updateSpeechPreferences({ autoPrompt: e.target.checked })}
+          />{' '}
+          Автоматически озвучивать задание
         </label>
-        <label className={css.choice}>
-          <input
-            type="checkbox"
-            checked={preferences.speakRu}
-            onChange={(event) => updateSpeechPreferences({ speakRu: event.target.checked })}
-          />
-          Русский
-        </label>
-      </fieldset>
-      <p className={ui.muted}>
-        Снятый язык не озвучивается в словаре и на тренировке. Кнопка «Проверить» выше по-прежнему
-        произносит образец.
-      </p>
-      <label className={css.choice}>
-        <input
-          type="checkbox"
-          checked={preferences.autoPrompt}
-          onChange={(e) => updateSpeechPreferences({ autoPrompt: e.target.checked })}
-        />{' '}
-        Автоматически озвучивать задание
-      </label>
-      <SpeechStatus />
+        <SpeechStatus />
+      </div>
     </section>
   )
 }

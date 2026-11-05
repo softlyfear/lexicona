@@ -13,6 +13,7 @@ import {
   rememberSession,
   useSession,
 } from '../session'
+import { AccountPage } from './AccountPage'
 import { SettingsPage } from './SettingsPage'
 
 const initial: Session = {
@@ -27,10 +28,24 @@ function Settings() {
   return <SettingsPage user={session.data.user} />
 }
 
+function Account() {
+  const session = useSession()
+  if (!session.data) return <p>Вход</p>
+  return <AccountPage user={session.data.user} />
+}
+
 function renderSettings() {
   return render(
     <QueryClientProvider client={queryClient}>
       <Settings />
+    </QueryClientProvider>,
+  )
+}
+
+function renderAccount() {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Account />
     </QueryClientProvider>,
   )
 }
@@ -61,6 +76,7 @@ describe('профиль и смена пароля', () => {
           <Routes>
             <Route element={<Layout user={initial.user} />}>
               <Route index element={<p>Словарь</p>} />
+              <Route path="account" element={<Account />} />
               <Route path="settings" element={<Settings />} />
             </Route>
           </Routes>
@@ -68,9 +84,14 @@ describe('профиль и смена пароля', () => {
       </QueryClientProvider>,
     )
     const link = screen.getByRole('link', { name: 'alice' })
-    expect(link).toHaveAttribute('href', '/settings')
+    expect(link).toHaveAttribute('href', '/account')
     await user.click(link)
-    expect(screen.getByText('Аккаунт:')).toHaveTextContent('alice')
+    expect(screen.getByRole('heading', { name: 'Аккаунт' })).toBeInTheDocument()
+    expect(screen.getByText(/Логин:/)).toHaveTextContent('alice')
+    expect(screen.getByRole('heading', { name: 'Смена пароля' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Озвучивание' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'Настройки' }))
+    expect(screen.queryByRole('heading', { name: 'Смена пароля' })).not.toBeInTheDocument()
     for (const text of [
       'выбор ±10% · ввод +20%/−10%',
       'выбор ±7% · ввод +14%/−7%',
@@ -84,7 +105,7 @@ describe('профиль и смена пароля', () => {
   it('проверяет длину Unicode и подтверждение, не отправляя невалидные данные', async () => {
     const change = vi.spyOn(api, 'changePassword')
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', '😀'.repeat(11), '😀'.repeat(11))
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(screen.getByRole('alert')).toHaveTextContent('от 12 до 128 символов')
@@ -97,7 +118,7 @@ describe('профиль и смена пароля', () => {
     expect(change).not.toHaveBeenCalled()
   })
 
-  it('Enter отправляет Unicode без обрезки, блокирует сложность и обновляет CSRF', async () => {
+  it('Enter отправляет Unicode без обрезки, блокирует повтор и обновляет CSRF', async () => {
     let resolve!: (session: Session) => void
     const change = vi.spyOn(api, 'changePassword').mockReturnValue(
       new Promise((r) => {
@@ -107,7 +128,7 @@ describe('профиль и смена пароля', () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     const password = '😀'.repeat(12)
     fill(' old ', password, password)
     expect(screen.getByLabelText('Текущий пароль')).toHaveAttribute(
@@ -120,7 +141,6 @@ describe('профиль и смена пароля', () => {
     await user.keyboard('{Enter}')
     expect(change).toHaveBeenCalledWith(' old ', password)
     expect(screen.getByRole('button', { name: 'Сменить пароль' })).toBeDisabled()
-    expect(screen.getByLabelText(/Очень легко/)).toBeDisabled()
     await user.keyboard('{Enter}')
     expect(change).toHaveBeenCalledTimes(1)
     await act(async () => resolve(rotated))
@@ -139,7 +159,7 @@ describe('профиль и смена пароля', () => {
   it('неверный текущий пароль не разлогинивает и оставляет поля для исправления', async () => {
     vi.spyOn(api, 'changePassword').mockRejectedValue(new ApiError(400, 'invalid_current_password'))
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('bad', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Неверный текущий пароль')
@@ -147,21 +167,17 @@ describe('профиль и смена пароля', () => {
     expect(queryClient.getQueryData(['session'])).toEqual(initial)
   })
 
-  it('запрос сложности блокирует смену пароля и не перезаписывает другой аккаунт', async () => {
+  it('поздний ответ сложности не перезаписывает другой аккаунт', async () => {
     let resolve!: (value: Session['user']) => void
     vi.spyOn(api, 'updateSettings').mockReturnValue(
       new Promise((r) => {
         resolve = r
       }),
     )
-    const change = vi.spyOn(api, 'changePassword')
     const user = userEvent.setup()
     renderSettings()
-    fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByLabelText(/Очень легко/))
-    expect(screen.getByRole('button', { name: 'Сменить пароль' })).toBeDisabled()
-    expect(screen.getByLabelText('Текущий пароль')).toBeDisabled()
-    expect(change).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/Очень легко/)).toBeDisabled()
     const bob = { user: { ...initial.user, id: 'b', login: 'bob' }, csrf_token: 'bob' }
     vi.spyOn(api, 'login').mockResolvedValue(bob)
     await act(async () => {
@@ -174,7 +190,7 @@ describe('профиль и смена пароля', () => {
   it('401 смены пароля закрывает только текущую сессию', async () => {
     vi.spyOn(api, 'changePassword').mockRejectedValue(new ApiError(401, 'not_authenticated'))
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(await screen.findByText('Вход')).toBeInTheDocument()
@@ -185,7 +201,7 @@ describe('профиль и смена пароля', () => {
     const change = vi.spyOn(api, 'changePassword').mockRejectedValue(new TypeError('offline'))
     const me = vi.spyOn(api, 'me').mockResolvedValue(rotated)
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -203,7 +219,7 @@ describe('профиль и смена пароля', () => {
     vi.spyOn(api, 'changePassword').mockRejectedValue(new SyntaxError('bad JSON'))
     vi.spyOn(api, 'me').mockRejectedValue(new TypeError('offline'))
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     expect(await screen.findByText('Вход')).toBeInTheDocument()
@@ -222,7 +238,7 @@ describe('профиль и смена пароля', () => {
       }),
     )
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     await waitFor(() => expect(me).toHaveBeenCalledOnce())
@@ -253,7 +269,7 @@ describe('профиль и смена пароля', () => {
       }),
     )
     const user = userEvent.setup()
-    renderSettings()
+    renderAccount()
     fill('old', 'long password 1', 'long password 1')
     await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
     vi.spyOn(api, 'logoutWithCsrf').mockResolvedValue()

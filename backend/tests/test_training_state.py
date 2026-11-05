@@ -7,7 +7,7 @@ import pytest
 from alembic import command
 from fastapi import FastAPI
 
-from lexicona import dictionary
+from lexicona import distractors
 from lexicona.db import Database
 from lexicona.models import TrainingItem, Word
 from tests.conftest import Client, add_legacy_card_item, add_legacy_cloze_item, add_word
@@ -182,7 +182,7 @@ async def test_exclusion_invalidates_open_item_without_leaking(
 async def test_excluded_words_do_not_enter_choice_pool_or_distractors(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     for en, ru in [
         ("cat", "кот"),
         ("dog", "собака"),
@@ -205,7 +205,7 @@ async def test_excluded_words_do_not_enter_choice_pool_or_distractors(
 async def test_excluded_word_not_used_even_when_choice_has_enough_active(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
     excluded_id = ""
     for en, ru in [
         ("cat", "кот"),
@@ -358,6 +358,70 @@ def test_migration_preserves_children_and_safe_roundtrip(tmp_path: Path) -> None
         assert db.execute("SELECT progress FROM words").fetchone() == (101,)
         assert db.execute("SELECT count(*) FROM word_translations").fetchone() == (1,)
         assert db.execute("SELECT count(*) FROM training_items").fetchone() == (2,)
+
+
+async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_versions(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
+    low = await add_word(alice, "cat", "кот")
+    high = await add_word(alice, "dog", "собака")
+    plain = await add_word(alice, "fox", "лиса")
+    await set_progress(app, low["id"], 0)
+    await set_progress(app, high["id"], 158)
+    await set_state(alice, high["id"], True)
+    url = f"/api/words/{low['id']}/learned"
+    assert (await bob.patch(url, json={"is_learned": True})).status_code == 404
+    del alice.headers["X-CSRF-Token"]
+    assert (await alice.patch(url, json={"is_learned": True})).status_code == 403
+    alice.headers["X-CSRF-Token"] = alice.csrf
+    for invalid in [
+        {"is_learned": 1},
+        {"is_learned": "true"},
+        {},
+        {"is_learned": True, "extra": 1},
+    ]:
+        assert (await alice.patch(url, json=invalid)).status_code == 422
+    for word_id, progress in ((low["id"], 0), (high["id"], 158)):
+        for _ in range(2):
+            response = await alice.patch(f"/api/words/{word_id}/learned", json={"is_learned": True})
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "no-store"
+            assert response.json()["is_learned"] is True
+            assert response.json()["progress"] == progress
+    high_body = (await alice.get(f"/api/words/{high['id']}")).json()
+    assert high_body["is_excluded"] is True and high_body["is_learned"] is True
+    assert high_body["progress"] == 158
+    learned = (await alice.get("/api/words", params={"training": "learned"})).json()
+    assert {word["headword"]: word["progress"] for word in learned} == {"cat": 0, "dog": 158}
+    assert {word["headword"] for word in (await alice.get("/api/words")).json()} == {"cat", "fox"}
+    assert {
+        word["headword"]
+        for word in (await alice.get("/api/words", params={"training": "excluded"})).json()
+    } == {"dog"}
+    assert {
+        word["headword"]
+        for word in (await alice.get("/api/words", params={"training": "all"})).json()
+    } == {
+        "cat",
+        "dog",
+        "fox",
+    }
+    assert (await alice.get(f"/api/words/{plain['id']}")).json()["is_learned"] is False
+    cleared = await alice.patch(url, json={"is_learned": False})
+    assert cleared.json()["is_learned"] is False and cleared.json()["progress"] == 0
+    assert [
+        word["headword"]
+        for word in (await alice.get("/api/words", params={"training": "learned"})).json()
+    ] == ["dog"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        marked_low = await db.get(Word, low["id"])
+        marked_high = await db.get(Word, high["id"])
+        assert marked_low is not None and marked_high is not None
+        assert marked_low.progress == 0 and marked_low.is_learned is False
+        assert marked_low.training_version == 1 and marked_low.content_version == 1
+        assert marked_high.progress == 158 and marked_high.is_learned is True
+        assert marked_high.is_excluded is True and marked_high.training_version == 2
 
 
 @pytest.mark.parametrize("unsafe", ["excluded", "version", "item_version", "unavailable"])

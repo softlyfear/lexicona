@@ -38,6 +38,7 @@ const word: Word = {
   tags: [],
   progress: 5,
   is_excluded: false,
+  is_learned: false,
   created_at: '',
   updated_at: '',
 }

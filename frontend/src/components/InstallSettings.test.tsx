@@ -22,9 +22,9 @@ describe('установка приложения', () => {
     render(<InstallSettings />)
     const user = userEvent.setup()
     expect(screen.getByRole('region', { name: 'Установка' })).toHaveTextContent('Установка')
-    await user.click(screen.getByRole('button', { name: 'Установка' }))
+    await user.click(screen.getByRole('button', { name: 'Установить' }))
     expect(prompt).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установить' })).not.toBeInTheDocument()
   })
 
   it('без системного приглашения ничего не показывает и скрывает сбой диалога', async () => {
@@ -34,9 +34,9 @@ describe('установка приложения', () => {
       prompt: vi.fn().mockRejectedValue(new Error('failed')),
     })
     act(() => window.dispatchEvent(event))
-    await userEvent.click(screen.getByRole('button', { name: 'Установка' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Установить' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установить' })).not.toBeInTheDocument()
   })
 
   it('скрывает кнопку в standalone и после установки', () => {
@@ -50,9 +50,9 @@ describe('установка приложения', () => {
     })
     window.dispatchEvent(event)
     render(<InstallSettings />)
-    expect(screen.getByRole('button', { name: 'Установка' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Установить' })).toBeInTheDocument()
     act(() => window.dispatchEvent(new Event('appinstalled')))
-    expect(screen.queryByRole('button', { name: 'Установка' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Установить' })).not.toBeInTheDocument()
   })
 
   it('удаляет слушатели при завершении работы', () => {

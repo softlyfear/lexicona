@@ -130,6 +130,38 @@ def test_tags_upgrade_and_guarded_downgrade(tmp_path: Path) -> None:
     command.downgrade(config, "d90b58c2a113")
 
 
+def test_learned_mark_survives_upgrade_and_blocks_downgrade(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "learned.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "e65adf970121")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2026-01-01')"
+        )
+        db.execute(
+            "INSERT INTO words (id, owner_id, headword, normalized_headword, progress, "
+            "content_version, created_at, updated_at) "
+            "VALUES ('w', 'u', 'cat', 'cat', 37, 1, '2026-01-01', '2026-01-01')"
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT progress, is_learned FROM words").fetchone() == (37, 0)
+        db.execute("UPDATE words SET is_learned = 1")
+    with pytest.raises(RuntimeError, match="learned words"):
+        command.downgrade(config, "e65adf970121")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT progress, is_learned FROM words").fetchone() == (37, 1)
+        db.execute("UPDATE words SET is_learned = 0")
+    command.downgrade(config, "e65adf970121")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT progress FROM words").fetchone() == (37,)
+        columns = [row[1] for row in db.execute("PRAGMA table_info(words)")]
+        assert "is_learned" not in columns
+
+
 def test_source_refs_migration_refuses_data_loss(tmp_path: Path) -> None:
     import json
     import sqlite3

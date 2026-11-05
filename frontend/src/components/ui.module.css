@@ -50,8 +50,14 @@
 }
 
 .label {
-  color: var(--text-muted);
-  font-size: 0.875rem;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+legend.label {
+  padding: 0;
 }
 
 .input {

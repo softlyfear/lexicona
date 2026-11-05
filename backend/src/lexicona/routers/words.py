@@ -105,6 +105,7 @@ class WordOut(BaseModel):
     note: str | None
     progress: int
     is_excluded: bool
+    is_learned: bool
     created_at: datetime
     updated_at: datetime
 
@@ -122,6 +123,7 @@ class WordOut(BaseModel):
             note=word.note,
             progress=word.progress,
             is_excluded=word.is_excluded,
+            is_learned=word.is_learned,
             created_at=word.created_at,
             updated_at=word.updated_at,
         )
@@ -175,7 +177,7 @@ async def list_words(
     db: Db,
     q: Annotated[str, Query(max_length=200)] = "",
     sort: WordSort = "created_desc",
-    training: Literal["active", "excluded", "all"] = "active",
+    training: Literal["active", "excluded", "learned", "all"] = "active",
     tag_id: Annotated[
         list[Annotated[str, Query(min_length=1, max_length=32)]] | None, Query(max_length=20)
     ] = None,
@@ -201,7 +203,10 @@ async def list_words(
             )
             .exists()
         )
-    if training != "all":
+    # Learned is an explicit mark and does not depend on progress or exclusion.
+    if training == "learned":
+        query = query.where(Word.is_learned.is_(True))
+    elif training != "all":
         query = query.where(Word.is_excluded.is_(training == "excluded"))
     if needle := normalize(q):
         pattern = "%" + needle.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
@@ -264,6 +269,31 @@ async def set_training_state(
             Word.is_excluded.is_not(body.is_excluded),
         )
         .values(is_excluded=body.is_excluded, training_version=Word.training_version + 1)
+    )
+    await db.commit()
+    await db.refresh(word)
+    return await word_out(db, auth.user.id, word)
+
+
+class LearnedStateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_learned: StrictBool
+
+
+@router.patch("/{word_id}/learned")
+async def set_learned_state(
+    word_id: str, body: LearnedStateIn, auth: CurrentAuth, db: Db
+) -> WordOut:
+    # Reversible and independent of progress, meaning, and open training items.
+    word = await owned_word(db, auth.user.id, word_id)
+    await db.execute(
+        update(Word)
+        .where(
+            Word.id == word_id,
+            Word.owner_id == auth.user.id,
+            Word.is_learned.is_not(body.is_learned),
+        )
+        .values(is_learned=body.is_learned)
     )
     await db.commit()
     await db.refresh(word)

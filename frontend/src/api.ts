@@ -11,7 +11,7 @@ export type WordSort =
   | 'headword_desc'
   | 'progress_asc'
   | 'progress_desc'
-export type WordTrainingFilter = 'active' | 'excluded' | 'all'
+export type WordTrainingFilter = 'active' | 'excluded' | 'learned' | 'all'
 export type TrainingSize = number | 'all'
 export interface TrainingFilters {
   tag_ids?: string[]
@@ -98,6 +98,7 @@ export interface Word extends Omit<WordInput, 'tags'> {
   id: string
   progress: number
   is_excluded: boolean
+  is_learned: boolean
   created_at: string
   updated_at: string
   tags: Tag[]
@@ -357,6 +358,8 @@ export const api = {
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),
   setWordTraining: (id: string, isExcluded: boolean) =>
     request<Word>('PATCH', `/words/${id}/training`, { is_excluded: isExcluded }),
+  setWordLearned: (id: string, isLearned: boolean) =>
+    request<Word>('PATCH', `/words/${id}/learned`, { is_learned: isLearned }),
 
   startTraining: (
     direction: Direction,

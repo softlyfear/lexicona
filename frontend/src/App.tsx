@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { errorMessage } from './api'
 import { Layout } from './components/Layout'
 import ui from './components/ui.module.css'
+import { AccountPage } from './pages/AccountPage'
 import { LoginPage } from './pages/LoginPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { StatisticsPage } from './pages/StatisticsPage'
@@ -27,9 +28,10 @@ export function App() {
     <BrowserRouter key={user.id}>
       <Routes>
         <Route element={<Layout user={user} />}>
-          <Route index element={<WordsPage />} />
+          <Route index element={<WordsPage userId={user.id} />} />
           <Route path="training" element={<TrainingPage />} />
           <Route path="statistics" element={<StatisticsPage />} />
+          <Route path="account" element={<AccountPage user={user} />} />
           <Route path="settings" element={<SettingsPage user={user} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

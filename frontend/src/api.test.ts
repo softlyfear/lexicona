@@ -109,6 +109,20 @@ describe('api', () => {
     expect(init.body).toBe(JSON.stringify({ is_excluded: true }))
   })
 
+  it('marks a word learned with CSRF and a strict boolean body', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, { id: 'word', is_learned: true })
+    await api.setWordLearned('word', true)
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/words/word/learned')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers).toMatchObject({
+      'X-CSRF-Token': 'secret',
+      'Content-Type': 'application/json',
+    })
+    expect(init.body).toBe(JSON.stringify({ is_learned: true }))
+  })
+
   it('turns error responses into ApiError with the server detail', async () => {
     mockFetch(401, { detail: 'invalid_credentials' })
     const error = await api.login('a', 'b').catch((e: unknown) => e)

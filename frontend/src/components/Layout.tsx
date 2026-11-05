@@ -14,7 +14,11 @@ const LINKS = [
 ]
 
 export function Layout({ user }: { user: User }) {
-  const { pathname } = useLocation()
+  const location = useLocation()
+  const { pathname } = location
+  // Another section opens the dictionary at `/`. While it is already open, these links
+  // keep the current filters instead of dropping them.
+  const dictionaryTo = pathname === '/' ? `/${location.search}` : '/'
   const { notice } = useSpeech()
   useEffect(() => {
     setSpeechOwner(user.id)
@@ -32,14 +36,14 @@ export function Layout({ user }: { user: User }) {
     <>
       <header className={css.header}>
         <div className={css.bar}>
-          <NavLink to="/" className={css.brand}>
+          <NavLink to={dictionaryTo} className={css.brand}>
             Lexicona
           </NavLink>
           <nav className={css.nav} aria-label="Разделы">
             {LINKS.map(({ to, label }) => (
               <NavLink
                 key={to}
-                to={to}
+                to={to === '/' ? dictionaryTo : to}
                 end
                 className={({ isActive }) => (isActive ? css.active : css.link)}
               >
@@ -48,7 +52,7 @@ export function Layout({ user }: { user: User }) {
             ))}
           </nav>
           <div className={css.user}>
-            <NavLink to="/settings" className={css.link}>
+            <NavLink to="/account" className={({ isActive }) => (isActive ? css.active : css.link)}>
               {user.login}
             </NavLink>
             <button type="button" className={ui.ghost} onClick={() => void logoutSession()}>

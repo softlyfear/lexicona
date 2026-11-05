@@ -32,6 +32,7 @@ it('показывает установленные голоса по акцен
     </QueryClientProvider>,
   )
   const user = userEvent.setup()
+  expect(screen.queryByText(/в этом браузере/)).not.toBeInTheDocument()
   expect(screen.getByLabelText('Источник EN')).toHaveValue('auto')
   expect(screen.getByLabelText('Источник RU')).toHaveValue('auto')
   expect(screen.getByRole('button', { name: 'Остановить речь' })).toBeInTheDocument()

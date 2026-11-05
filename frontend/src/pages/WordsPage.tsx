@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   api,
@@ -13,6 +13,7 @@ import { WordForm } from '../components/WordForm'
 import { ProgressBar, SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
+import { readWordFilters, writeWordFilters } from '../wordFilters'
 import css from './pages.module.css'
 
 type Editing = { kind: 'new' } | { kind: 'edit'; word: Word } | null
@@ -28,22 +29,60 @@ const SORT_OPTIONS: { value: WordSort; label: string }[] = [
 const TRAINING_OPTIONS: { value: WordTrainingFilter; label: string }[] = [
   { value: 'active', label: 'В обучении' },
   { value: 'excluded', label: 'Исключённые' },
+  { value: 'learned', label: 'Выученные' },
   { value: 'all', label: 'Все слова' },
 ]
 
-export function WordsPage() {
+export function WordsPage({ userId }: { userId: string }) {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [stored, setStored] = useState(() => readWordFilters(userId))
+  const [settled, setSettled] = useState(false)
+  const [storedUserId, setStoredUserId] = useState(userId)
+  if (storedUserId !== userId) {
+    setStoredUserId(userId)
+    setStored(readWordFilters(userId))
+    setSettled(false)
+  }
   const search = searchParams.get('q') ?? ''
-  const requestedSort = searchParams.get('sort')
+  const specifiesSort = searchParams.has('sort')
+  const specifiesTraining = searchParams.has('training')
+  const specifiesTags = searchParams.has('tag_id')
+  const urlSort = SORT_OPTIONS.find((option) => option.value === searchParams.get('sort'))?.value
   const sort =
-    SORT_OPTIONS.find((option) => option.value === requestedSort)?.value ?? 'created_desc'
+    urlSort ?? (specifiesSort || settled ? 'created_desc' : (stored?.sort ?? 'created_desc'))
+  const urlTraining = TRAINING_OPTIONS.find(
+    (option) => option.value === searchParams.get('training'),
+  )?.value
   const training =
-    TRAINING_OPTIONS.find((option) => option.value === searchParams.get('training'))?.value ??
-    'active'
+    urlTraining ?? (specifiesTraining || settled ? 'active' : (stored?.training ?? 'active'))
   const query = useDeferredValue(search.trim())
-  const tagIds = [...new Set(searchParams.getAll('tag_id'))].sort()
+  const urlTagKey = [...new Set(searchParams.getAll('tag_id'))].sort().join('\0')
+  const tagIds = useMemo(() => {
+    if (specifiesTags || settled) return urlTagKey ? urlTagKey.split('\0') : []
+    return stored?.tagIds ?? []
+  }, [settled, specifiesTags, stored, urlTagKey])
   const [editing, setEditing] = useState<Editing>(null)
+  const urlReflectsFilters =
+    (specifiesSort || sort === 'created_desc') &&
+    (specifiesTraining || training === 'active') &&
+    (specifiesTags || tagIds.length === 0)
+  if (!settled && urlReflectsFilters) setSettled(true)
+
+  useEffect(() => {
+    writeWordFilters(userId, { sort, training, tagIds })
+    if (settled || urlReflectsFilters) return
+    setSearchParams(
+      (current) => {
+        const result = new URLSearchParams(current)
+        if (!current.has('sort') && sort !== 'created_desc') result.set('sort', sort)
+        if (!current.has('training') && training !== 'active') result.set('training', training)
+        if (!current.has('tag_id')) for (const id of tagIds) result.append('tag_id', id)
+        return result
+      },
+      { replace: true },
+    )
+  }, [setSearchParams, settled, sort, tagIds, training, urlReflectsFilters, userId])
 
   const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
   const words = useQuery({
@@ -72,6 +111,12 @@ export function WordsPage() {
   const trainingState = useMutation({
     mutationFn: ({ id, isExcluded }: { id: string; isExcluded: boolean }) =>
       api.setWordTraining(id, isExcluded),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['words'] }),
+  })
+
+  const learnedState = useMutation({
+    mutationFn: ({ id, isLearned }: { id: string; isLearned: boolean }) =>
+      api.setWordLearned(id, isLearned),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['words'] }),
   })
 
@@ -231,6 +276,11 @@ export function WordsPage() {
           {errorMessage(trainingState.error)} Повторите действие.
         </p>
       )}
+      {learnedState.isError && (
+        <p className={ui.error} role="alert">
+          {errorMessage(learnedState.error)} Повторите действие.
+        </p>
+      )}
       {words.isError && (
         <p className={ui.error} role="alert">
           {errorMessage(words.error)}
@@ -247,9 +297,11 @@ export function WordsPage() {
             ? 'Ничего не найдено.'
             : training === 'excluded'
               ? 'Нет исключённых слов.'
-              : training === 'active'
-                ? 'Нет слов в обучении. Добавьте слово или верните исключённые.'
-                : 'Словарь пуст. Добавьте первые слова.'}
+              : training === 'learned'
+                ? 'Нет выученных слов.'
+                : training === 'active'
+                  ? 'Нет слов в обучении. Добавьте слово или верните исключённые.'
+                  : 'Словарь пуст. Добавьте первые слова.'}
         </p>
       )}
 
@@ -289,7 +341,24 @@ export function WordsPage() {
             </div>
             <div className={css.wordSide}>
               <span className={css.percent}>{word.progress}%</span>
-              <ProgressBar value={word.progress} />
+              <div className={css.meter}>
+                <ProgressBar value={word.progress} />
+              </div>
+              <button
+                type="button"
+                className={css.learned}
+                disabled={learnedState.isPending && learnedState.variables?.id === word.id}
+                aria-pressed={word.is_learned}
+                aria-label={
+                  word.is_learned
+                    ? `Снять отметку «выучено» с «${word.headword}»`
+                    : `Отметить «${word.headword}» как выученное`
+                }
+                title={word.is_learned ? 'Снять отметку «выучено»' : 'Отметить как выученное'}
+                onClick={() => learnedState.mutate({ id: word.id, isLearned: !word.is_learned })}
+              >
+                {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : 'Выучено'}
+              </button>
               <div className={css.rowActions}>
                 <button
                   type="button"

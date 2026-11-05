@@ -1,6 +1,4 @@
-import asyncio
 import random
-import sqlite3
 from typing import Annotated, Any, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
@@ -16,9 +14,9 @@ from pydantic import (
 from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
-from lexicona import dictionary, progress, srs
+from lexicona import dictionary, distractors, progress, srs
 from lexicona.db import utcnow
-from lexicona.deps import AppSettings, CurrentAuth, Db
+from lexicona.deps import CurrentAuth, Db
 from lexicona.models import (
     AnswerEvent,
     Tag,
@@ -184,8 +182,7 @@ def _meanings(word: ChoiceCandidate) -> set[str]:
 def _answer_side(word: ChoiceCandidate, direction: str) -> tuple[str, str]:
     """Answer label and the key that keeps two options from looking the same.
 
-    A user's word shows every translation together. Built-in distractors stay
-    one sense: a dictionary entry can contain far more than the ten the user stores.
+    A user's word shows every translation together. A filler keeps one ordinary sense.
     """
     if direction == "en_ru":
         if isinstance(word, Word):
@@ -235,17 +232,8 @@ def _build_item(
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
-async def create_session(
-    body: SessionIn, auth: CurrentAuth, db: Db, settings: AppSettings
-) -> SessionOut:
-    builtin_pool: list[dictionary.ChoiceEntry] = []
-    if body.mode == "choice":
-        try:
-            builtin_pool = await asyncio.to_thread(
-                dictionary.choice_candidates, settings.dictionary_path
-            )
-        except OSError, sqlite3.Error, ValueError, TypeError, KeyError:
-            builtin_pool = []
+async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
+    builtin_pool = distractors.choice_candidates() if body.mode == "choice" else []
     tag_ids = set(body.tag_ids)
     if tag_ids:
         owned = (
