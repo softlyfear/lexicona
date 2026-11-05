@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
+import importlib.resources
 import io
+import json
 import threading
 import time
 import urllib.request
@@ -252,6 +254,51 @@ async def test_cancelled_request_keeps_slot_until_child_exits(
         await asyncio.sleep(0.01)
     else:
         pytest.fail("slot was not released")
+
+
+def test_catalog_matches_pinned_manifest() -> None:
+    manifest = json.loads(
+        importlib.resources.files("lexicona").joinpath("tts_manifest.json").read_text("utf-8")
+    )
+    assert manifest["revision"] == tts.REVISION
+    assert list(manifest["voices"]) == list(tts.VOICES)
+    added = {
+        "en_US-amy-medium": ("Amy", "en-US", "female"),
+        "en_US-bryce-medium": ("Bryce", "en-US", "male"),
+        "en_US-hfc_female-medium": ("HFC Female", "en-US", "female"),
+        "en_US-hfc_male-medium": ("HFC Male", "en-US", "male"),
+        "en_US-john-medium": ("John", "en-US", "male"),
+        "en_US-kusal-medium": ("Kusal", "en-US", "male"),
+        "en_US-ljspeech-medium": ("LJ Speech", "en-US", "female"),
+        "en_US-norman-medium": ("Norman", "en-US", "male"),
+        "en_US-reza_ibrahim-medium": ("Reza Ibrahim", "en-US", "male"),
+        "en_US-sam-medium": ("Sam", "en-US", "nonbinary"),
+        "en_GB-cori-medium": ("Cori", "en-GB", "female"),
+        "ru_RU-irina-medium": ("Irina", "ru-RU", "female"),
+        "ru_RU-ruslan-medium": ("Ruslan", "ru-RU", "male"),
+    }
+    assert len(tts.VOICES) == 23
+    for voice_id, meta in added.items():
+        assert tts.VOICES[voice_id] == meta
+    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-US") == (
+        "en_US-lessac-medium"
+    )
+    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-GB") == (
+        "en_GB-alba-medium"
+    )
+    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "ru-RU") == (
+        "ru_RU-denis-medium"
+    )
+    for voice_id, files in manifest["voices"].items():
+        language, _name, quality = voice_id.split("-")
+        assert quality == "medium" and language in {"en_US", "en_GB", "ru_RU"}
+        assert tts.VOICES[voice_id][2] in {"female", "male", "nonbinary"}
+        assert [item["file"] for item in files] == [
+            f"{voice_id}.onnx",
+            f"{voice_id}.onnx.json",
+            "MODEL_CARD",
+        ]
+        assert all(len(item["sha256"]) == 64 for item in files)
 
 
 def test_download_reuses_hash_and_rejects_bad_data(

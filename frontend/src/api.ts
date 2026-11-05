@@ -229,7 +229,7 @@ export interface ServerVoice {
   id: string
   name: string
   language: 'en-US' | 'en-GB' | 'ru-RU'
-  gender: 'female' | 'male'
+  gender: 'female' | 'male' | 'nonbinary'
 }
 
 // Kept in memory only: never persisted to browser storage.

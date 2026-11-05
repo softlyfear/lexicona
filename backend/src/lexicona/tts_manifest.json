@@ -1,6 +1,34 @@
 {
   "revision": "e7229f7d33a10e145e109b886d661984201ac3c4",
   "voices": {
+    "en_US-lessac-medium": [
+      {
+        "file": "en_US-lessac-medium.onnx",
+        "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+      },
+      {
+        "file": "en_US-lessac-medium.onnx.json",
+        "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "ce49eb457742208166d399a40cdec2c7fa9db77960930031564ab56f12882645"
+      }
+    ],
+    "en_US-kristin-medium": [
+      {
+        "file": "en_US-kristin-medium.onnx",
+        "sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+      },
+      {
+        "file": "en_US-kristin-medium.onnx.json",
+        "sha256": "5681426d4aead22195de70531eeeeddb46493cfaffc5764b2ea3db73428b651c"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "8c181b1d5f7d8152b914faab941fcbe6b8f0495e63e5189d6f27b8c68c8393fc"
+      }
+    ],
     "en_US-ryan-medium": [
       {
         "file": "en_US-ryan-medium.onnx",
@@ -29,32 +57,144 @@
         "sha256": "d2caa63aca0fccb155105e959e393e5c0c0f03a1f388ef5ba217b83ef860c760"
       }
     ],
-    "en_US-lessac-medium": [
+    "en_US-amy-medium": [
       {
-        "file": "en_US-lessac-medium.onnx",
-        "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+        "file": "en_US-amy-medium.onnx",
+        "sha256": "b3a6e47b57b8c7fbe6a0ce2518161a50f59a9cdd8a50835c02cb02bdd6206c18"
       },
       {
-        "file": "en_US-lessac-medium.onnx.json",
-        "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+        "file": "en_US-amy-medium.onnx.json",
+        "sha256": "95a23eb4d42909d38df73bb9ac7f45f597dbfcde2d1bf9526fdeaf5466977d77"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "ce49eb457742208166d399a40cdec2c7fa9db77960930031564ab56f12882645"
+        "sha256": "858419ea604c427ff2e9918556345667eb46397da3c965de75f4f7f0bb50a962"
       }
     ],
-    "en_US-kristin-medium": [
+    "en_US-bryce-medium": [
       {
-        "file": "en_US-kristin-medium.onnx",
-        "sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+        "file": "en_US-bryce-medium.onnx",
+        "sha256": "dc9caa6c313199ffb5ac698b6e542fa6cba388aeaf2731e25262e33b9810aef1"
       },
       {
-        "file": "en_US-kristin-medium.onnx.json",
-        "sha256": "5681426d4aead22195de70531eeeeddb46493cfaffc5764b2ea3db73428b651c"
+        "file": "en_US-bryce-medium.onnx.json",
+        "sha256": "7ceb1bc4af6d4e41b6d1edbb86c67e91e01eaa71f66db4cd0ae92ac704d415be"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "8c181b1d5f7d8152b914faab941fcbe6b8f0495e63e5189d6f27b8c68c8393fc"
+        "sha256": "96042c4ddbd405f6e40e2938b069987f4016a35832114bbefed1ed04242ee532"
+      }
+    ],
+    "en_US-hfc_female-medium": [
+      {
+        "file": "en_US-hfc_female-medium.onnx",
+        "sha256": "914c473788fc1fa8b63ace1cdcdb44588f4ae523d3ab37df1536616835a140b7"
+      },
+      {
+        "file": "en_US-hfc_female-medium.onnx.json",
+        "sha256": "03f1fa0622b80463283592d97aca9f6e89aec345a5c56b7257723e0093c58b6c"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "108e287f2128ef724e67b0e7b5f886c3f9b5ec7eaa0e07554b815d7d683c4fc3"
+      }
+    ],
+    "en_US-hfc_male-medium": [
+      {
+        "file": "en_US-hfc_male-medium.onnx",
+        "sha256": "d11e403a02bdf5a670c877b3dc56e0e1c8cece6fb30289586314dffdc0a78cb0"
+      },
+      {
+        "file": "en_US-hfc_male-medium.onnx.json",
+        "sha256": "f66847424aed0bf99ecbb5d7cfde47c0a906f426a0daf7c46f305e7d21afd886"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "acd9f3607969454dead836c1939d4906a7b7b618f38dfd2c282856d13e4e968c"
+      }
+    ],
+    "en_US-john-medium": [
+      {
+        "file": "en_US-john-medium.onnx",
+        "sha256": "789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988"
+      },
+      {
+        "file": "en_US-john-medium.onnx.json",
+        "sha256": "af60f177b6b550f3d7a302720c0fb89e7f94a82b5dca464775ef63b1c69ba09a"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "a056da65cd70dcbda96fc3420fe8d3442dbf3c8b75f49cdf800a715b42e299d1"
+      }
+    ],
+    "en_US-kusal-medium": [
+      {
+        "file": "en_US-kusal-medium.onnx",
+        "sha256": "438ae25bb305b2a7f6d632327d6102df25011f793e8222fa9db876e7321df8f3"
+      },
+      {
+        "file": "en_US-kusal-medium.onnx.json",
+        "sha256": "ddd3c4dfd8b4f568150c934fb94912dd788d44db87f4f0a328c469d7a6761f41"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "a454839f8e027b64aa4be40edb33d7fb4dd17cb9cab6d406a872c130f35ba763"
+      }
+    ],
+    "en_US-ljspeech-medium": [
+      {
+        "file": "en_US-ljspeech-medium.onnx",
+        "sha256": "6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22"
+      },
+      {
+        "file": "en_US-ljspeech-medium.onnx.json",
+        "sha256": "141d612cc0a95ed7efc1ca936b845c2364967f2e9217c5dbfcf69fc4d6c65860"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "fbee1529c89d36b3fe76d7e9f3f832dce17f44900a52d76a9bda735654766b4d"
+      }
+    ],
+    "en_US-norman-medium": [
+      {
+        "file": "en_US-norman-medium.onnx",
+        "sha256": "b9739443232a80a59c7d18810dd856899bf16a7964725f5ab81ea49b1351cb71"
+      },
+      {
+        "file": "en_US-norman-medium.onnx.json",
+        "sha256": "6c2db7f558a4a8deb9fe822583c1c5105f6c4e834dd0f9de8ad17a888ee9fe1d"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "60eaf4d10009d1bd4a1aa555d337dae00f60421d72fee415b9139a021e7cb5d0"
+      }
+    ],
+    "en_US-reza_ibrahim-medium": [
+      {
+        "file": "en_US-reza_ibrahim-medium.onnx",
+        "sha256": "99f0c31464a2120831ca87d079e10a9a2b3e426cc1ee662d80ff9042df15cd3c"
+      },
+      {
+        "file": "en_US-reza_ibrahim-medium.onnx.json",
+        "sha256": "465ddf1702917fe617b7d69ed81301d6a2f39f083a754bd1cf6db8955d09a381"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "eec97d7df2143f981debaa929fced55086667e5ff1f61a3e1eda7b7f51f89a53"
+      }
+    ],
+    "en_US-sam-medium": [
+      {
+        "file": "en_US-sam-medium.onnx",
+        "sha256": "56417b3b4afe8ec6bb4cabf06e17d67261fdd5bf334592abcfc80052fba11163"
+      },
+      {
+        "file": "en_US-sam-medium.onnx.json",
+        "sha256": "8c7fb47f19683b0b81037c5564f9a5ad4699a9da685e0e5da0a72fd3c3f5c1c4"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "37dd0ccae2a39c9ad24ed43d277b71826b4f221f212a3f6754d3a960530450b5"
       }
     ],
     "en_GB-alba-medium": [
@@ -113,18 +253,18 @@
         "sha256": "75661c3a50c0ba82b32b3a438e54103d8dfe5bbe8fbb864ac687a040e79948bb"
       }
     ],
-    "ru_RU-dmitri-medium": [
+    "en_GB-cori-medium": [
       {
-        "file": "ru_RU-dmitri-medium.onnx",
-        "sha256": "f073356ebc4bd0f80c5af58df2953a5988bd5bdab1eb38635ce960b071fbefcb"
+        "file": "en_GB-cori-medium.onnx",
+        "sha256": "1899f98e5fb8310154f3c2973f4b8a929ba7245e722b3d3a85680b833d95f10d"
       },
       {
-        "file": "ru_RU-dmitri-medium.onnx.json",
-        "sha256": "667ef3117bc642c2892dff7690d8bdc8ca4228aeaa783b2dc1416df632855e0d"
+        "file": "en_GB-cori-medium.onnx.json",
+        "sha256": "e262c16d7f192f69d4edd6b4ef8a5915379e67495fcc402f1ab15eeb33da3d36"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "6d59c756776d57860232cea6484e1b2ea1fc1c8d2c3446ef246f706fd9875821"
+        "sha256": "38d76dfde845837b184668f8bab1c6426ad740b1af0fcebc349037822739e536"
       }
     ],
     "ru_RU-denis-medium": [
@@ -139,6 +279,48 @@
       {
         "file": "MODEL_CARD",
         "sha256": "8b5d685dd80f8ad3f8dbbe1c56b16bb0809f00c144af3642dbcf3b707eb89c12"
+      }
+    ],
+    "ru_RU-dmitri-medium": [
+      {
+        "file": "ru_RU-dmitri-medium.onnx",
+        "sha256": "f073356ebc4bd0f80c5af58df2953a5988bd5bdab1eb38635ce960b071fbefcb"
+      },
+      {
+        "file": "ru_RU-dmitri-medium.onnx.json",
+        "sha256": "667ef3117bc642c2892dff7690d8bdc8ca4228aeaa783b2dc1416df632855e0d"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "6d59c756776d57860232cea6484e1b2ea1fc1c8d2c3446ef246f706fd9875821"
+      }
+    ],
+    "ru_RU-irina-medium": [
+      {
+        "file": "ru_RU-irina-medium.onnx",
+        "sha256": "8ff38212d23da300bbe3705c645e6e5b9475f0bfde01558eb17813e22acaaaaa"
+      },
+      {
+        "file": "ru_RU-irina-medium.onnx.json",
+        "sha256": "c2ec28bb38e2b59e93b959b3e40348c1afebbd272f30fed5d41205d08e98a9d7"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "f4fc2deb0e8c6219f29202b8dd06c9638c5ffd50ad5c6b2c90cf1aa59d507593"
+      }
+    ],
+    "ru_RU-ruslan-medium": [
+      {
+        "file": "ru_RU-ruslan-medium.onnx",
+        "sha256": "72a5f88e0b20928064eb45d88e1daa21f8af62d18613580d32cbb4aed48dcf7f"
+      },
+      {
+        "file": "ru_RU-ruslan-medium.onnx.json",
+        "sha256": "706a4fb17bc304abd07809b552deae615e64dcbffbfbd09854ba37ca59e88117"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "28f5c0381c1234eb17bfd77e77f893b008948c29bc351fb811abd2d6a69e7662"
       }
     ]
   }

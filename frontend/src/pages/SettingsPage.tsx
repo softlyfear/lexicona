@@ -319,8 +319,13 @@ function SpeechSettings() {
             (voice) => voice.language.toLowerCase() === locale.toLowerCase(),
           )
           const selected = selectServerVoice(serverVoices, lang, preferences)
+          const genderLabel = {
+            female: 'женский',
+            male: 'мужской',
+            nonbinary: 'небинарный',
+          } as const
           const describeServer = (voice: (typeof serverVoices)[number]) =>
-            `${voice.name} (${voice.language}, ${voice.gender === 'female' ? 'женский' : 'мужской'})`
+            `${voice.name} (${voice.language}, ${genderLabel[voice.gender]})`
           return (
             <div key={lang} className={css.form}>
               <label className={ui.field}>

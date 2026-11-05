@@ -16,6 +16,7 @@ it('показывает установленные голоса по акцен
     available: true,
     voices: [
       { id: 'us', name: 'Lessac', language: 'en-US', gender: 'female' },
+      { id: 'sam', name: 'Sam', language: 'en-US', gender: 'nonbinary' },
       { id: 'gb', name: 'Alan', language: 'en-GB', gender: 'male' },
       { id: 'ru', name: 'Denis', language: 'ru-RU', gender: 'male' },
     ],
@@ -36,6 +37,11 @@ it('показывает установленные голоса по акцен
   expect(
     within(screen.getByLabelText('Голос EN')).getByRole('option', {
       name: 'Lessac (en-US, женский)',
+    }),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByLabelText('Голос EN')).getByRole('option', {
+      name: 'Sam (en-US, небинарный)',
     }),
   ).toBeInTheDocument()
   expect(
