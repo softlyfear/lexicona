@@ -1,8 +1,8 @@
 # Grok
 
-Grok работает в этом репозитории отдельно от Codex и Kimi.
+Grok работает в этом репозитории отдельно от Codex.
 
-Не изменяй `.codex/**`, `.kimi-code/**`, `scripts/codex` и `scripts/codex_models.py`.
+Не изменяй `.codex/**`, `scripts/codex` и `scripts/codex_models.py`.
 Роли Grok лежат в `.grok/agents/`, хук форматирования — в `.grok/hooks/`.
 `.codex/TASKS.md`, `.codex/PROJECT.md` и `.codex/TASKS-archive.md` — общий протокол тикетов.
 

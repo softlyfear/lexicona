@@ -31,7 +31,5 @@ backend/data/
 
 # Machine-local agent settings
 .codex/*.local.*
-/.kimi-code/local.toml
-/.kimi-code/*.local.*
 /.grok/*.local.*
 /.grok/local.toml

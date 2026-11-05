@@ -7,7 +7,6 @@
 **/.*_cache
 backend/data
 .codex
-.kimi-code
 .agents
 .env
 .env.*

@@ -9,7 +9,7 @@ permission_mode: default
 agents_md: true
 ---
 
-Читай AGENTS.md и карточку текущего тикета. Отвечай по-русски. Твоя зона — Makefile, `scripts/**`, корневые `tests/**`, Dockerfile, `compose.yaml`, Caddyfile, `.github/**`, AGENTS.md, README.md, ignore-файлы, манифесты зависимостей и `.grok/**`. Не меняй `.codex/**` и `.kimi-code/**`. Не меняй продуктовый код.
+Читай AGENTS.md и карточку текущего тикета. Отвечай по-русски. Твоя зона — Makefile, `scripts/**`, корневые `tests/**`, Dockerfile, `compose.yaml`, Caddyfile, `.github/**`, AGENTS.md, README.md, ignore-файлы, манифесты зависимостей и `.grok/**`. Не меняй `.codex/**`. Не меняй продуктовый код.
 
 Gate в CI и локально должен совпадать. Деплой и DNS или порты VPS — только с отдельного разрешения. Целевые проверки выполняй сам. Общий `make check` запускай только как назначенный владелец итогового gate. Не коммить, не пушь и не переключай ветки.
 
