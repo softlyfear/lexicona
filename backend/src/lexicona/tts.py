@@ -5,13 +5,11 @@ import importlib.util
 import io
 import json
 import os
-import subprocess
-import sys
 import tempfile
 import threading
-import time
 import urllib.request
 import wave
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +20,10 @@ MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 MAX_WAV_BYTES = 16 * 1024 * 1024
 TIMEOUT_SECONDS = 30
 _slot = threading.BoundedSemaphore(1)
+_LOADED_LIMIT = 2
+_CLIP_LIMIT = 32
+_loaded: OrderedDict[str, Any] = OrderedDict()
+_clips: OrderedDict[tuple[str, float, str], bytes] = OrderedDict()
 
 VOICES = {
     "en_US-lessac-medium": ("Lessac", "en-US", "female"),
@@ -74,78 +76,98 @@ def runtime_available() -> bool:
     return importlib.util.find_spec("piper") is not None
 
 
+def reset_caches() -> None:
+    _loaded.clear()
+    _clips.clear()
+
+
+def _validate_wav(data: bytes) -> None:
+    if len(data) > MAX_WAV_BYTES:
+        raise SpeechError
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        channels, width, frames = wav.getnchannels(), wav.getsampwidth(), wav.getnframes()
+        if (
+            channels not in (1, 2)
+            or width not in (1, 2, 3, 4)
+            or wav.getframerate() <= 0
+            or frames <= 0
+            or len(wav.readframes(frames)) != frames * channels * width
+        ):
+            raise SpeechError
+
+
+def _render(directory: Path, voice_id: str, text: str, rate: float) -> bytes:
+    # The ONNX voice stays loaded. Starting Piper for every word reloads the model.
+    from piper import PiperVoice, SynthesisConfig
+
+    model = directory / voice_id / f"{voice_id}.onnx"
+    key = str(model.resolve())
+    voice = _loaded.get(key)
+    if voice is None:
+        voice = PiperVoice.load(model, use_cuda=False)
+        _loaded[key] = voice
+        while len(_loaded) > _LOADED_LIMIT:
+            _loaded.popitem(last=False)
+    else:
+        _loaded.move_to_end(key)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        voice.synthesize_wav(text, wav, syn_config=SynthesisConfig(length_scale=1 / rate))
+    return buffer.getvalue()
+
+
 def synthesize(directory: Path, voice_id: str, text: str, rate: float) -> bytes:
     if not _slot.acquire(blocking=False):
         raise SpeechBusy
+    handoff = False
     try:
         if not runtime_available() or not installed(directory, voice_id):
             raise SpeechError
-        with tempfile.TemporaryDirectory(prefix="lexicona-tts-") as temp:
-            output = Path(temp) / "speech.wav"
-            input_file = Path(temp) / "input.txt"
-            input_file.write_text(text, encoding="utf-8")
-            cmd = [
-                sys.executable,
-                "-m",
-                "piper",
-                "-m",
-                str(directory / voice_id / f"{voice_id}.onnx"),
-                "-i",
-                str(input_file),
-                "-f",
-                str(output),
-                "--length-scale",
-                str(1 / rate),
-            ]
+        key = (voice_id, rate, text)
+        cached = _clips.get(key)
+        if cached is not None:
+            _clips.move_to_end(key)
+            return cached
+        done = threading.Event()
+        box: dict[str, Any] = {}
+
+        def work() -> None:
             try:
-                child = subprocess.Popen(  # noqa: S603 -- fixed executable and allowlisted model
-                    cmd,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except OSError:
-                raise SpeechError from None
-            try:
-                deadline = time.monotonic() + TIMEOUT_SECONDS
-                while child.poll() is None:
-                    if time.monotonic() >= deadline:
-                        raise SpeechTimeout
-                    if output.exists() and output.stat().st_size > MAX_WAV_BYTES:
-                        raise SpeechError
-                    time.sleep(0.05)
-                if (
-                    child.returncode != 0
-                    or not output.is_file()
-                    or output.stat().st_size > MAX_WAV_BYTES
-                ):
-                    raise SpeechError
-                data = output.read_bytes()
-                with wave.open(io.BytesIO(data), "rb") as wav:
-                    channels, width, frames = (
-                        wav.getnchannels(),
-                        wav.getsampwidth(),
-                        wav.getnframes(),
-                    )
-                    if (
-                        channels not in (1, 2)
-                        or width not in (1, 2, 3, 4)
-                        or wav.getframerate() <= 0
-                        or frames <= 0
-                        or len(wav.readframes(frames)) != frames * channels * width
-                    ):
-                        raise SpeechError
-                return data
-            except OSError, EOFError, wave.Error:
-                raise SpeechError from None
+                box["data"] = _render(directory, voice_id, text, rate)
+            except Exception as exc:
+                box["error"] = exc
             finally:
-                if child.poll() is None:
-                    child.kill()
-                child.wait()
-    except OSError, ValueError:
+                done.set()
+
+        threading.Thread(target=work, name="lexicona-tts", daemon=True).start()
+        if not done.wait(TIMEOUT_SECONDS):
+            handoff = True
+
+            def release_later() -> None:
+                done.wait()
+                _slot.release()
+
+            threading.Thread(target=release_later, name="lexicona-tts-release", daemon=True).start()
+            raise SpeechTimeout
+        if "error" in box:
+            raise SpeechError from box["error"]
+        data = box["data"]
+        if not isinstance(data, bytes):
+            raise SpeechError
+        _validate_wav(data)
+        _clips[key] = data
+        while len(_clips) > _CLIP_LIMIT:
+            _clips.popitem(last=False)
+        return data
+    except SpeechTimeout:
+        raise
+    except SpeechError:
+        raise
+    except OSError, ValueError, EOFError, wave.Error:
         raise SpeechError from None
     finally:
-        _slot.release()
+        if not handoff:
+            _slot.release()
 
 
 def _sha256(path: Path) -> str:

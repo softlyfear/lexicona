@@ -1,9 +1,8 @@
 import asyncio
 import hashlib
 import io
-import subprocess
-import sys
 import threading
+import time
 import urllib.request
 import wave
 from pathlib import Path
@@ -136,39 +135,75 @@ async def test_speech_errors_are_safe(
     assert response.status_code == code and response.json() == {"detail": detail}
 
 
-def test_synthesis_timeout_kills_child_and_removes_files(
+def test_synthesis_timeout_keeps_the_slot_until_render_finishes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_model(tmp_path)
+    tts.reset_caches()
     monkeypatch.setattr(tts, "runtime_available", lambda: True)
     monkeypatch.setattr(tts, "TIMEOUT_SECONDS", 0)
-    paths: list[Path] = []
+    release = threading.Event()
 
-    class Child:
-        returncode: int | None = None
-        killed = False
+    def render(*args: Any, **kwargs: Any) -> bytes:
+        release.wait()
+        return wav_bytes()
 
-        def poll(self) -> int | None:
-            return -9 if self.killed else None
-
-        def kill(self) -> None:
-            self.killed = True
-
-        def wait(self) -> int:
-            return -9
-
-    child = Child()
-
-    def spawn(cmd: list[str], **kwargs: Any) -> Child:
-        assert cmd[0:3] == [sys.executable, "-m", "piper"]
-        assert "--cuda" not in cmd and cmd[-1] == str(1 / 0.75)
-        paths.append(Path(cmd[cmd.index("-f") + 1]).parent)
-        return child
-
-    monkeypatch.setattr(subprocess, "Popen", spawn)
+    monkeypatch.setattr(tts, "_render", render)
     with pytest.raises(tts.SpeechTimeout):
         tts.synthesize(tmp_path, VOICE, "private", 0.75)
-    assert child.killed and not paths[0].exists()
+    with pytest.raises(tts.SpeechBusy):
+        tts.synthesize(tmp_path, VOICE, "other", 0.75)
+    release.set()
+    for _ in range(100):
+        if tts._slot.acquire(blocking=False):
+            tts._slot.release()
+            return
+        time.sleep(0.01)
+    pytest.fail("slot was not released")
+
+
+def test_loaded_voice_and_clip_are_reused_without_cuda(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_model(tmp_path)
+    tts.reset_caches()
+    monkeypatch.setattr(tts, "runtime_available", lambda: True)
+    loads: list[Path] = []
+    renders = 0
+
+    class Voice:
+        def synthesize_wav(
+            self, text: str, wav_file: wave.Wave_write, syn_config: Any = None, **kwargs: Any
+        ) -> None:
+            assert syn_config.length_scale == pytest.approx(1 / 0.75)
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            sample = text.encode()[:2].ljust(2, b"\x00")
+            wav_file.writeframes(sample * 8)
+
+    def load(model: Path, use_cuda: bool = False, **kwargs: Any) -> Voice:
+        assert use_cuda is False
+        loads.append(Path(model))
+        return Voice()
+
+    import piper
+
+    monkeypatch.setattr(piper.PiperVoice, "load", staticmethod(load))
+    original = tts._render
+
+    def counting(*args: Any, **kwargs: Any) -> bytes:
+        nonlocal renders
+        renders += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tts, "_render", counting)
+    first = tts.synthesize(tmp_path, VOICE, "one", 0.75)
+    second = tts.synthesize(tmp_path, VOICE, "two", 0.75)
+    third = tts.synthesize(tmp_path, VOICE, "one", 0.75)
+    assert first == third and first != second
+    assert renders == 2 and len(loads) == 1
+    assert loads[0].name == f"{VOICE}.onnx"
 
 
 @pytest.mark.parametrize("data", [b"invalid", b"R" * 1025, wav_bytes()[:-1]])
@@ -176,23 +211,10 @@ def test_synthesis_rejects_bad_or_oversize_wav(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data: bytes
 ) -> None:
     fake_model(tmp_path)
+    tts.reset_caches()
     monkeypatch.setattr(tts, "runtime_available", lambda: True)
     monkeypatch.setattr(tts, "MAX_WAV_BYTES", 1024)
-
-    class Child:
-        returncode = 0
-
-        def poll(self) -> int:
-            return 0
-
-        def wait(self) -> int:
-            return 0
-
-    def spawn(cmd: list[str], **kwargs: Any) -> Child:
-        Path(cmd[cmd.index("-f") + 1]).write_bytes(data)
-        return Child()
-
-    monkeypatch.setattr(subprocess, "Popen", spawn)
+    monkeypatch.setattr(tts, "_render", lambda *args, **kwargs: data)
     with pytest.raises(tts.SpeechError):
         tts.synthesize(tmp_path, VOICE, "test", 1)
 
@@ -201,26 +223,19 @@ async def test_cancelled_request_keeps_slot_until_child_exits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_model(tmp_path)
+    tts.reset_caches()
     monkeypatch.setattr(tts, "runtime_available", lambda: True)
     entered = threading.Event()
     release = threading.Event()
     exited = threading.Event()
 
-    class Child:
-        returncode = 1
+    def render(*args: Any, **kwargs: Any) -> bytes:
+        entered.set()
+        release.wait()
+        exited.set()
+        return wav_bytes()
 
-        def poll(self) -> int | None:
-            entered.set()
-            return 1 if release.is_set() else None
-
-        def kill(self) -> None:
-            release.set()
-
-        def wait(self) -> int:
-            exited.set()
-            return 1
-
-    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: Child())
+    monkeypatch.setattr(tts, "_render", render)
     task = asyncio.create_task(asyncio.to_thread(tts.synthesize, tmp_path, VOICE, "test", 1.0))
     assert await asyncio.to_thread(entered.wait, 3)
     task.cancel()
