@@ -138,7 +138,7 @@ export function MatchingRun({
         <p>Недоступно: {unavailable}</p>
         <div className={css.actions}>
           <button className={ui.primary} onClick={onFinish} autoFocus>
-            Ещё занятие
+            Завершить
           </button>
         </div>
       </section>

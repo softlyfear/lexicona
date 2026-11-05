@@ -72,6 +72,30 @@ async def test_matching_batches_are_unambiguous_and_hide_answers(
             )
 
 
+async def test_matching_does_not_repeat_one_visible_gloss(app: FastAPI, alice: Client) -> None:
+    await add_word(alice, "damage", "вред", "ущерб")
+    await add_word(alice, "harm", "вред, ущерб")
+    await seed(alice)
+    session = await start(alice, size="all")
+    prompts = {item["prompt"] for item in session["items"]}
+    assert len(prompts & {"damage", "harm"}) == 1
+    for offset in range(0, len(session["items"]), 8):
+        batch = session["items"][offset : offset + 8]
+        options = batch[0]["options"]
+        assert len(options) == len(set(options))
+        for item in batch:
+            correct = options[await correct_option(app, item["id"])]
+            assert options.count(correct) == 1
+
+
+async def test_matching_shows_every_translation(alice: Client) -> None:
+    await add_word(alice, "damage", "вред", "ущерб", "нанести ущерб")
+    await seed(alice)
+    session = await start(alice, size="all")
+    item = next(item for item in session["items"] if item["prompt"] == "damage")
+    assert "вред, ущерб, нанести ущерб" in item["options"]
+
+
 async def test_matching_rejects_other_directions_and_text_answers(alice: Client) -> None:
     await seed(alice)
     for direction in ["ru_en", "en_en"]:

@@ -95,7 +95,7 @@ function Chart({ days }: { days: { date: string; answers: number; correct: numbe
   const x = (i: number) => (days.length === 1 ? 195 : 45 + (i / (days.length - 1)) * 295)
   const y = (value: number) => 145 - (value / max) * 120
   const points = days.map((day, i) => `${x(i)},${y(day.answers)}`).join(' ')
-  const ticks = max >= 2 ? [0, Math.floor(max / 2), max] : [0, max]
+  const ticks = peak === 0 ? [0] : max >= 2 ? [0, Math.floor(max / 2), max] : [0, max]
   const dates =
     days.length === 1
       ? [0]

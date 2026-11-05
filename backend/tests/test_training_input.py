@@ -18,7 +18,10 @@ async def start_input(client: Client, direction: str = "en_ru") -> dict[str, Any
 
 @pytest.mark.parametrize(
     ("direction", "prompt", "answer", "expected"),
-    [("en_ru", "cat", "  КОШКА. ", ["кот", "кошка"]), ("ru_en", "кот", "CAT.", ["cat"])],
+    [
+        ("en_ru", "cat", "  КОШКА. ", ["кот", "кошка"]),
+        ("ru_en", "кот, кошка", "CAT.", ["cat"]),
+    ],
 )
 async def test_input_checks_snapshot_without_leaking(
     alice: Client, direction: str, prompt: str, answer: str, expected: list[str]

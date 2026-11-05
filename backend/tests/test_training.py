@@ -65,6 +65,55 @@ async def test_session_has_six_unique_options_and_hides_answer(alice: Client) ->
         assert translations[item["prompt"]] in item["options"]
 
 
+async def test_every_translation_is_shown_in_both_directions(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
+    await add_word(alice, "damage", "вред", "ущерб", "нанести ущерб")
+    await seed(alice)
+    gloss = "вред, ущерб, нанести ущерб"
+
+    session = await start(alice, direction="en_ru", size="all")
+    item = next(item for item in session["items"] if item["prompt"] == "damage")
+    assert gloss in item["options"]
+    assert "вред" not in item["options"]
+
+    session = await start(alice, direction="ru_en", size="all")
+    item = next(item for item in session["items"] if item["prompt"] == gloss)
+    assert "damage" in item["options"]
+
+    typed = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "direction": "ru_en", "size": "all"},
+    )
+    assert typed.status_code == 201
+    item = next(item for item in typed.json()["items"] if "вред" in item["prompt"])
+    assert item["prompt"] == gloss
+
+
+async def test_same_visible_gloss_is_not_offered_twice(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        dictionary,
+        "choice_candidates",
+        lambda path: [
+            dictionary.ChoiceEntry(
+                entry_id=1,
+                headword="harm",
+                normalized_headword="harm",
+                translations=(("вред, ущерб", "вред, ущерб"),),
+            )
+        ],
+    )
+    await add_word(alice, "damage", "вред", "ущерб")
+    await seed(alice)
+    session = await start(alice, direction="en_ru", size="all")
+    item = next(item for item in session["items"] if item["prompt"] == "damage")
+    assert item["options"].count("вред, ущерб") == 1
+    assert len(item["options"]) == len({normalize(option) for option in item["options"]}) == 6
+
+
 async def test_ru_en_direction(alice: Client, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dictionary, "choice_candidates", lambda path: [])
     await seed(alice)

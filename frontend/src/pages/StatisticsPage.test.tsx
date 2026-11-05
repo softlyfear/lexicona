@@ -104,6 +104,7 @@ it('рисует компактный график, когда за все дн�
   const chart = await screen.findByRole('img', { name: /График первых ответов/ })
   expect(chart.querySelector('polyline')).toHaveAttribute('points', '45,145 340,145')
   expect(chart.getAttribute('class')).toMatch(/chart/)
+  expect(within(chart).queryByText('1')).not.toBeInTheDocument()
   expect(screen.getByText('За этот период ответов нет.')).toBeInTheDocument()
   expect(screen.getByText(/максимум за день: 0/)).toBeInTheDocument()
 })

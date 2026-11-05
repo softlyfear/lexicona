@@ -181,22 +181,34 @@ def _meanings(word: ChoiceCandidate) -> set[str]:
     return {_choice_key(normalized) for _, normalized in word.translations}
 
 
+def _answer_side(word: ChoiceCandidate, direction: str) -> tuple[str, str]:
+    """Answer label and the key that keeps two options from looking the same.
+
+    A user's word shows every translation together. Built-in distractors stay
+    one sense: a dictionary entry can contain far more than the ten the user stores.
+    """
+    if direction == "en_ru":
+        if isinstance(word, Word):
+            label = ", ".join(translation.text for translation in word.translations)
+        else:
+            label = word.translations[0][0]
+        # The key is the visible label. Separate senses can still render the same text.
+        return label, _choice_key(normalize(label))
+    return word.headword, _choice_key(word.normalized_headword)
+
+
+def _prompt_text(word: Word, direction: str) -> str:
+    if direction == "en_ru":
+        return word.headword
+    return ", ".join(translation.text for translation in word.translations)
+
+
 def _build_item(
     target: Word, pool: list[ChoiceCandidate], direction: str
 ) -> tuple[str, list[str], int] | None:
     """Return (prompt, options, correct index), or None if no unambiguous distractors exist."""
 
-    def shown(word: ChoiceCandidate) -> tuple[str, str]:
-        if isinstance(word, Word):
-            if direction == "en_ru":
-                return word.translations[0].text, _choice_key(word.translations[0].normalized_text)
-            return word.headword, _choice_key(word.normalized_headword)
-        if direction == "en_ru":
-            text, key = word.translations[0]
-            return text, _choice_key(key)
-        return word.headword, _choice_key(word.normalized_headword)
-
-    answer, answer_key = shown(target)
+    answer, answer_key = _answer_side(target, direction)
     seen = {answer_key}
     distractors: list[str] = []
     for other in _rng.sample(pool, len(pool)):
@@ -207,7 +219,7 @@ def _build_item(
             continue
         if _meanings(other) & _meanings(target):
             continue
-        text, key = shown(other)
+        text, key = _answer_side(other, direction)
         if key in seen:
             continue
         seen.add(key)
@@ -219,8 +231,7 @@ def _build_item(
 
     correct = _rng.randrange(OPTION_COUNT)
     options = [*distractors[:correct], answer, *distractors[correct:]]
-    prompt = target.headword if direction == "en_ru" else target.translations[0].text
-    return prompt, options, correct
+    return _prompt_text(target, direction), options, correct
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
@@ -319,11 +330,11 @@ async def create_session(
         for target in targets:
             if body.size != "all" and len(matching_targets) == body.size:
                 break
-            answer_key = _choice_key(target.translations[0].normalized_text)
+            _label, answer_key = _answer_side(target, "en_ru")
             if any(
                 _choice_key(other.normalized_headword) == _choice_key(target.normalized_headword)
                 or _meanings(other) & _meanings(target)
-                or _choice_key(other.translations[0].normalized_text) == answer_key
+                or _answer_side(other, "en_ru")[1] == answer_key
                 for other in current_batch
             ):
                 continue
@@ -333,7 +344,7 @@ async def create_session(
                 current_batch = []
         for offset in range(0, len(matching_targets), 8):
             batch = matching_targets[offset : offset + 8]
-            options = _rng.sample([word.translations[0].text for word in batch], len(batch))
+            options = _rng.sample([_answer_side(word, "en_ru")[0] for word in batch], len(batch))
             for target in batch:
                 session.items.append(
                     TrainingItem(
@@ -344,7 +355,7 @@ async def create_session(
                         position=len(session.items),
                         prompt=target.headword,
                         options=options,
-                        correct_option=options.index(target.translations[0].text),
+                        correct_option=options.index(_answer_side(target, "en_ru")[0]),
                     )
                 )
     else:
@@ -358,9 +369,7 @@ async def create_session(
                 prompt, options, correct = built
                 expected_answers = None
             else:
-                prompt = (
-                    target.headword if body.direction == "en_ru" else target.translations[0].text
-                )
+                prompt = _prompt_text(target, body.direction)
                 expected_answers = (
                     [translation.text for translation in target.translations]
                     if body.direction == "en_ru"

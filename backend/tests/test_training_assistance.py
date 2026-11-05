@@ -23,7 +23,7 @@ async def create_item(app: FastAPI, client: Client, mode: str, direction: str) -
         "/api/training/sessions", json={"mode": mode, "direction": direction, "size": 10}
     )
     assert result.status_code == 201
-    prompt = "cat" if direction == "en_ru" else "кот"
+    prompt = "cat" if direction == "en_ru" else "кот, кошка"
     return cast(
         dict[str, Any], next(item for item in result.json()["items"] if item["prompt"] == prompt)
     )
@@ -68,11 +68,11 @@ async def test_assistance_is_terminal_and_uses_snapshot(
     response = await alice.post(f"{url}/reveal")
     assert response.status_code == 200
     result = response.json()
-    expected = ["кот", "кошка"] if direction == "en_ru" else ["cat"]
     if mode == "choice":
-        expected = expected[:1]
+        expected = ["кот, кошка"] if direction == "en_ru" else ["cat"]
         assert result["correct_option"] == item["options"].index(expected[0])
     else:
+        expected = ["кот", "кошка"] if direction == "en_ru" else ["cat"]
         assert "correct_option" not in result
     assert result["outcome"] == "assisted"
     assert result["expected_answers"] == expected
