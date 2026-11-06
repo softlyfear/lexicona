@@ -26,6 +26,15 @@ const LEVELS: { value: Difficulty; label: string; choice: number; typed: number 
   { value: 'very_hard', label: 'Очень сложно', choice: 2, typed: 4 },
 ]
 
+function levelRates(choice: number, typed: number) {
+  const pairs = Math.max(1, Math.floor(choice / 2))
+  return [
+    ['выбор', choice, choice],
+    ['пары', pairs, choice],
+    ['ввод', typed, choice],
+  ] as const
+}
+
 type Result<T> = { data: T } | { error: unknown }
 
 export function SettingsPage({ user }: { user: User }) {
@@ -77,16 +86,29 @@ export function SettingsPage({ user }: { user: User }) {
         <fieldset className={css.choices} disabled={busy}>
           <legend className={ui.label}>Сложность</legend>
           {LEVELS.map((level) => (
-            <label key={level.value} className={css.choice}>
+            <label key={level.value} className={`${css.choice} ${css.level}`}>
               <input
                 type="radio"
                 name="difficulty"
                 checked={user.difficulty === level.value}
                 onChange={() => updateDifficulty(level.value)}
               />
-              <span className={css.levelName}>{level.label}</span>
-              <span className={ui.muted}>
-                {`выбор +${level.choice}%/−${level.choice}% · пары +${Math.max(1, Math.floor(level.choice / 2))}%/−${level.choice}% · ввод +${level.typed}%/−${level.choice}%`}
+              <span className={css.levelName}>
+                {level.label}
+                <span className="visually-hidden">
+                  {`, ${levelRates(level.choice, level.typed)
+                    .map(([kind, gain, loss]) => `${kind} +${gain}% −${loss}%`)
+                    .join(', ')}`}
+                </span>
+              </span>
+              <span className={css.levelRates} aria-hidden="true">
+                {levelRates(level.choice, level.typed).map(([kind, gain, loss]) => (
+                  <span key={kind} className={css.levelKind}>
+                    <span>{kind}</span>
+                    <span className={css.levelNumber}>+{gain}%</span>
+                    <span className={css.levelNumber}>−{loss}%</span>
+                  </span>
+                ))}
               </span>
             </label>
           ))}

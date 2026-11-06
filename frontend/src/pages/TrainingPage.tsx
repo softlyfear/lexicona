@@ -189,6 +189,7 @@ function Setup({
   const validSize = /^\d+$/u.test(sizeText) && Number.isSafeInteger(size) && size >= 1
   const starting = useRef(false)
   const startScope = useRef(0)
+  const startErrorRef = useRef<HTMLParagraphElement>(null)
   const start = useMutation({
     mutationFn: (requestedSize: TrainingSize) => {
       const filters =
@@ -204,6 +205,9 @@ function Setup({
       starting.current = false
     },
   })
+  useEffect(() => {
+    startErrorRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [start.isError])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -215,7 +219,7 @@ function Setup({
   }
 
   return (
-    <section className={css.stack}>
+    <section className={`${css.stack} ${css.floatingAction}`}>
       <h1 className={css.title}>Тренировка</h1>
       <form className={`${ui.card} ${css.form}`} onSubmit={submit} noValidate>
         <div className={css.group}>
@@ -450,7 +454,7 @@ function Setup({
           <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
         )}
         {start.isError && (
-          <p className={ui.error} role="alert">
+          <p ref={startErrorRef} className={`${ui.error} ${css.startError}`} role="alert">
             {mode !== 'choice' &&
             start.error instanceof ApiError &&
             start.error.message === 'not_enough_words'
@@ -459,15 +463,13 @@ function Setup({
             <a href="/">Перейти в словарь</a>
           </p>
         )}
-        <div className={css.actions}>
-          <button
-            className={ui.primary}
-            type="submit"
-            disabled={start.isPending || (sizeMode === 'number' && !validSize) || !validBounds}
-          >
-            Начать
-          </button>
-        </div>
+        <button
+          className={`${ui.primary} ${css.addWord}`}
+          type="submit"
+          disabled={start.isPending || (sizeMode === 'number' && !validSize) || !validBounds}
+        >
+          Начать
+        </button>
       </form>
     </section>
   )
