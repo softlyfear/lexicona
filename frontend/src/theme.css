@@ -27,8 +27,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: calc(4.25rem + env(safe-area-inset-top));
-  scroll-padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  scroll-padding-top: calc(3.5rem + env(safe-area-inset-top));
+  scroll-padding-bottom: calc(4.6rem + env(safe-area-inset-bottom));
 }
 
 @media (min-width: 720px) {

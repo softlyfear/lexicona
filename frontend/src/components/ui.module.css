@@ -3,8 +3,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  min-height: 2.75rem;
-  padding: 0.5rem 1rem;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
@@ -62,8 +62,8 @@ legend.label {
 
 .input {
   width: 100%;
-  min-height: 2.75rem;
-  padding: 0.6rem 0.75rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
@@ -75,7 +75,7 @@ legend.label {
 }
 
 .card {
-  padding: 1rem;
+  padding: 0.85rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
