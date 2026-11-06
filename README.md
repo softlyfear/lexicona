@@ -113,37 +113,44 @@ npm run dev
 
 Проверка проекта: `make check`.
 
-На сервере с Docker:
+## Сервер
+
+Один адрес на всех, аккаунт у каждого свой. База хранится в томе `data`.
+
+Сайт открывается на порту `8443`: `https://<домен>:8443`. Caddy внутри контейнера слушает 443. Другой порт пишется в `.env`. Этот файл git не хранит, поэтому `git pull` его не затирает и `compose.yaml` после обновления менять не нужно.
 
 ```sh
-cp .env.example .env
+LEXICONA_HTTPS_PORT=443
+```
+
+Без этой строки порт остаётся `8443`. После смены один раз выполните `docker compose up -d` и откройте порт в файрволе. Следующие обновления репозитория порт не трогают.
+
+В DNS одна A-запись: имя из `LEXICONA_DOMAIN` указывает на IP сервера.
+
+```sh
+LEXICONA_DOMAIN=lexicona.example.com
+LEXICONA_TLS_DIR=/path/to/cert
+LEXICONA_TLS_CERT=/path/to/cert/fullchain.pem
+LEXICONA_TLS_KEY=/path/to/cert/privkey.pem
+```
+
+Это файлы Let's Encrypt. Имя в сертификате совпадает с доменом, оба пути лежат внутри `LEXICONA_TLS_DIR`. После замены файлов: `docker compose restart caddy`.
+
+```sh
 docker compose up -d --build
 docker compose run --rm lexicona-admin create-user me --admin
 ```
 
-В `.env` укажите домен в `LEXICONA_DOMAIN` и пути к своему сертификату Let's Encrypt: `LEXICONA_TLS_DIR`, `LEXICONA_TLS_CERT` и `LEXICONA_TLS_KEY`. Каталог монтируется в Caddy по тому же пути, поэтому у каждой установки он свой. Для certbot это обычно `/etc/letsencrypt`, а файлы — `live/<домен>/fullchain.pem` и `privkey.pem`. Оба пути должны лежать внутри каталога. Имя в сертификате должно совпадать с доменом. После обновления сертификата выполните `docker compose restart caddy`.
-
-Для этого имени в DNS добавьте одну A-запись на IP сервера. Запись одна на всех: люди открывают один адрес, а аккаунт у каждого свой. Сайт открывается как `https://lexicona.example.com`. База хранится в томе `data`.
-
-Если порты 80 и 443 уже заняты, в сервисе `caddy` файла `compose.yaml` замените список портов на один порт хоста и откройте его в файрволе. Внутри контейнера Caddy по-прежнему слушает 443:
-
-```yaml
-ports:
-  - "8443:443"
-```
-
-Адрес для всех тогда `https://lexicona.example.com:8443`, номер порта можно заменить на любой свободный. Сертификат берётся из `.env`, как и на обычном порту. Строку `Strict-Transport-Security` в `Caddyfile` удалите, иначе браузер запомнит имя и дальше откроет порт 443.
-
-Сервис `lexicona-admin` включён в профиль `lexicona-admin`: обычные `docker compose up`, `stop` и `down` его не запускают и не останавливают.
+Команда `lexicona-admin` спрашивает пароль. Она в профиле `lexicona-admin`: обычные `up`, `stop` и `down` её не трогают.
 
 ## Лицензия
 
-Код — MIT. Словарь FreeDict+WikDict eng-rus 2025.11.23 —
-[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/legalcode):
-Karl Bartel, WikDict, Wiktionary.org через DBnary, FreeDict.
-[Архив](https://download.freedict.org/dictionaries/eng-rus/2025.11.23/freedict-eng-rus-2025.11.23.src.tar.xz),
-SHA256 `f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39`.
+Код — MIT.
 
-Голоса Piper распространяются на своих условиях. Карточка каждого голоса сохраняется
-рядом с моделью. См. [лицензию Piper](https://github.com/OHF-Voice/piper1-gpl/blob/main/COPYING)
-и [каталог моделей](https://huggingface.co/rhasspy/piper-voices).
+Словарь FreeDict+WikDict eng-rus 2025.11.23, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/legalcode): Karl Bartel, WikDict, Wiktionary.org через DBnary, FreeDict. [Архив](https://download.freedict.org/dictionaries/eng-rus/2025.11.23/freedict-eng-rus-2025.11.23.src.tar.xz).
+
+```text
+f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39
+```
+
+Голоса Piper распространяются на своих условиях. Карточка каждого голоса сохраняется рядом с моделью. [Лицензия Piper](https://github.com/OHF-Voice/piper1-gpl/blob/main/COPYING), [каталог моделей](https://huggingface.co/rhasspy/piper-voices).
