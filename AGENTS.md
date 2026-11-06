@@ -12,7 +12,7 @@
 - `frontend/` — React 19 + TS strict + Vite, TanStack Query, react-router, CSS Modules.
   - `src/theme.css` — семантические токены темы; в компонентах цвета только через `var(--…)`.
   - `src/api.ts` — единственное место, где вызывается `fetch`.
-- `Dockerfile`, `compose.yaml`, `Caddyfile` — поставка на VPS (app + Caddy с HTTPS).
+- `Dockerfile`, `compose.yaml`, `Caddyfile` — поставка на VPS (app + Caddy с HTTPS). Сертификат Let's Encrypt берётся по путям из `.env`.
 - `.local/` (в git не попадает) — ТЗ `spec.md`, требования, макет, заметки по источникам переводов.
   Перед новой продуктовой фичей сверяться с ним, особенно `requirements/approved-training.md`.
 

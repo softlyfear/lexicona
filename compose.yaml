@@ -31,8 +31,11 @@ services:
       - "443:443/udp"
     environment:
       LEXICONA_DOMAIN: ${LEXICONA_DOMAIN:?set LEXICONA_DOMAIN in .env}
+      LEXICONA_TLS_CERT: ${LEXICONA_TLS_CERT:?set LEXICONA_TLS_CERT in .env}
+      LEXICONA_TLS_KEY: ${LEXICONA_TLS_KEY:?set LEXICONA_TLS_KEY in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${LEXICONA_TLS_DIR:?set LEXICONA_TLS_DIR in .env}:${LEXICONA_TLS_DIR:?set LEXICONA_TLS_DIR in .env}:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
