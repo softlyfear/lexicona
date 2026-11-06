@@ -229,6 +229,10 @@
   border: 0;
 }
 
+.periodChoices > legend {
+  margin-bottom: 0.85rem;
+}
+
 .group {
   display: flex;
   flex-direction: column;
@@ -290,7 +294,7 @@ legend.settingLabel {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 7rem;
+  min-height: 4.5rem;
 }
 
 .cardRevealed {
@@ -327,7 +331,7 @@ legend.settingLabel {
 }
 
 .prompt {
-  font-size: clamp(1.5rem, 6vw, 2.25rem);
+  font-size: clamp(1.15rem, 2.4vw, 1.4rem);
   font-weight: 600;
   text-align: center;
   overflow-wrap: anywhere;
@@ -396,33 +400,34 @@ legend.settingLabel {
 
 .optionRow {
   position: relative;
-}
-
-.optionSpeak {
-  position: absolute;
-  top: 50%;
-  right: 0.15rem;
-  z-index: 1;
-  transform: translateY(-50%);
-  min-height: 2.25rem;
-  padding: 0.2rem 0.4rem;
-}
-
-.option {
-  position: relative;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  min-width: 0;
   min-height: 3.25rem;
-  padding: 0.7rem 2.7rem;
-  text-align: center;
-  font-size: 1.05rem;
-  line-height: 1.4;
-  white-space: normal;
+  padding: 0.45rem 0.7rem 0.45rem 2.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
 }
 
-.option:disabled {
+.optionRow:hover:not(:has(button:disabled)) {
+  border-color: var(--accent);
+}
+
+.optionHit {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.optionHit:disabled {
+  cursor: default;
   opacity: 1;
 }
 
@@ -430,6 +435,7 @@ legend.settingLabel {
   position: absolute;
   top: 50%;
   left: 0.75rem;
+  z-index: 1;
   transform: translateY(-50%);
   display: inline-grid;
   flex: none;
@@ -440,12 +446,35 @@ legend.settingLabel {
   background: var(--bg);
   color: var(--text-muted);
   font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.optionCluster {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  max-width: 100%;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.optionSpeak {
+  min-height: 2.25rem;
+  padding: 0.2rem 0.35rem;
+  pointer-events: auto;
 }
 
 .optionText {
   min-width: 0;
   max-width: 100%;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 .right {

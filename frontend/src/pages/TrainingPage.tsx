@@ -267,7 +267,9 @@ function Setup({
             )}
             <p id="training-purpose-hint" className={ui.muted}>
               {purpose === 'scheduled'
-                ? 'Сначала — слова с наступившим сроком повторения, затем — до 10 новых слов.'
+                ? includeNew
+                  ? 'Сначала слова с наступившим сроком повторения, в пределах размера занятия. Затем до 10 новых, которые ещё ни разу не повторялись. Ответ назначает следующий срок.'
+                  : 'Только слова с наступившим сроком повторения, в пределах размера занятия. Новые слова не добавляются. Ответ назначает следующий срок.'
                 : 'Свободная практика не меняет расписание повторений.'}
             </p>
           </fieldset>
@@ -509,6 +511,8 @@ export function Run({
     ),
   )
   const [attempt, setAttempt] = useState<TerminalResult | null>(initialResult ?? null)
+  const [hintError, setHintError] = useState('')
+  const [hintPending, setHintPending] = useState(false)
   const locked = useRef(false)
   const item = session.items[index]
   const result = attempt ?? undefined
@@ -552,8 +556,12 @@ export function Run({
     return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
   }, [queryClient])
 
+  const busy = action.isPending
+  const disabled = busy || hintPending || (!!result && !canRetry)
+
   function perform(value: Action) {
     if (finishing || locked.current || (result && !canRetry)) return
+    setHintError('')
     cancelSpeech()
     if (value.kind === 'choice' && session.mode === 'choice') {
       const spoken = item.options[value.option]
@@ -575,6 +583,7 @@ export function Run({
     if (preferences.autoPrompt && speechEnabled(promptLanguage, preferences) && nextItem)
       speak(nextItem.prompt, promptLanguage)
     locked.current = false
+    setHintError('')
     action.reset()
     const snapshot = snapshots[nextIndex]
     const nextResult = snapshot && resumedResult(snapshot)
@@ -587,6 +596,27 @@ export function Run({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!/^\s*\.?\s*$/u.test(text)) perform({ kind: 'text', text })
+  }
+
+  async function hint() {
+    if (finishing || locked.current || disabled) return
+    setHintError('')
+    setHintPending(true)
+    locked.current = true
+    try {
+      const revealed = await api.letterHint(item.id, text)
+      setText(revealed.text)
+      if (revealed.complete) {
+        setHintPending(false)
+        locked.current = false
+        perform({ kind: 'text', text: revealed.text })
+        return
+      }
+    } catch (error) {
+      setHintError(errorMessage(error))
+    }
+    setHintPending(false)
+    locked.current = false
   }
 
   useEffect(() => {
@@ -649,8 +679,6 @@ export function Run({
 
   const promptLang = session.direction === 'ru_en' ? 'ru' : 'en'
   const answerLang = session.direction === 'en_ru' ? 'ru' : 'en'
-  const busy = action.isPending
-  const disabled = busy || (!!result && !canRetry)
   const cardAnswer =
     result?.outcome === 'unavailable'
       ? null
@@ -746,22 +774,30 @@ export function Run({
             )
               state = css.wrong
             return (
-              <div key={i} className={css.optionRow}>
+              <div key={i} className={`${css.optionRow} ${state}`}>
                 <button
-                  className={`${ui.button} ${css.option} ${state}`}
+                  type="button"
+                  className={css.optionHit}
                   onClick={() => perform({ kind: 'choice', option: i })}
                   disabled={disabled}
                   lang={answerLang}
                 >
-                  <span className={css.optionKey}>{i + 1}</span>
-                  <span className={css.optionText}>{option}</span>
+                  {option}
                 </button>
-                <SpeakButton
-                  className={css.optionSpeak}
-                  text={option}
-                  lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
-                  aria-label={`Произнести вариант ${i + 1}`}
-                />
+                <span className={css.optionKey} aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span className={css.optionCluster}>
+                  <span className={css.optionText} aria-hidden="true">
+                    {option}
+                  </span>
+                  <SpeakButton
+                    className={css.optionSpeak}
+                    text={option}
+                    lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
+                    aria-label={`Произнести вариант ${i + 1}`}
+                  />
+                </span>
               </div>
             )
           })}
@@ -782,20 +818,32 @@ export function Run({
               type="text"
               lang={answerLang}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                setHintError('')
+                setText(event.target.value)
+              }}
               maxLength={200}
               disabled={disabled}
               autoComplete="off"
               autoFocus
             />
           </label>
-          <div>
+          <div className={css.actions}>
             <button
               className={ui.primary}
               type="submit"
               disabled={disabled || /^\s*\.?\s*$/u.test(text)}
             >
               Проверить
+            </button>
+            <button
+              type="button"
+              className={ui.button}
+              onClick={() => void hint()}
+              disabled={disabled}
+              title="Открывает одну букву. Верный ответ даст половину балла."
+            >
+              Подсказка
             </button>
           </div>
         </form>
@@ -845,6 +893,11 @@ export function Run({
           {errorMessage(action.error)}{' '}
           {!(action.error instanceof ApiError && action.error.message === 'PROGRESS_CHANGED') &&
             'Попробуйте ещё раз.'}
+        </p>
+      )}
+      {hintError && (
+        <p className={ui.error} role="alert">
+          {hintError} Попробуйте ещё раз.
         </p>
       )}
       {result && (

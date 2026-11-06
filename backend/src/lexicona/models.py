@@ -208,6 +208,7 @@ class TrainingItem(Base):
     is_correct: Mapped[bool | None]
     delta: Mapped[int | None]
     answered_at: Mapped[datetime | None]
+    letter_hints: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
     session: Mapped[TrainingSession] = relationship(back_populates="items", lazy="joined")
 

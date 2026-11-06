@@ -1,7 +1,7 @@
 import pytest
 
-from lexicona.normalize import normalize
-from lexicona.progress import AnswerKind, Difficulty, apply, delta
+from lexicona.normalize import hinted_text, normalize
+from lexicona.progress import AnswerKind, Difficulty, apply, delta, with_letter_hint
 
 D = Difficulty
 
@@ -30,6 +30,33 @@ def test_delta_table(difficulty: Difficulty, expected: tuple[int, ...]) -> None:
 
 def test_interrupted_passive_listening_is_not_a_penalty() -> None:
     assert delta(D.VERY_EASY, AnswerKind.PASSIVE, False) == 0
+
+
+def test_letter_hint_halves_only_a_positive_reward() -> None:
+    assert with_letter_hint(8, True) == 4
+    assert with_letter_hint(-4, True) == -4
+    assert with_letter_hint(8, False) == 8
+    assert with_letter_hint(0, True) == 0
+
+
+@pytest.mark.parametrize(
+    ("current", "answers", "shown", "complete"),
+    [
+        ("", ["кот", "кошка"], "к", False),
+        ("к", ["кот", "кошка"], "ко", False),
+        ("ко", ["кот"], "кот", True),
+        ("кх", ["кот"], "ко", False),
+        ("котик", ["кот"], "кот", True),
+        ("КОТ.", ["кот"], "КОТ.", True),
+        ("", ["agent"], "a", False),
+        ("ag", ["agent"], "age", False),
+    ],
+)
+def test_hinted_text_adds_one_character(
+    current: str, answers: list[str], shown: str, complete: bool
+) -> None:
+    assert hinted_text(current, answers) == (shown, complete)
+    assert shown == current or any(answer.startswith(shown) for answer in answers)
 
 
 @pytest.mark.parametrize(

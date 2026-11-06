@@ -59,10 +59,11 @@ describe('тип занятия', () => {
     await user.click(screen.getByLabelText('По расписанию'))
     const includeNew = screen.getByLabelText('Включать новые слова')
     expect(includeNew).toBeChecked()
-    expect(screen.getByText(/Сначала — слова с наступившим сроком повторения/)).toHaveTextContent(
-      'затем — до 10 новых слов',
+    expect(screen.getByText(/Сначала слова с наступившим сроком повторения/)).toHaveTextContent(
+      'до 10 новых',
     )
     await user.click(includeNew)
+    expect(screen.getByText(/Новые слова не добавляются/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
 
     expect(api.startTraining).toHaveBeenCalledWith(

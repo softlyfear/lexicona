@@ -16,6 +16,7 @@ vi.mock('../api', async (original) => {
       listTags: () => Promise.resolve([]),
       answer: vi.fn(),
       answerText: vi.fn(),
+      letterHint: vi.fn(),
     },
   }
 })
@@ -99,6 +100,32 @@ describe('письменная тренировка', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+  })
+
+  it('подсказка открывает одну букву и сама отправляет полное слово', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.letterHint)
+      .mockResolvedValueOnce({ text: 'к', complete: false })
+      .mockResolvedValueOnce({ text: 'кот', complete: true })
+    vi.mocked(api.answerText).mockResolvedValueOnce({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'кот',
+      expected_answers: ['кот'],
+      delta: 4,
+      progress: 4,
+    })
+    renderPage()
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.click(screen.getByRole('button', { name: 'Подсказка' }))
+    expect(api.letterHint).toHaveBeenCalledWith('i1', '')
+    expect(input).toHaveValue('к')
+    await user.click(screen.getByRole('button', { name: 'Подсказка' }))
+    expect(api.letterHint).toHaveBeenLastCalledWith('i1', 'к')
+    expect(api.answerText).toHaveBeenCalledWith('i1', 'кот')
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4) · прогресс 4%')
   })
 
   it('сохраняет текст после сетевой ошибки и позволяет повторить', async () => {

@@ -17,7 +17,7 @@ export function StatisticsPage() {
       <p>
         Учитывается первый ответ на слово в каждом занятии. Дни показаны по московскому времени.
       </p>
-      <fieldset className={css.choices}>
+      <fieldset className={`${css.choices} ${css.periodChoices}`}>
         <legend className={ui.label}>Период графика</legend>
         {(
           [

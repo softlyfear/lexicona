@@ -86,14 +86,16 @@ export function SettingsPage({ user }: { user: User }) {
               />
               <span className={css.levelName}>{level.label}</span>
               <span className={ui.muted}>
-                выбор ±{level.choice}% · ввод +{level.typed}%/−{level.choice}%
+                {`выбор +${level.choice}%/−${level.choice}% · пары +${Math.max(1, Math.floor(level.choice / 2))}%/−${level.choice}% · ввод +${level.typed}%/−${level.choice}%`}
               </span>
             </label>
           ))}
         </fieldset>
         <p className={ui.muted}>
-          Сложность определяет, на сколько процентов меняется прогресс слова за ответ. Новое
-          значение действует со следующего занятия.
+          Числа — изменение прогресса за первый ответ. Верная пара даёт половину балла выбора,
+          округление вниз, минимум 1; ошибка как в выборе. Подсказка буквы оставляет половину балла
+          за верный ввод. Повтор после ошибки, показ ответа и пропуск прогресс не меняют. Новая
+          сложность действует со следующего занятия.
         </p>
         {difficultyError && (
           <p className={ui.error} role="alert">

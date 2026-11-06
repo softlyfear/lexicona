@@ -26,7 +26,7 @@ from lexicona.models import (
     WordProgress,
     WordTag,
 )
-from lexicona.normalize import normalize
+from lexicona.normalize import hinted_text, normalize
 from lexicona.progress import AnswerKind
 from lexicona.srs import Grade
 
@@ -93,6 +93,17 @@ class TextAnswerIn(BaseModel):
         if not normalize(value):
             raise ValueError("answer must not be blank")
         return value
+
+
+class LetterHintIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(default="", max_length=200, strict=True)
+
+
+class LetterHintOut(BaseModel):
+    text: str
+    complete: bool
 
 
 class GradeAnswerIn(BaseModel):
@@ -745,6 +756,35 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
     return _answer_out(item, word.progress)
 
 
+@router.post("/items/{item_id}/hint")
+async def hint_item(item_id: str, body: LetterHintIn, auth: CurrentAuth, db: Db) -> LetterHintOut:
+    item, word = await _owned_item_and_word(item_id, auth, db)
+    if item.session.mode not in ("input", "cloze") or not item.expected_answers:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
+    if word is None or item.outcome is not None or item.session.status != "active":
+        raise HTTPException(409, "item_closed")
+    shown, complete = hinted_text(body.text, item.expected_answers)
+    if normalize(body.text) and normalize(body.text) in {
+        normalize(answer) for answer in item.expected_answers
+    }:
+        return LetterHintOut(text=body.text, complete=True)
+    claimed = await db.execute(
+        update(TrainingItem)
+        .where(
+            TrainingItem.id == item.id,
+            TrainingItem.session_id.in_(_owned_sessions(auth)),
+            TrainingItem.outcome.is_(None),
+            _eligible(auth),
+        )
+        .values(letter_hints=TrainingItem.letter_hints + 1)
+    )
+    if claimed.rowcount != 1:  # type: ignore[attr-defined]
+        await db.rollback()
+        raise HTTPException(409, "item_closed")
+    await db.commit()
+    return LetterHintOut(text=shown, complete=complete)
+
+
 @router.post("/items/{item_id}/answer")
 async def answer_item(
     item_id: str, body: AnswerIn | TextAnswerIn | GradeAnswerIn, auth: CurrentAuth, db: Db
@@ -789,7 +829,7 @@ async def answer_item(
         chosen_option = None
         submitted_text = None
         grade = body.grade
-    change = (
+    change = progress.with_letter_hint(
         0
         if not first_attempt or grade == "hard"
         else progress.delta(
@@ -797,7 +837,8 @@ async def answer_item(
             kind,
             correct if correct is not None else grade != "again",
             matching=item.session.mode == "matching",
-        )
+        ),
+        item.letter_hints > 0,
     )
     now = utcnow()
     current_version = (

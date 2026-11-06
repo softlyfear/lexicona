@@ -107,6 +107,61 @@ async def test_input_snapshot_stale_meaning_and_difficulty(app: FastAPI, alice: 
     assert response.json()["delta"] == 4  # very_hard was frozen at the second session start
 
 
+async def test_letter_hint_reveals_one_character_and_halves_the_gain(alice: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    item = await start_input(alice)
+    url = f"/api/training/items/{item['id']}/hint"
+    first = await alice.post(url, json={"text": ""})
+    assert first.status_code == 200
+    assert first.json() == {"text": "к", "complete": False}
+    second = await alice.post(url, json={"text": first.json()["text"]})
+    assert second.json() == {"text": "ко", "complete": False}
+    third = await alice.post(url, json={"text": "ко"})
+    assert third.json() == {"text": "кот", "complete": True}
+    answered = await alice.post(
+        f"/api/training/items/{item['id']}/answer", json={"text": third.json()["text"]}
+    )
+    assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 4
+    assert answered.json()["progress"] == 4
+
+
+async def test_letter_hint_keeps_a_penalty_and_a_clean_answer(alice: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    hinted = await start_input(alice)
+    assert (
+        await alice.post(f"/api/training/items/{hinted['id']}/hint", json={"text": "кх"})
+    ).json()["text"] == "ко"
+    wrong = await alice.post(f"/api/training/items/{hinted['id']}/answer", json={"text": "собака"})
+    assert wrong.json()["delta"] == -4
+
+    clean = await start_input(alice)
+    preview = await alice.post(f"/api/training/items/{clean['id']}/hint", json={"text": "кот"})
+    assert preview.json() == {"text": "кот", "complete": True}
+    right = await alice.post(f"/api/training/items/{clean['id']}/answer", json={"text": "кот"})
+    assert right.json()["delta"] == 8
+
+
+async def test_letter_hint_is_private_and_not_for_choice(alice: Client, bob: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    for index in range(5):
+        await add_word(alice, f"word{index}", f"перевод{index}")
+    item = await start_input(alice)
+    url = f"/api/training/items/{item['id']}/hint"
+    assert (await bob.post(url, json={"text": ""})).status_code == 404
+    del alice.headers["X-CSRF-Token"]
+    assert (await alice.post(url, json={"text": ""})).status_code == 403
+    alice.headers["X-CSRF-Token"] = alice.csrf
+    started = await alice.post(
+        "/api/training/sessions", json={"mode": "choice", "direction": "en_ru", "size": 1}
+    )
+    assert started.status_code == 201, started.text
+    choice = started.json()["items"][0]
+    refused = await alice.post(f"/api/training/items/{choice['id']}/hint", json={"text": ""})
+    assert refused.status_code == 422
+    assert "кот" not in refused.text
+
+
 async def test_input_other_user_and_missing_csrf(alice: Client, bob: Client) -> None:
     await add_word(alice, "cat", "кот")
     item = await start_input(alice)

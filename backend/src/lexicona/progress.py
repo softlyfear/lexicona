@@ -47,3 +47,10 @@ def delta(
 
 def apply(progress: int, change: int) -> int:
     return max(MIN_PROGRESS, progress + change)
+
+
+def with_letter_hint(change: int, used: bool) -> int:
+    """A letter hint halves a positive reward once. Penalties stay whole."""
+    if used and change > 0:
+        return change // 2
+    return change

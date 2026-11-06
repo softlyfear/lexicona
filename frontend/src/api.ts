@@ -391,6 +391,10 @@ export const api = {
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { option }),
   answerText: (itemId: string, text: string) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { text }),
+  letterHint: (itemId: string, text: string) =>
+    request<{ text: string; complete: boolean }>('POST', `/training/items/${itemId}/hint`, {
+      text,
+    }),
   revealCard: (itemId: string) => request<RevealResult>('POST', `/training/items/${itemId}/reveal`),
   revealAnswer: (itemId: string) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/reveal`),
