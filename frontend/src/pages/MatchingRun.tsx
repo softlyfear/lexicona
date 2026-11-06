@@ -160,7 +160,7 @@ export function MatchingRun({
         <span className={ui.muted}>
           Группа {batchIndex + 1} / {batchCount}
         </span>
-        <button className={ui.ghost} onClick={onFinish} disabled={busy}>
+        <button className={ui.button} onClick={onFinish} disabled={busy}>
           Завершить
         </button>
       </div>
@@ -174,7 +174,12 @@ export function MatchingRun({
       )}
       <p className={ui.muted}>Выберите английское слово, а затем его русский перевод.</p>
       {busy && <p role="status">Проверяем…</p>}
-      <div className={`${ui.card} ${css.matchingGrid}`}>
+      <div
+        className={`${ui.card} ${css.matchingGrid}`}
+        style={{
+          gridTemplateRows: `repeat(${Math.max(batch.length, batch[0]?.options.length ?? 0, 1)}, auto)`,
+        }}
+      >
         <div className={css.matchingColumn} role="group" aria-label="Английские слова">
           {batch.map((item) => {
             const result = answers[item.id]

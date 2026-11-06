@@ -684,7 +684,7 @@ export function Run({
           {index + 1} / {session.items.length}
         </span>
         <button
-          className={ui.ghost}
+          className={ui.button}
           onClick={() => {
             cancelSpeech()
             onFinish()

@@ -349,17 +349,28 @@ legend.settingLabel {
 .matchingGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  column-gap: 0.75rem;
+  row-gap: 0.75rem;
 }
 
+/* Subgrid shares row tracks, so a wrapped translation stretches the word beside it. */
 .matchingColumn {
   display: grid;
-  align-content: start;
-  gap: 0.75rem;
+  grid-template-rows: subgrid;
+  grid-row: 1 / -1;
   min-width: 0;
 }
 
+.matchingColumn:first-child {
+  grid-column: 1;
+}
+
+.matchingColumn:last-child {
+  grid-column: 2;
+}
+
 .matchingCell {
+  align-self: stretch;
   justify-content: center;
   min-width: 0;
   min-height: 3.5rem;

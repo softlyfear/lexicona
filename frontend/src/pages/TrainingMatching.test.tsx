@@ -3,6 +3,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type TrainingSession } from '../api'
+import ui from '../components/ui.module.css'
 import { TrainingPage } from './TrainingPage'
 import css from './pages.module.css'
 
@@ -120,6 +121,10 @@ describe('сопоставление пар', () => {
     renderPage()
     const translations = await start(user)
     expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'matching', undefined, 'free', true)
+    expect(screen.getByRole('button', { name: 'Завершить' })).toHaveClass(ui.button)
+    expect(screen.getByRole('group', { name: 'Английские слова' }).parentElement).toHaveStyle({
+      gridTemplateRows: 'repeat(2, auto)',
+    })
 
     await user.click(translations.getByRole('button', { name: 'кот' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Сначала выберите английское слово')
