@@ -2,6 +2,8 @@ services:
   app:
     build: .
     image: lexicona
+    profiles:
+      - lexicona
     restart: unless-stopped
     user: "${LEXICONA_UID:-1000}:${LEXICONA_GID:-1000}"
     env_file: .env
@@ -26,6 +28,8 @@ services:
 
   caddy:
     image: caddy:2
+    profiles:
+      - lexicona
     restart: unless-stopped
     ports:
       - "${LEXICONA_HTTPS_PORT:-8443}:443"

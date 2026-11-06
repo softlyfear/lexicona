@@ -37,7 +37,7 @@ make voices
 В Docker тот же шаг внутри уже запущенного контейнера:
 
 ```sh
-docker compose exec app python -m lexicona.tts download
+docker compose --profile lexicona exec app python -m lexicona.tts download
 ```
 
 Первая фраза после запуска сервера ждёт загрузку голоса. Следующие фразы этого голоса
@@ -123,7 +123,7 @@ npm run dev
 LEXICONA_HTTPS_PORT=443
 ```
 
-Без этой строки порт остаётся `8443`. После смены один раз выполните `docker compose up -d` и откройте порт в файрволе. Следующие обновления репозитория порт не трогают.
+Без этой строки порт остаётся `8443`. После смены один раз выполните `docker compose --profile lexicona up -d` и откройте порт в файрволе. Следующие обновления репозитория порт не трогают.
 
 В DNS одна A-запись: имя из `LEXICONA_DOMAIN` указывает на IP сервера.
 
@@ -134,14 +134,14 @@ LEXICONA_TLS_CERT=/path/to/cert/fullchain.pem
 LEXICONA_TLS_KEY=/path/to/cert/privkey.pem
 ```
 
-Это файлы Let's Encrypt. Имя в сертификате совпадает с доменом, оба пути лежат внутри `LEXICONA_TLS_DIR`. После замены файлов: `docker compose restart caddy`.
+Это файлы Let's Encrypt. Имя в сертификате совпадает с доменом, оба пути лежат внутри `LEXICONA_TLS_DIR`. После замены файлов: `docker compose --profile lexicona restart caddy`.
 
 ```sh
-docker compose up -d --build
+docker compose --profile lexicona up -d --build
 docker compose run --rm lexicona-admin create-user me --admin
 ```
 
-Команда `lexicona-admin` спрашивает пароль. Она в профиле `lexicona-admin`: обычные `up`, `stop` и `down` её не трогают.
+Сайт в профиле `lexicona`: обычные `up`, `stop` и `down` его не запускают и не останавливают. Остановка: `docker compose --profile lexicona stop`. Команда `lexicona-admin` спрашивает пароль и лежит в своём профиле `lexicona-admin`, поэтому запуск сайта её не трогает.
 
 ## Лицензия
 
