@@ -24,8 +24,23 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(4.25rem + env(safe-area-inset-top));
+  scroll-padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 720px) {
+  html {
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: 1.5rem;
+  }
+}
+
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--bg);
   color: var(--text);
   font: 16px/1.5 var(--font);
@@ -38,6 +53,14 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+  font-size: 1rem;
+}
+
+button,
+a,
+label,
+summary {
+  touch-action: manipulation;
 }
 
 :focus-visible {

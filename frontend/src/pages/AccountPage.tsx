@@ -124,7 +124,7 @@ export function AccountPage({ user }: { user: User }) {
           </p>
         )}
         {success && <p role="status">{success}</p>}
-        <div>
+        <div className={css.actions}>
           <button type="submit" className={ui.primary} disabled={change.isPending}>
             Сменить пароль
           </button>

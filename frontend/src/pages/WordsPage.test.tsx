@@ -419,6 +419,10 @@ describe('сортировка словаря', () => {
       'title',
       'Удалить',
     )
+    expect(within(row).getByText('Выучено')).toBeInTheDocument()
+    expect(within(row).getByText('Исключить')).toBeInTheDocument()
+    expect(within(row).getByText('Изменить')).toBeInTheDocument()
+    expect(within(row).getByText('Удалить')).toBeInTheDocument()
     expect(screen.getByText('158%')).toBeInTheDocument()
     const bar = screen.getByRole('progressbar', { name: 'Прогресс' })
     expect(bar).toHaveAttribute('aria-valuenow', '100')

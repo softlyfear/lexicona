@@ -327,7 +327,7 @@ function Setup({
               />
               Заданное число слов
             </label>
-            <div className={css.actions}>
+            <div className={css.sizeChoices}>
               {SIZES.map((n) => (
                 <button
                   key={n}
@@ -431,7 +431,7 @@ function Setup({
             <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
               {validBounds ? '' : 'Введите неотрицательные целые числа: от меньшего к большему.'}
             </p>
-            <div>
+            <div className={css.actions}>
               <button
                 type="button"
                 className={ui.button}
@@ -459,7 +459,7 @@ function Setup({
             <a href="/">Перейти в словарь</a>
           </p>
         )}
-        <div>
+        <div className={css.actions}>
           <button
             className={ui.primary}
             type="submit"
@@ -707,7 +707,7 @@ export function Run({
 
   return (
     <section className={css.stack}>
-      <div className={css.toolbar}>
+      <div className={css.sessionBar}>
         <span className={ui.muted}>
           {index + 1} / {session.items.length}
         </span>
