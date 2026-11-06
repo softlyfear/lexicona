@@ -86,7 +86,7 @@ describe('недоступное задание', () => {
       await user.click(screen.getByRole('button', { name: 'Пропустить' }))
       const status = await screen.findByRole('status')
       expect(status).toHaveTextContent(
-        'Задание недоступно: слово исключалось из обучения (0) · прогресс 158%',
+        'Задание недоступно: слово больше не в обучении (0) · прогресс 158%',
       )
       expect(status).not.toHaveTextContent('Ответ:')
       expect(screen.getByRole('button', { name: 'Пропустить' })).toBeDisabled()

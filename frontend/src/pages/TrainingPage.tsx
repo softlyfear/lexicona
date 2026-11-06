@@ -699,7 +699,7 @@ export function Run({
       label =
         result.reason === 'word_deleted'
           ? 'Задание недоступно: слово удалено'
-          : 'Задание недоступно: слово исключалось из обучения'
+          : 'Задание недоступно: слово больше не в обучении'
     else if (result.outcome === 'skipped') label = 'Пропущено'
     else if (result.outcome === 'assisted') label = 'С помощью'
     else if ('grade' in result)

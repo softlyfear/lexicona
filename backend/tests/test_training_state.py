@@ -202,6 +202,62 @@ async def test_excluded_words_do_not_enter_choice_pool_or_distractors(
     assert response.status_code == 201 and len(response.json()["items"]) == 6
 
 
+async def test_learned_words_stay_out_of_new_sessions_and_open_items(
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(distractors, "choice_candidates", lambda: [])
+    learned_id = ""
+    for en, ru in [
+        ("cat", "кот"),
+        ("dog", "собака"),
+        ("fox", "лиса"),
+        ("cow", "корова"),
+        ("wolf", "волк"),
+        ("owl", "сова"),
+        ("bear", "медведь"),
+    ]:
+        word = await add_word(alice, en, ru)
+        if en == "fox":
+            learned_id = word["id"]
+            await set_progress(app, word["id"], 100)
+    started = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "size": "all", "progress_min": 100, "progress_max": 100},
+    )
+    assert started.status_code == 201
+    assert [item["prompt"] for item in started.json()["items"]] == ["fox"]
+    item_id = started.json()["items"][0]["id"]
+    marked = await alice.patch(f"/api/words/{learned_id}/learned", json={"is_learned": True})
+    assert marked.status_code == 200 and marked.json()["progress"] == 100
+    snapshot = await alice.get(f"/api/training/sessions/{started.json()['id']}")
+    saved = snapshot.json()["items"][0]
+    assert saved["state"] == "done"
+    assert saved["result"] == {
+        "outcome": "unavailable",
+        "reason": "training_state_changed",
+        "delta": 0,
+        "progress": 100,
+    }
+    answer = await alice.post(f"/api/training/items/{item_id}/answer", json={"text": "лиса"})
+    assert answer.status_code == 200 and answer.json() == saved["result"]
+    assert (await alice.get(f"/api/words/{learned_id}")).json()["progress"] == 100
+    for direction in ("en_ru", "ru_en"):
+        response = await alice.post(
+            "/api/training/sessions", json={"mode": "choice", "direction": direction, "size": 10}
+        )
+        assert response.status_code == 201 and len(response.json()["items"]) == 6
+        for item in response.json()["items"]:
+            assert item["prompt"] not in ("fox", "лиса")
+            assert "fox" not in item["options"] and "лиса" not in item["options"]
+    cleared = await alice.patch(f"/api/words/{learned_id}/learned", json={"is_learned": False})
+    assert cleared.json()["is_learned"] is False and cleared.json()["progress"] == 100
+    returned = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "size": "all", "progress_min": 100, "progress_max": 100},
+    )
+    assert [item["prompt"] for item in returned.json()["items"]] == ["fox"]
+
+
 async def test_excluded_word_not_used_even_when_choice_has_enough_active(
     alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
