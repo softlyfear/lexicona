@@ -203,11 +203,13 @@ async def list_words(
             )
             .exists()
         )
-    # Learned is an explicit mark and does not depend on progress or exclusion.
+    # Learned is an explicit mark at any progress. It leaves the active list.
     if training == "learned":
         query = query.where(Word.is_learned.is_(True))
-    elif training != "all":
-        query = query.where(Word.is_excluded.is_(training == "excluded"))
+    elif training == "excluded":
+        query = query.where(Word.is_excluded.is_(True))
+    elif training == "active":
+        query = query.where(Word.is_excluded.is_(False), Word.is_learned.is_(False))
     if needle := normalize(q):
         pattern = "%" + needle.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
         query = query.where(

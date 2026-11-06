@@ -344,22 +344,22 @@ export function WordsPage({ userId }: { userId: string }) {
               <div className={css.meter}>
                 <ProgressBar value={word.progress} />
               </div>
-              <button
-                type="button"
-                className={css.learned}
-                disabled={learnedState.isPending && learnedState.variables?.id === word.id}
-                aria-pressed={word.is_learned}
-                aria-label={
-                  word.is_learned
-                    ? `Снять отметку «выучено» с «${word.headword}»`
-                    : `Отметить «${word.headword}» как выученное`
-                }
-                title={word.is_learned ? 'Снять отметку «выучено»' : 'Отметить как выученное'}
-                onClick={() => learnedState.mutate({ id: word.id, isLearned: !word.is_learned })}
-              >
-                {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : 'Выучено'}
-              </button>
               <div className={css.rowActions}>
+                <button
+                  type="button"
+                  className={word.is_learned ? `${ui.ghost} ${css.learnedOn}` : ui.ghost}
+                  disabled={learnedState.isPending && learnedState.variables?.id === word.id}
+                  aria-pressed={word.is_learned}
+                  aria-label={
+                    word.is_learned
+                      ? `Снять отметку «выучено» с «${word.headword}»`
+                      : `Отметить «${word.headword}» как выученное`
+                  }
+                  title={word.is_learned ? 'Снять отметку «выучено»' : 'Отметить как выученное'}
+                  onClick={() => learnedState.mutate({ id: word.id, isLearned: !word.is_learned })}
+                >
+                  {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : '✓'}
+                </button>
                 <button
                   type="button"
                   className={ui.ghost}

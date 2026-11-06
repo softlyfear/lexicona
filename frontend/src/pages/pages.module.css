@@ -166,7 +166,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0.35rem;
-  width: 7.25rem;
+  width: 11.5rem;
   flex-shrink: 0;
 }
 
@@ -180,34 +180,8 @@
   min-width: 0;
 }
 
-.learned {
-  width: 100%;
-  min-height: 2rem;
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.learned:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.learned[aria-pressed='true'] {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.learned:disabled {
-  opacity: 0.55;
-  cursor: default;
+.learnedOn {
+  color: var(--accent);
 }
 
 .rowActions {
@@ -521,33 +495,16 @@ legend.settingLabel {
   }
 
   .wordSide {
-    display: grid;
-    grid-template-columns: auto minmax(4rem, 1fr) auto;
-    grid-template-areas:
-      'mark mark mark'
-      'percent meter actions';
+    flex-direction: row;
     align-items: center;
     width: 100%;
-    gap: 0.35rem 0.5rem;
-  }
-
-  .learned {
-    grid-area: mark;
-    justify-self: end;
-    width: auto;
-    min-width: 6.5rem;
-  }
-
-  .percent {
-    grid-area: percent;
   }
 
   .meter {
-    grid-area: meter;
+    flex: 1;
   }
 
   .rowActions {
-    grid-area: actions;
-    margin-left: 0;
+    margin-left: auto;
   }
 }

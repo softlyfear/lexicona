@@ -393,7 +393,7 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
     assert high_body["progress"] == 158
     learned = (await alice.get("/api/words", params={"training": "learned"})).json()
     assert {word["headword"]: word["progress"] for word in learned} == {"cat": 0, "dog": 158}
-    assert {word["headword"] for word in (await alice.get("/api/words")).json()} == {"cat", "fox"}
+    assert {word["headword"] for word in (await alice.get("/api/words")).json()} == {"fox"}
     assert {
         word["headword"]
         for word in (await alice.get("/api/words", params={"training": "excluded"})).json()
@@ -413,6 +413,7 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
         word["headword"]
         for word in (await alice.get("/api/words", params={"training": "learned"})).json()
     ] == ["dog"]
+    assert {word["headword"] for word in (await alice.get("/api/words")).json()} == {"cat", "fox"}
     database: Database = app.state.db
     async with database.sessions() as db:
         marked_low = await db.get(Word, low["id"])

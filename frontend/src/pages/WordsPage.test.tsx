@@ -341,11 +341,14 @@ describe('сортировка словаря', () => {
     expect(params().has('training')).toBe(false)
   })
 
-  it('отмечает слово выученным при любом прогрессе и снимает отметку', async () => {
+  it('прячет выученное слово из списка «В обучении» и снимает отметку', async () => {
     let learned = false
-    vi.mocked(api.listWords).mockImplementation(async () => [
-      { ...word('1', 'cat'), progress: 36, is_learned: learned },
-    ])
+    vi.mocked(api.listWords).mockImplementation(async (_q, _sort, training = 'active') => {
+      const row = { ...word('1', 'cat'), progress: 36, is_learned: learned }
+      if (training === 'active' && learned) return []
+      if (training === 'learned' && !learned) return []
+      return [row]
+    })
     vi.mocked(api.setWordLearned).mockImplementation(async (_id, isLearned) => {
       learned = isLearned
       return { ...word('1', 'cat'), progress: 36, is_learned: isLearned }
@@ -356,18 +359,25 @@ describe('сортировка словаря', () => {
     expect(screen.getByText('36%')).toBeInTheDocument()
     const mark = screen.getByRole('button', { name: 'Отметить «cat» как выученное' })
     expect(mark).toHaveAttribute('aria-pressed', 'false')
-    expect(mark).toHaveTextContent('Выучено')
+    expect(mark).toHaveTextContent('✓')
+    expect(mark.parentElement).toContainElement(
+      screen.getByRole('button', { name: 'Исключить из обучения «cat»' }),
+    )
     await user.click(mark)
+    await waitFor(() => expect(screen.queryByText('cat')).not.toBeInTheDocument())
+    expect(
+      screen.getByText('Нет слов в обучении. Добавьте слово или верните исключённые.'),
+    ).toBeInTheDocument()
+    expect(api.setWordLearned).toHaveBeenCalledWith('1', true)
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'learned')
     const clear = await screen.findByRole('button', { name: 'Снять отметку «выучено» с «cat»' })
     expect(clear).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('36%')).toBeInTheDocument()
-    expect(api.setWordLearned).toHaveBeenCalledWith('1', true)
     await user.click(clear)
-    expect(
-      await screen.findByRole('button', { name: 'Отметить «cat» как выученное' }),
-    ).toHaveAttribute('aria-pressed', 'false')
+    await waitFor(() => expect(screen.queryByText('cat')).not.toBeInTheDocument())
     expect(api.setWordLearned).toHaveBeenLastCalledWith('1', false)
-    expect(screen.getByText('36%')).toBeInTheDocument()
+    expect(screen.getByText('Нет выученных слов.')).toBeInTheDocument()
   })
 
   it('исключает и возвращает слово без сброса прогресса; ошибка допускает повтор', async () => {
