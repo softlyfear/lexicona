@@ -1,18 +1,18 @@
 {
   "revision": "e7229f7d33a10e145e109b886d661984201ac3c4",
   "voices": {
-    "en_US-lessac-medium": [
+    "en_US-lessac-high": [
       {
-        "file": "en_US-lessac-medium.onnx",
-        "sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+        "file": "en_US-lessac-high.onnx",
+        "sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09"
       },
       {
-        "file": "en_US-lessac-medium.onnx.json",
-        "sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0"
+        "file": "en_US-lessac-high.onnx.json",
+        "sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "ce49eb457742208166d399a40cdec2c7fa9db77960930031564ab56f12882645"
+        "sha256": "7671826d947a0ffc11dd76af0bd890d93e956b00358696ad71348f21aa827100"
       }
     ],
     "en_US-kristin-medium": [
@@ -29,18 +29,18 @@
         "sha256": "8c181b1d5f7d8152b914faab941fcbe6b8f0495e63e5189d6f27b8c68c8393fc"
       }
     ],
-    "en_US-ryan-medium": [
+    "en_US-ryan-high": [
       {
-        "file": "en_US-ryan-medium.onnx",
-        "sha256": "abf4c274862564ed647ba0d2c47f8ee7c9b717d27bdad9219100eb310db4047a"
+        "file": "en_US-ryan-high.onnx",
+        "sha256": "b3990d7606e183ec8dbfba70a4607074f162de1a0c412e0180d1ff60bb154eca"
       },
       {
-        "file": "en_US-ryan-medium.onnx.json",
-        "sha256": "44034c056cb15681b2ad494307c7f3f2e4499d1253c700c711fa0a4607ffe78d"
+        "file": "en_US-ryan-high.onnx.json",
+        "sha256": "c6d3b98f08315cb4bebf0d49d50fc4ff491b503c64b940cd3d5ca28543b48011"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "3a24ae5f7aa856199f338ad9af784cda796734f397f7e1b4a1bd3c07d06945b1"
+        "sha256": "7c3b337dd4e96c3f311f476118b15d93867aefa4bee54263e250c45f759fad0d"
       }
     ],
     "en_US-joe-medium": [
@@ -141,18 +141,18 @@
         "sha256": "a454839f8e027b64aa4be40edb33d7fb4dd17cb9cab6d406a872c130f35ba763"
       }
     ],
-    "en_US-ljspeech-medium": [
+    "en_US-ljspeech-high": [
       {
-        "file": "en_US-ljspeech-medium.onnx",
-        "sha256": "6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22"
+        "file": "en_US-ljspeech-high.onnx",
+        "sha256": "5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a"
       },
       {
-        "file": "en_US-ljspeech-medium.onnx.json",
-        "sha256": "141d612cc0a95ed7efc1ca936b845c2364967f2e9217c5dbfcf69fc4d6c65860"
+        "file": "en_US-ljspeech-high.onnx.json",
+        "sha256": "7e1f4634af596d83cca997fb7a931ba80b70f8a316a2655ee69c55365e0ace14"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "fbee1529c89d36b3fe76d7e9f3f832dce17f44900a52d76a9bda735654766b4d"
+        "sha256": "289f7421072d689a3d91f6c632f486af46f9b8b04417536104a4ea667b8a394b"
       }
     ],
     "en_US-norman-medium": [
@@ -253,18 +253,18 @@
         "sha256": "75661c3a50c0ba82b32b3a438e54103d8dfe5bbe8fbb864ac687a040e79948bb"
       }
     ],
-    "en_GB-cori-medium": [
+    "en_GB-cori-high": [
       {
-        "file": "en_GB-cori-medium.onnx",
-        "sha256": "1899f98e5fb8310154f3c2973f4b8a929ba7245e722b3d3a85680b833d95f10d"
+        "file": "en_GB-cori-high.onnx",
+        "sha256": "470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903"
       },
       {
-        "file": "en_GB-cori-medium.onnx.json",
-        "sha256": "e262c16d7f192f69d4edd6b4ef8a5915379e67495fcc402f1ab15eeb33da3d36"
+        "file": "en_GB-cori-high.onnx.json",
+        "sha256": "9e7fb5b5671612c22f3c81cbe46c1ae87b031a4632bcb509e499dad6f1e2adec"
       },
       {
         "file": "MODEL_CARD",
-        "sha256": "38d76dfde845837b184668f8bab1c6426ad740b1af0fcebc349037822739e536"
+        "sha256": "136e7bd168b6c35b4a5df01a0253297e5773b5775ceae0af5160f264aa58208f"
       }
     ],
     "ru_RU-denis-medium": [

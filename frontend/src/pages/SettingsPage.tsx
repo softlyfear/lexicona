@@ -253,6 +253,8 @@ function SpeechSettings() {
             (voice) => voice.language.toLowerCase() === locale.toLowerCase(),
           )
           const selected = selectServerVoice(serverVoices, lang, preferences)
+          const storedMissing = Boolean(uri && !available.some((voice) => voice.id === uri))
+          const upgraded = storedMissing && selected ? selected.id : null
           const genderLabel = {
             female: 'женский',
             male: 'мужской',
@@ -268,13 +270,13 @@ function SpeechSettings() {
                 <span className={css.settingLabel}>Голос {lang.toUpperCase()}</span>
                 <select
                   className={ui.input}
-                  value={uri ?? ''}
+                  value={upgraded ?? uri ?? ''}
                   onChange={(event) =>
                     updateSpeechPreferences({ [key]: event.target.value || null })
                   }
                 >
                   <option value="">Автоматически</option>
-                  {uri && !available.some((voice) => voice.id === uri) && (
+                  {uri && storedMissing && !upgraded && (
                     <option value={uri}>Сохранённый голос недоступен</option>
                   )}
                   {available.map((voice) => (
