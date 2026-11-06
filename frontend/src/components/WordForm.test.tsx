@@ -103,7 +103,7 @@ it('автоматически подставляет fallback IPA и сохра
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной')
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
   await user.click(screen.getByRole('button', { name: 'книга' }))
-  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'книга' })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -160,8 +160,8 @@ it('скрывает нормализованный дубль и отклоня
   const user = userEvent.setup()
   form({ ...word, translations: ['КНИГА.'] })
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  expect(await screen.findByRole('button', { name: 'книжка' })).toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'книжка' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'книга' })).toBeDisabled()
   const input = screen.getByLabelText(/Переводы/)
   await user.clear(input)
   await user.type(input, Array.from({ length: 10 }, (_, i) => `слово${i}`).join('\n'))
@@ -182,9 +182,7 @@ it('добавляет машинный перевод без ударения �
   expect(screen.queryByText(/Слово не найдено/)).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'притворись, пока не получится' }))
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('ручной\nпритворись, пока не получится')
-  expect(
-    screen.queryByRole('button', { name: 'притворись, пока не получится' }),
-  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'притворись, пока не получится' })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
     expect.objectContaining({

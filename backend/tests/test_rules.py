@@ -24,6 +24,8 @@ def test_delta_table(difficulty: Difficulty, expected: tuple[int, ...]) -> None:
         delta(difficulty, AnswerKind.TYPED, False),
         delta(difficulty, AnswerKind.PASSIVE, True),
     ) == expected
+    assert delta(difficulty, AnswerKind.CHOICE, True, matching=True) == max(1, expected[0] // 2)
+    assert delta(difficulty, AnswerKind.CHOICE, False, matching=True) == expected[1]
 
 
 def test_interrupted_passive_listening_is_not_a_penalty() -> None:

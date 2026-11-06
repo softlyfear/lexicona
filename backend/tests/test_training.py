@@ -59,10 +59,25 @@ async def test_session_has_six_unique_options_and_hides_answer(alice: Client) ->
     assert len(session["items"]) == 5
     translations = dict(ANIMALS)
     for item in session["items"]:
-        assert set(item) == {"id", "prompt", "options"}
+        assert set(item) == {"id", "prompt", "options", "transcription"}
         assert len(item["options"]) == 6
         assert len({normalize(o) for o in item["options"]}) == 6
         assert translations[item["prompt"]] in item["options"]
+        assert item["transcription"] is None
+
+
+async def test_english_prompt_shows_transcription_and_ru_en_hides_it(alice: Client) -> None:
+    await add_word(alice, "hype", "хайп", transcription="  /haɪp/  ")
+    await seed(alice)
+    english = await start(alice, direction="en_ru", size="all")
+    shown = next(item for item in english["items"] if item["prompt"] == "hype")
+    assert shown["transcription"] == "/haɪp/"
+    russian = await start(alice, direction="ru_en", size="all")
+    hidden = next(item for item in russian["items"] if item["prompt"] == "хайп")
+    assert hidden["transcription"] is None
+    resumed = (await alice.get("/api/training/sessions/latest")).json()
+    resumed_item = next(item for item in resumed["items"] if item["prompt"] == "хайп")
+    assert resumed_item["transcription"] is None
 
 
 async def test_every_translation_is_shown_in_both_directions(
@@ -120,7 +135,7 @@ async def test_ru_en_direction(alice: Client, monkeypatch: pytest.MonkeyPatch) -
     session = await start(alice, direction="ru_en")
     english = {en for en, _ in ANIMALS}
     for item in session["items"]:
-        assert set(item) == {"id", "prompt", "options"}
+        assert set(item) == {"id", "prompt", "options", "transcription"}
         assert len(item["options"]) == len({normalize(o) for o in item["options"]}) == 6
         assert item["prompt"] not in english
         assert set(item["options"]) <= english

@@ -555,6 +555,11 @@ export function Run({
   function perform(value: Action) {
     if (finishing || locked.current || (result && !canRetry)) return
     cancelSpeech()
+    if (value.kind === 'choice' && session.mode === 'choice') {
+      const spoken = item.options[value.option]
+      const answerLanguage = session.direction === 'en_ru' ? 'ru' : 'en'
+      if (spoken && speechEnabled(answerLanguage)) speak(spoken, answerLanguage)
+    }
     locked.current = true
     action.mutate(value)
   }
@@ -700,11 +705,11 @@ export function Run({
       <div
         className={`${ui.card} ${css.question} ${session.mode === 'cards' && cardAnswer ? css.cardRevealed : ''}`}
       >
-        <span
-          className={`${css.prompt} ${session.mode === 'cloze' ? css.examplePrompt : ''}`}
-          lang={promptLang}
-        >
-          {item.prompt}
+        <span className={css.promptLine} lang={promptLang}>
+          <span className={`${css.prompt} ${session.mode === 'cloze' ? css.examplePrompt : ''}`}>
+            {item.prompt}
+          </span>
+          {item.transcription && <span className={css.transcription}>{item.transcription}</span>}
         </span>
         <SpeakButton text={item.prompt} lang={promptLang === 'en' ? 'en-US' : 'ru-RU'} />
         {session.mode === 'cards' && cardAnswer && (
@@ -741,16 +746,23 @@ export function Run({
             )
               state = css.wrong
             return (
-              <button
-                key={i}
-                className={`${ui.button} ${css.option} ${state}`}
-                onClick={() => perform({ kind: 'choice', option: i })}
-                disabled={disabled}
-                lang={answerLang}
-              >
-                <span className={css.optionKey}>{i + 1}</span>
-                <span className={css.optionText}>{option}</span>
-              </button>
+              <div key={i} className={css.optionRow}>
+                <button
+                  className={`${ui.button} ${css.option} ${state}`}
+                  onClick={() => perform({ kind: 'choice', option: i })}
+                  disabled={disabled}
+                  lang={answerLang}
+                >
+                  <span className={css.optionKey}>{i + 1}</span>
+                  <span className={css.optionText}>{option}</span>
+                </button>
+                <SpeakButton
+                  className={css.optionSpeak}
+                  text={option}
+                  lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
+                  aria-label={`Произнести вариант ${i + 1}`}
+                />
+              </div>
             )
           })}
         </div>

@@ -17,6 +17,11 @@
   overflow-wrap: anywhere;
 }
 
+button.dictionaryButton:disabled {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
 .choices {
   display: flex;
   flex-wrap: wrap;

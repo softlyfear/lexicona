@@ -64,7 +64,7 @@ async def test_matching_batches_are_unambiguous_and_hide_answers(
         assert {item["prompt"] for item in batch} <= set(translations)
         assert set(options) == {translations[item["prompt"]] for item in batch}
         for item in batch:
-            assert set(item) == {"id", "prompt", "options"}
+            assert set(item) == {"id", "prompt", "options", "transcription"}
             assert item["options"] == options
             assert "correct_option" not in item
             assert await correct_option(app, item["id"]) == options.index(
@@ -125,7 +125,7 @@ async def test_matching_concurrent_answers_apply_once(app: FastAPI, alice: Clien
     url = f"/api/training/items/{item['id']}/answer"
     responses = await asyncio.gather(*[alice.post(url, json={"option": right}) for _ in range(5)])
     assert all(response.status_code == 200 for response in responses)
-    assert {response.json()["progress"] for response in responses} == {4}
+    assert {response.json()["progress"] for response in responses} == {2}
     database: Database = app.state.db
     async with database.sessions() as db:
         saved = await db.get(TrainingItem, item["id"])
@@ -179,7 +179,7 @@ async def test_matching_first_error_and_retries_have_one_effect(
         result = await alice.post(
             f"/api/training/items/{other['id']}/answer", json={"option": other_right}
         )
-        assert result.json()["delta"] == 4
+        assert result.json()["delta"] == 2
     saved = await alice.get(f"/api/words/{words['cat']['id']}")
     assert saved.json()["progress"] == 46
 

@@ -22,6 +22,7 @@ export function ProgressBar({ value }: { value: number }) {
 export function SpeakButton({
   text,
   lang,
+  className,
   ...props
 }: { text: string; lang: 'en-US' | 'ru-RU' } & ComponentProps<'button'>) {
   const code = lang === 'en-US' ? 'en' : 'ru'
@@ -30,8 +31,11 @@ export function SpeakButton({
   return (
     <button
       type="button"
-      className={ui.ghost}
-      onClick={() => speak(text, code)}
+      className={className ? `${ui.ghost} ${className}` : ui.ghost}
+      onClick={(event) => {
+        event.stopPropagation()
+        speak(text, code)
+      }}
       aria-label={`Произнести ${lang === 'en-US' ? 'EN' : 'RU'} «${text}»`}
       {...props}
     >

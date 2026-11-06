@@ -411,6 +411,14 @@ describe('сортировка словаря', () => {
       within(row).getByRole('button', { name: 'Удалить «cat»' }),
     )
     expect(action).toHaveAttribute('title', 'Исключить из обучения')
+    expect(within(row).getByRole('button', { name: 'Изменить «cat»' })).toHaveAttribute(
+      'title',
+      'Изменить',
+    )
+    expect(within(row).getByRole('button', { name: 'Удалить «cat»' })).toHaveAttribute(
+      'title',
+      'Удалить',
+    )
     expect(screen.getByText('158%')).toBeInTheDocument()
     const bar = screen.getByRole('progressbar', { name: 'Прогресс' })
     expect(bar).toHaveAttribute('aria-valuenow', '100')

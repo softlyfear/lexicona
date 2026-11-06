@@ -62,15 +62,20 @@
 }
 
 .tagEntry {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 0.5rem;
+  margin-top: 0.85rem;
 }
 
 .tagEntry label {
-  flex: 1 1 12rem;
+  gap: 0.45rem;
   min-width: 0;
+}
+
+.tagEntry button {
+  height: calc(1.5em + 1.1rem + 2px);
 }
 
 .tagList {
@@ -190,8 +195,29 @@
 }
 
 .rowActions button {
+  position: relative;
   min-height: 2.25rem;
   padding: 0.25rem 0.45rem;
+}
+
+.rowActions button:hover::after,
+.rowActions button:focus-visible::after {
+  content: attr(title);
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: auto;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .choices {
@@ -291,11 +317,26 @@ legend.settingLabel {
   min-width: 0;
 }
 
+.promptLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem 0.7rem;
+  min-width: 0;
+}
+
 .prompt {
   font-size: clamp(1.5rem, 6vw, 2.25rem);
   font-weight: 600;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+.transcription {
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  font-weight: 500;
 }
 
 .examplePrompt {
@@ -340,6 +381,20 @@ legend.settingLabel {
 .options {
   display: grid;
   gap: 0.6rem;
+}
+
+.optionRow {
+  position: relative;
+}
+
+.optionSpeak {
+  position: absolute;
+  top: 50%;
+  right: 0.15rem;
+  z-index: 1;
+  transform: translateY(-50%);
+  min-height: 2.25rem;
+  padding: 0.2rem 0.4rem;
 }
 
 .option {

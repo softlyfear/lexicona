@@ -94,7 +94,7 @@ async def test_all_words_all_modes_no_duplicates(app: FastAPI, alice: Client, bo
             )
         assert len(word_ids) == len(set(word_ids)) == 501
         assert len({item["prompt"] for item in items}) == 501
-        assert all(set(item) == {"id", "prompt", "options"} for item in items)
+        assert all(set(item) == {"id", "prompt", "options", "transcription"} for item in items)
         assert all(len(item["options"]) == (6 if mode == "choice" else 0) for item in items)
 
 

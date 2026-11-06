@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
+import * as speech from '../speech'
 import { parseTranslations } from '../words'
 import { TrainingPage } from './TrainingPage'
 
@@ -43,6 +44,63 @@ describe('TrainingPage', () => {
         { id: 'i2', prompt: 'dog', options: ['собака', 'кот', 'лиса', 'сова'] },
       ],
     })
+  })
+
+  it('показывает транскрипцию английского слова и озвучивает нажатый ответ', async () => {
+    const speak = vi.spyOn(speech, 'speak').mockImplementation(() => {})
+    const user = userEvent.setup()
+    vi.mocked(api.answer).mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      correct_option: 1,
+      chosen_option: 1,
+      delta: 4,
+      progress: 4,
+    })
+    vi.mocked(api.startTraining).mockResolvedValue({
+      id: 's',
+      purpose: 'free',
+      mode: 'choice',
+      direction: 'en_ru',
+      items: [
+        {
+          id: 'i1',
+          prompt: 'hype',
+          transcription: '/haɪp/',
+          options: ['чай', 'хайп, шумиха'],
+        },
+      ],
+    })
+    const view = renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(await screen.findByText('hype')).toBeInTheDocument()
+    expect(screen.getByText('/haɪp/')).toBeInTheDocument()
+    view.unmount()
+
+    vi.mocked(api.startTraining).mockResolvedValue({
+      id: 's',
+      purpose: 'free',
+      mode: 'choice',
+      direction: 'ru_en',
+      items: [
+        {
+          id: 'i1',
+          prompt: 'хайп, шумиха',
+          transcription: null,
+          options: ['tea', 'hype', 'old'],
+        },
+      ],
+    })
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(await screen.findByText('хайп, шумиха')).toBeInTheDocument()
+    expect(screen.queryByText('/haɪp/')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Произнести вариант 2' }))
+    expect(speak).toHaveBeenCalledWith('hype', 'en')
+    speak.mockClear()
+    await user.click(screen.getByRole('button', { name: /^2\s*hype$|^hype$/ }))
+    expect(speak).toHaveBeenCalledWith('hype', 'en')
+    speak.mockRestore()
   })
 
   it('не предлагает новые занятия с карточками', () => {

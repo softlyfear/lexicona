@@ -108,6 +108,7 @@ export interface TrainingItem {
   id: string
   prompt: string
   options: string[]
+  transcription?: string | null
 }
 
 export interface TrainingSession {

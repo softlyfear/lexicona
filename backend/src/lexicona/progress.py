@@ -27,10 +27,16 @@ _DELTAS: dict[Difficulty, tuple[int, int, int, int, int]] = {
 }
 
 
-def delta(difficulty: Difficulty, kind: AnswerKind, correct: bool) -> int:
+def delta(
+    difficulty: Difficulty, kind: AnswerKind, correct: bool, *, matching: bool = False
+) -> int:
     choice_ok, choice_bad, typed_ok, typed_bad, passive = _DELTAS[difficulty]
     match kind:
         case AnswerKind.CHOICE:
+            # A matching pair is a recognition tap. A correct one is worth half a
+            # choice answer, rounded down, and still at least one point.
+            if matching and correct:
+                return max(1, choice_ok // 2)
             return choice_ok if correct else choice_bad
         case AnswerKind.TYPED:
             return typed_ok if correct else typed_bad

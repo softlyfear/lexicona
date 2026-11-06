@@ -65,6 +65,7 @@ class ItemOut(BaseModel):
     id: str
     prompt: str
     options: list[str]
+    transcription: str | None = None
 
 
 class SessionOut(BaseModel):
@@ -198,6 +199,14 @@ def _prompt_text(word: Word, direction: str) -> str:
     if direction == "en_ru":
         return word.headword
     return ", ".join(translation.text for translation in word.translations)
+
+
+def _prompt_transcription(word: Word | None, mode: str, direction: str) -> str | None:
+    """IPA of the English prompt. Hidden when the English word is the answer."""
+    if word is None or mode == "cloze" or direction == "ru_en":
+        return None
+    text = (word.transcription or "").strip()
+    return text or None
 
 
 def _build_item(
@@ -381,6 +390,9 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     if not session.items:
         raise HTTPException(status.HTTP_409_CONFLICT, "not_enough_words")
 
+    shown_transcription = {
+        word.id: _prompt_transcription(word, body.mode, body.direction) for word in targets
+    }
     db.add(session)
     await db.commit()
     return SessionOut(
@@ -388,7 +400,15 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         mode=session.mode,
         direction=session.direction,
         purpose=body.purpose,
-        items=[ItemOut(id=i.id, prompt=i.prompt, options=i.options) for i in session.items],
+        items=[
+            ItemOut(
+                id=i.id,
+                prompt=i.prompt,
+                options=i.options,
+                transcription=shown_transcription.get(i.word_id) if i.word_id else None,
+            )
+            for i in session.items
+        ],
     )
 
 
@@ -457,6 +477,7 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
                 "id": item.id,
                 "prompt": item.prompt,
                 "options": item.options,
+                "transcription": _prompt_transcription(word, session.mode, session.direction),
                 "state": state,
                 "result": result,
             }
@@ -772,7 +793,10 @@ async def answer_item(
         0
         if not first_attempt or grade == "hard"
         else progress.delta(
-            item.session.difficulty, kind, correct if correct is not None else grade != "again"
+            item.session.difficulty,
+            kind,
+            correct if correct is not None else grade != "again",
+            matching=item.session.mode == "matching",
         )
     )
     now = utcnow()

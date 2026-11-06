@@ -28,7 +28,7 @@ async def test_input_checks_snapshot_without_leaking(
 ) -> None:
     await add_word(alice, "cat", "кот", "кошка")
     item = await start_input(alice, direction)
-    assert item == {"id": item["id"], "prompt": prompt, "options": []}
+    assert item == {"id": item["id"], "prompt": prompt, "options": [], "transcription": None}
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": answer})
     assert response.status_code == 200
     assert response.json() == {

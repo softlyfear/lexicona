@@ -322,11 +322,23 @@ export function WordForm({
 
   const selectedTranslations = new Set(parseTranslations(translations).map(translationKey))
   const machine = lookup?.machine_translation
-  const machineChoices = machine
-    ? [machine.text, ...(machine.alternatives ?? [])].filter(
-        (value) => !selectedTranslations.has(translationKey(value)),
-      )
-    : []
+  const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
+  function translationChoice(value: string, entryId: number | null) {
+    const added = selectedTranslations.has(translationKey(value))
+    return (
+      <button
+        type="button"
+        className={`${ui.button} ${formCss.dictionaryButton}`}
+        key={value}
+        disabled={added}
+        aria-pressed={added}
+        title={added ? 'Уже в списке' : 'Добавить перевод'}
+        onClick={() => chooseTranslation(value, entryId)}
+      >
+        {value}
+      </button>
+    )
+  }
   const message = localError ?? error
   return (
     <form className={`${ui.card} ${css.form}`} onSubmit={submit} aria-label="Слово">
@@ -415,16 +427,7 @@ export function WordForm({
               Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'DeepSeek · OpenRouter'}
             </p>
             <div className={formCss.choices}>
-              {machineChoices.map((value) => (
-                <button
-                  type="button"
-                  className={`${ui.button} ${formCss.dictionaryButton}`}
-                  key={value}
-                  onClick={() => chooseTranslation(value, null)}
-                >
-                  {value}
-                </button>
-              ))}
+              {machineChoices.map((value) => translationChoice(value, null))}
             </div>
           </section>
         )}
@@ -442,18 +445,7 @@ export function WordForm({
                   {match.match === 'normalized' && ' (нормализованное совпадение)'}
                 </p>
                 <div className={formCss.choices}>
-                  {match.translations
-                    .filter((value) => !selectedTranslations.has(translationKey(value)))
-                    .map((value) => (
-                      <button
-                        type="button"
-                        className={`${ui.button} ${formCss.dictionaryButton}`}
-                        key={value}
-                        onClick={() => chooseTranslation(value, match.entry_id)}
-                      >
-                        {value}
-                      </button>
-                    ))}
+                  {match.translations.map((value) => translationChoice(value, match.entry_id))}
                 </div>
               </section>
             ))}
@@ -600,7 +592,7 @@ export function WordForm({
             className={ui.input}
             value={exampleEn}
             onChange={(e) => setExampleEn(e.target.value)}
-            rows={2}
+            rows={6}
             maxLength={2000}
             lang="en"
           />
@@ -611,7 +603,7 @@ export function WordForm({
             className={ui.input}
             value={exampleRu}
             onChange={(e) => setExampleRu(e.target.value)}
-            rows={2}
+            rows={6}
             maxLength={2000}
             lang="ru"
           />

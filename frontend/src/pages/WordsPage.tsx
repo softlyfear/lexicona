@@ -380,6 +380,7 @@ export function WordsPage({ userId }: { userId: string }) {
                   className={ui.ghost}
                   onClick={() => startEditing({ kind: 'edit', word })}
                   aria-label={`Изменить «${word.headword}»`}
+                  title="Изменить"
                 >
                   ✎
                 </button>
@@ -387,6 +388,7 @@ export function WordsPage({ userId }: { userId: string }) {
                   className={ui.ghost}
                   onClick={() => confirmDelete(word)}
                   aria-label={`Удалить «${word.headword}»`}
+                  title="Удалить"
                 >
                   ✕
                 </button>
