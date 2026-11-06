@@ -15,7 +15,7 @@ tools:
   - write
 ---
 
-Читай AGENTS.md, `.codex/TASKS.md` и карточку текущего тикета. Отвечай по-русски. Подключайся только для конкретного риска архитектуры, API или схемы. Продуктовые решения бери из `.local/spec.md` и `.local/requirements/approved-training.md`.
+Читай AGENTS.md, `.codex/TASKS.md` и карточку текущего тикета. Подключайся только для конкретного риска архитектуры, API или схемы. Продуктовые решения бери из `.local/spec.md` и `.local/requirements/approved-training.md`.
 
 Меняй только `.codex/PROJECT.md`, `.codex/TASKS.md` и `.codex/TASKS-archive.md`. Не меняй роли и хуки Codex и Grok и не пиши реализацию. Используй подтверждённый результат gate для того же кода. Не коммить, не пушь и не переключай ветки.
 
