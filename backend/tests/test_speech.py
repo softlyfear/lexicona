@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from lexicona import tts
 from tests.conftest import Client
 
-VOICE = "en_US-lessac-medium"
+VOICE = "en_US-lessac-high"
 
 
 def fake_model(root: Path) -> None:
@@ -129,7 +129,7 @@ async def test_speech_rejects_invalid_inputs(alice: Client, change: dict[str, An
 
 
 async def test_speech_rejects_unpaired_surrogate(alice: Client) -> None:
-    body = b'{"text":"\\ud800","voice_id":"en_US-lessac-medium","rate":1}'
+    body = b'{"text":"\\ud800","voice_id":"en_US-lessac-high","rate":1}'
     response = await alice.post(
         "/api/speech/synthesize", content=body, headers={"Content-Type": "application/json"}
     )
@@ -198,6 +198,8 @@ def test_loaded_voice_and_clip_are_reused_without_cuda(
             self, text: str, wav_file: wave.Wave_write, syn_config: Any = None, **kwargs: Any
         ) -> None:
             assert syn_config.length_scale == pytest.approx(1 / 0.75)
+            assert syn_config.noise_scale == pytest.approx(tts.NOISE_SCALE)
+            assert syn_config.noise_w_scale == pytest.approx(tts.NOISE_W_SCALE)
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)
             wav_file.setframerate(22050)
@@ -289,11 +291,11 @@ def test_catalog_matches_pinned_manifest() -> None:
         "en_US-hfc_male-medium": ("HFC Male", "en-US", "male"),
         "en_US-john-medium": ("John", "en-US", "male"),
         "en_US-kusal-medium": ("Kusal", "en-US", "male"),
-        "en_US-ljspeech-medium": ("LJ Speech", "en-US", "female"),
+        "en_US-ljspeech-high": ("LJ Speech", "en-US", "female"),
         "en_US-norman-medium": ("Norman", "en-US", "male"),
         "en_US-reza_ibrahim-medium": ("Reza Ibrahim", "en-US", "male"),
         "en_US-sam-medium": ("Sam", "en-US", "nonbinary"),
-        "en_GB-cori-medium": ("Cori", "en-GB", "female"),
+        "en_GB-cori-high": ("Cori", "en-GB", "female"),
         "ru_RU-irina-medium": ("Irina", "ru-RU", "female"),
         "ru_RU-ruslan-medium": ("Ruslan", "ru-RU", "male"),
     }
@@ -301,7 +303,7 @@ def test_catalog_matches_pinned_manifest() -> None:
     for voice_id, meta in added.items():
         assert tts.VOICES[voice_id] == meta
     assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-US") == (
-        "en_US-lessac-medium"
+        "en_US-lessac-high"
     )
     assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-GB") == (
         "en_GB-alba-medium"
@@ -311,7 +313,18 @@ def test_catalog_matches_pinned_manifest() -> None:
     )
     for voice_id, files in manifest["voices"].items():
         language, _name, quality = voice_id.split("-")
-        assert quality == "medium" and language in {"en_US", "en_GB", "ru_RU"}
+        expected = (
+            "high"
+            if voice_id
+            in {
+                "en_US-lessac-high",
+                "en_US-ryan-high",
+                "en_US-ljspeech-high",
+                "en_GB-cori-high",
+            }
+            else "medium"
+        )
+        assert quality == expected and language in {"en_US", "en_GB", "ru_RU"}
         assert tts.VOICES[voice_id][2] in {"female", "male", "nonbinary"}
         assert [item["file"] for item in files] == [
             f"{voice_id}.onnx",

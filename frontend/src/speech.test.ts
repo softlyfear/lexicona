@@ -1,7 +1,15 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './api'
-import { cancelSpeech, setSpeechOwner, speak, updateSpeechPreferences, useSpeech } from './speech'
+import {
+  cancelSpeech,
+  selectServerVoice,
+  setSpeechOwner,
+  speak,
+  updateSpeechPreferences,
+  useSpeech,
+  type SpeechPreferences,
+} from './speech'
 
 const voice = (lang: string, voiceURI: string, defaultVoice = false) =>
   ({
@@ -265,5 +273,31 @@ describe('браузерная речь', () => {
     expect(result.current.status).toContain('не найден')
     expect(engine.speak).not.toHaveBeenCalled()
     getVoices.mockRestore()
+  })
+})
+
+describe('серверный голос', () => {
+  const preferences = {
+    enLocale: 'en-US',
+    enVoiceURI: null,
+    ruVoiceURI: null,
+    rate: 1,
+    autoPrompt: true,
+    speakEn: true,
+    speakRu: true,
+    engineEn: 'server',
+    engineRu: 'server',
+    serverEnUS: 'en_US-lessac-medium',
+    serverEnGB: null,
+    serverRu: null,
+  } satisfies SpeechPreferences
+
+  it('берёт high вместо сохранённого medium того же диктора', () => {
+    const selected = selectServerVoice(
+      [{ id: 'en_US-lessac-high', name: 'Lessac', language: 'en-US', gender: 'female' }],
+      'en',
+      preferences,
+    )
+    expect(selected?.id).toBe('en_US-lessac-high')
   })
 })

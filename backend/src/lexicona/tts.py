@@ -16,19 +16,22 @@ from typing import Any
 from lexicona.config import Settings
 
 REVISION = "e7229f7d33a10e145e109b886d661984201ac3c4"
-MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
+MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024
 MAX_WAV_BYTES = 16 * 1024 * 1024
 TIMEOUT_SECONDS = 30
 _slot = threading.BoundedSemaphore(1)
 _LOADED_LIMIT = 2
 _CLIP_LIMIT = 32
+# Piper's default generator noise makes these VITS voices sound hoarse.
+NOISE_SCALE = 0.333
+NOISE_W_SCALE = 0.333
 _loaded: OrderedDict[str, Any] = OrderedDict()
 _clips: OrderedDict[tuple[str, float, str], bytes] = OrderedDict()
 
 VOICES = {
-    "en_US-lessac-medium": ("Lessac", "en-US", "female"),
+    "en_US-lessac-high": ("Lessac", "en-US", "female"),
     "en_US-kristin-medium": ("Kristin", "en-US", "female"),
-    "en_US-ryan-medium": ("Ryan", "en-US", "male"),
+    "en_US-ryan-high": ("Ryan", "en-US", "male"),
     "en_US-joe-medium": ("Joe", "en-US", "male"),
     "en_US-amy-medium": ("Amy", "en-US", "female"),
     "en_US-bryce-medium": ("Bryce", "en-US", "male"),
@@ -36,7 +39,7 @@ VOICES = {
     "en_US-hfc_male-medium": ("HFC Male", "en-US", "male"),
     "en_US-john-medium": ("John", "en-US", "male"),
     "en_US-kusal-medium": ("Kusal", "en-US", "male"),
-    "en_US-ljspeech-medium": ("LJ Speech", "en-US", "female"),
+    "en_US-ljspeech-high": ("LJ Speech", "en-US", "female"),
     "en_US-norman-medium": ("Norman", "en-US", "male"),
     "en_US-reza_ibrahim-medium": ("Reza Ibrahim", "en-US", "male"),
     "en_US-sam-medium": ("Sam", "en-US", "nonbinary"),
@@ -44,7 +47,7 @@ VOICES = {
     "en_GB-jenny_dioco-medium": ("Jenny", "en-GB", "female"),
     "en_GB-alan-medium": ("Alan", "en-GB", "male"),
     "en_GB-northern_english_male-medium": ("Northern English", "en-GB", "male"),
-    "en_GB-cori-medium": ("Cori", "en-GB", "female"),
+    "en_GB-cori-high": ("Cori", "en-GB", "female"),
     "ru_RU-denis-medium": ("Denis", "ru-RU", "male"),
     "ru_RU-dmitri-medium": ("Dmitri", "ru-RU", "male"),
     "ru_RU-irina-medium": ("Irina", "ru-RU", "female"),
@@ -125,7 +128,15 @@ def _render(directory: Path, voice_id: str, text: str, rate: float) -> bytes:
         _loaded.move_to_end(key)
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav:
-        voice.synthesize_wav(text, wav, syn_config=SynthesisConfig(length_scale=1 / rate))
+        voice.synthesize_wav(
+            text,
+            wav,
+            syn_config=SynthesisConfig(
+                length_scale=1 / rate,
+                noise_scale=NOISE_SCALE,
+                noise_w_scale=NOISE_W_SCALE,
+            ),
+        )
     return buffer.getvalue()
 
 
