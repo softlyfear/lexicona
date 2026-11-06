@@ -118,10 +118,11 @@ npm run dev
 ```sh
 cp .env.example .env
 docker compose up -d --build
-docker compose exec app lexicona-admin create-user me --admin
+docker compose run --rm lexicona-admin create-user me --admin
 ```
 
 В `.env` укажите домен. Caddy сам получает сертификат. База хранится в томе `data`.
+Сервис `lexicona-admin` включён в профиль `lexicona-admin`: обычные `docker compose up`, `stop` и `down` его не запускают и не останавливают.
 
 ## Лицензия
 

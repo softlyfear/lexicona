@@ -1,10 +1,26 @@
 services:
   app:
     build: .
+    image: lexicona
     restart: unless-stopped
     env_file: .env
     volumes:
       - data:/data
+
+  # One-off CLI. Plain up/stop/down leave it alone; arguments replace `command`.
+  lexicona-admin:
+    build: .
+    image: lexicona
+    profiles:
+      - lexicona-admin
+    entrypoint: ["lexicona-admin"]
+    command: ["list-users"]
+    env_file: .env
+    volumes:
+      - data:/data
+    stdin_open: true
+    tty: true
+    restart: "no"
 
   caddy:
     image: caddy:2
