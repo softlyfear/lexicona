@@ -26,9 +26,7 @@ services:
     image: caddy:2
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${LEXICONA_HTTPS_PORT:-8443}:443"
     environment:
       LEXICONA_DOMAIN: ${LEXICONA_DOMAIN:?set LEXICONA_DOMAIN in .env}
       LEXICONA_TLS_CERT: ${LEXICONA_TLS_CERT:?set LEXICONA_TLS_CERT in .env}
