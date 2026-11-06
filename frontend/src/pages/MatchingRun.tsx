@@ -156,7 +156,7 @@ export function MatchingRun({
 
   return (
     <section className={css.stack}>
-      <div className={css.toolbar}>
+      <div className={css.sessionBar}>
         <span className={ui.muted}>
           Группа {batchIndex + 1} / {batchCount}
         </span>
@@ -303,7 +303,7 @@ export function MatchingRun({
         </div>
       )}
       {batchDone && (
-        <div>
+        <div className={css.actions}>
           <button className={ui.primary} onClick={next} autoFocus>
             {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
           </button>

@@ -180,7 +180,7 @@ export function WordsPage({ userId }: { userId: string }) {
   }
 
   return (
-    <section className={css.stack}>
+    <section className={`${css.stack} ${css.dictionaryPage}`}>
       <div className={css.toolbar}>
         <h1 className={css.title}>Словарь</h1>
         <input
@@ -191,7 +191,10 @@ export function WordsPage({ userId }: { userId: string }) {
           value={search}
           onChange={(e) => updateParameter('q', e.target.value)}
         />
-        <button className={ui.primary} onClick={() => startEditing({ kind: 'new' })}>
+        <button
+          className={`${ui.primary} ${css.addWord}`}
+          onClick={() => startEditing({ kind: 'new' })}
+        >
           Добавить слово
         </button>
       </div>
@@ -347,7 +350,11 @@ export function WordsPage({ userId }: { userId: string }) {
               <div className={css.rowActions}>
                 <button
                   type="button"
-                  className={word.is_learned ? `${ui.ghost} ${css.learnedOn}` : ui.ghost}
+                  className={
+                    word.is_learned
+                      ? `${ui.ghost} ${css.actionButton} ${css.learnedOn}`
+                      : `${ui.ghost} ${css.actionButton}`
+                  }
                   disabled={learnedState.isPending && learnedState.variables?.id === word.id}
                   aria-pressed={word.is_learned}
                   aria-label={
@@ -358,11 +365,14 @@ export function WordsPage({ userId }: { userId: string }) {
                   title={word.is_learned ? 'Снять отметку «выучено»' : 'Отметить как выученное'}
                   onClick={() => learnedState.mutate({ id: word.id, isLearned: !word.is_learned })}
                 >
-                  {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : '✓'}
+                  <span className={css.actionIcon} aria-hidden="true">
+                    {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : '✓'}
+                  </span>
+                  <span className={css.actionCaption}>{word.is_learned ? 'Снять' : 'Выучено'}</span>
                 </button>
                 <button
                   type="button"
-                  className={ui.ghost}
+                  className={`${ui.ghost} ${css.actionButton}`}
                   disabled={trainingState.isPending}
                   onClick={() =>
                     trainingState.mutate({ id: word.id, isExcluded: !word.is_excluded })
@@ -370,27 +380,38 @@ export function WordsPage({ userId }: { userId: string }) {
                   aria-label={`${word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'} «${word.headword}»`}
                   title={word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'}
                 >
-                  {trainingState.isPending && trainingState.variables?.id === word.id
-                    ? '…'
-                    : word.is_excluded
-                      ? '↩'
-                      : '⊘'}
+                  <span className={css.actionIcon} aria-hidden="true">
+                    {trainingState.isPending && trainingState.variables?.id === word.id
+                      ? '…'
+                      : word.is_excluded
+                        ? '↩'
+                        : '⊘'}
+                  </span>
+                  <span className={css.actionCaption}>
+                    {word.is_excluded ? 'Вернуть' : 'Исключить'}
+                  </span>
                 </button>
                 <button
-                  className={ui.ghost}
+                  className={`${ui.ghost} ${css.actionButton}`}
                   onClick={() => startEditing({ kind: 'edit', word })}
                   aria-label={`Изменить «${word.headword}»`}
                   title="Изменить"
                 >
-                  ✎
+                  <span className={css.actionIcon} aria-hidden="true">
+                    ✎
+                  </span>
+                  <span className={css.actionCaption}>Изменить</span>
                 </button>
                 <button
-                  className={ui.ghost}
+                  className={`${ui.ghost} ${css.actionButton}`}
                   onClick={() => confirmDelete(word)}
                   aria-label={`Удалить «${word.headword}»`}
                   title="Удалить"
                 >
-                  ✕
+                  <span className={css.actionIcon} aria-hidden="true">
+                    ✕
+                  </span>
+                  <span className={css.actionCaption}>Удалить</span>
                 </button>
               </div>
             </div>
