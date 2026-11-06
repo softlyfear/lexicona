@@ -583,7 +583,26 @@ legend.settingLabel {
   background: color-mix(in srgb, var(--surface-raised) 65%, transparent);
 }
 
-@media (max-width: 560px) {
+@media (max-width: 720px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search {
+    flex-basis: auto;
+    max-width: none;
+  }
+
+  .filters {
+    flex-direction: column;
+  }
+
+  .sort {
+    flex-basis: auto;
+    width: 100%;
+  }
+
   .wordRow {
     flex-direction: column;
     gap: 0.5rem;
