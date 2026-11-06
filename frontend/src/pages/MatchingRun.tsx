@@ -214,7 +214,9 @@ export function MatchingRun({
         </div>
         <div className={css.matchingColumn} role="group" aria-label="Русские переводы">
           {batch[0]?.options.map((option, index) => {
+            const matched = usedOptions.has(index)
             const wrong =
+              !matched &&
               selectedResult?.outcome === 'answered' &&
               'chosen_option' in selectedResult &&
               !selectedResult.correct &&
@@ -223,8 +225,8 @@ export function MatchingRun({
               <button
                 key={index}
                 type="button"
-                className={`${ui.button} ${css.matchingCell} ${wrong ? css.wrong : usedOptions.has(index) ? css.right : ''}`}
-                disabled={busy || usedOptions.has(index)}
+                className={`${ui.button} ${css.matchingCell} ${wrong ? css.wrong : matched ? css.right : ''}`}
+                disabled={busy || matched}
                 onClick={() => chooseTranslation(index)}
                 lang="ru"
               >

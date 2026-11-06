@@ -153,6 +153,71 @@ describe('сопоставление пар', () => {
     expect(api.answer).toHaveBeenCalledTimes(3)
   })
 
+  it('снимает красный перевод при другом слове и оставляет верную пару зелёной', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.startTraining).mockResolvedValue({
+      ...twoItems,
+      items: [
+        { id: 'agent', prompt: 'agent', options: ['проклятие', 'исполнитель', 'привет'] },
+        { id: 'intern', prompt: 'intern', options: ['проклятие', 'исполнитель', 'привет'] },
+        { id: 'hello', prompt: 'hello', options: ['проклятие', 'исполнитель', 'привет'] },
+      ],
+    })
+    vi.mocked(api.answer)
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: false,
+        correct_option: 0,
+        chosen_option: 1,
+        delta: -4,
+        progress: 0,
+      })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: true,
+        correct_option: 1,
+        chosen_option: 1,
+        delta: 2,
+        progress: 2,
+      })
+      .mockResolvedValueOnce({
+        outcome: 'answered',
+        correct: false,
+        correct_option: 2,
+        chosen_option: 0,
+        delta: -4,
+        progress: 0,
+      })
+    renderPage()
+    const translations = await start(user)
+
+    await user.click(screen.getByRole('button', { name: 'intern' }))
+    await user.click(translations.getByRole('button', { name: 'исполнитель' }))
+    expect(screen.getByRole('button', { name: 'intern' })).toHaveClass(css.wrong)
+    expect(translations.getByRole('button', { name: 'исполнитель' })).toHaveClass(css.wrong)
+
+    await user.click(screen.getByRole('button', { name: 'agent' }))
+    expect(translations.getByRole('button', { name: 'исполнитель' })).not.toHaveClass(css.wrong)
+    await user.click(translations.getByRole('button', { name: 'исполнитель' }))
+    expect(screen.getByRole('button', { name: 'agent' })).toHaveClass(css.right)
+    expect(translations.getByRole('button', { name: 'исполнитель' })).toHaveClass(css.right)
+    expect(translations.getByRole('button', { name: 'исполнитель' })).not.toHaveClass(css.wrong)
+
+    await user.click(screen.getByRole('button', { name: 'intern' }))
+    expect(translations.getByRole('button', { name: 'исполнитель' })).toHaveClass(css.right)
+    expect(translations.getByRole('button', { name: 'исполнитель' })).not.toHaveClass(css.wrong)
+    expect(screen.getByRole('button', { name: 'intern' })).toHaveClass(css.wrong)
+
+    await user.click(screen.getByRole('button', { name: 'hello' }))
+    await user.click(translations.getByRole('button', { name: 'проклятие' }))
+    expect(translations.getByRole('button', { name: 'проклятие' })).toHaveClass(css.wrong)
+    await user.click(screen.getByRole('button', { name: 'intern' }))
+    expect(translations.getByRole('button', { name: 'проклятие' })).not.toHaveClass(css.wrong)
+    expect(translations.getByRole('button', { name: 'исполнитель' })).toHaveClass(css.right)
+    expect(screen.getByRole('button', { name: 'agent' })).toHaveClass(css.right)
+    expect(screen.getByRole('button', { name: 'intern' })).toHaveClass(css.wrong)
+  })
+
   it('переходит между группами и учитывает reveal/skip без дополнительного ответа', async () => {
     const user = userEvent.setup()
     const items = [
