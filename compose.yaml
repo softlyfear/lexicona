@@ -3,9 +3,10 @@ services:
     build: .
     image: lexicona
     restart: unless-stopped
+    user: "${LEXICONA_UID:-1000}:${LEXICONA_GID:-1000}"
     env_file: .env
     volumes:
-      - data:/data
+      - ./backend/data:/data
 
   # One-off CLI. Plain up/stop/down leave it alone; arguments replace `command`.
   lexicona-admin:
@@ -15,9 +16,10 @@ services:
       - lexicona-admin
     entrypoint: ["lexicona-admin"]
     command: ["list-users"]
+    user: "${LEXICONA_UID:-1000}:${LEXICONA_GID:-1000}"
     env_file: .env
     volumes:
-      - data:/data
+      - ./backend/data:/data
     stdin_open: true
     tty: true
     restart: "no"
@@ -40,6 +42,5 @@ services:
       - app
 
 volumes:
-  data:
   caddy_data:
   caddy_config:
