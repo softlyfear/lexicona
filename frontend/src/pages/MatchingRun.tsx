@@ -278,7 +278,7 @@ export function MatchingRun({
                 {selectedResult.outcome === 'unavailable'
                   ? selectedResult.reason === 'word_deleted'
                     ? 'Задание недоступно: слово удалено'
-                    : 'Задание недоступно: слово исключалось из обучения'
+                    : 'Задание недоступно: слово больше не в обучении'
                   : selectedResult.outcome === 'skipped'
                     ? 'Пропущено'
                     : selectedResult.outcome === 'assisted'

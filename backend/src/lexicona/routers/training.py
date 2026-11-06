@@ -266,7 +266,11 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 
     pool = list(
         await db.scalars(
-            select(Word).where(Word.owner_id == auth.user.id, Word.is_excluded.is_(False))
+            select(Word).where(
+                Word.owner_id == auth.user.id,
+                Word.is_excluded.is_(False),
+                Word.is_learned.is_(False),
+            )
         )
     )
     matching_ids: set[str] | None = None
@@ -466,6 +470,9 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
         elif item.outcome is not None:
             state = "done"
             result = _answer_out(item, word.progress).model_dump()
+        elif word.is_learned:
+            state = "done"
+            result = UnavailableOut(progress=word.progress).model_dump()
         elif item.answered_at is not None:
             state = "retryable"
             result = {
@@ -650,6 +657,7 @@ def _eligible(auth: CurrentAuth) -> Exists:
             Word.id == TrainingItem.word_id,
             Word.owner_id == auth.user.id,
             Word.is_excluded.is_(False),
+            Word.is_learned.is_(False),
             Word.training_version == TrainingItem.word_training_version,
         )
         .exists()
@@ -885,6 +893,7 @@ async def answer_item(
                     Word.content_version,
                     Word.training_version,
                     Word.is_excluded,
+                    Word.is_learned,
                     WordProgress.stage,
                     WordProgress.success_streak,
                     WordProgress.review_count,
@@ -901,6 +910,7 @@ async def answer_item(
         current = (
             state is not None
             and not state[2]
+            and not state[3]
             and state[0] == item.word_content_version
             and state[1] == item.word_training_version
         )
@@ -912,7 +922,7 @@ async def answer_item(
                 WordProgress.progress_version == item.word_progress_version,
             )
             if item.session.purpose == "scheduled":
-                transition = srs.review(state[3], state[4], cast(Grade, grade), now)
+                transition = srs.review(state[4], state[5], cast(Grade, grade), now)
                 changed = await db.execute(
                     schedule_update.values(
                         stage=transition.stage,
@@ -920,8 +930,8 @@ async def answer_item(
                         due_at=transition.due_at,
                         last_review_at=now,
                         success_streak=transition.success_streak,
-                        review_count=state[5] + 1,
-                        lapse_count=state[6] + int(transition.is_lapse),
+                        review_count=state[6] + 1,
+                        lapse_count=state[7] + int(transition.is_lapse),
                         progress_version=item.word_progress_version + 1,
                     )
                 )
@@ -938,6 +948,7 @@ async def answer_item(
                     Word.id == word.id,
                     Word.owner_id == auth.user.id,
                     Word.is_excluded.is_(False),
+                    Word.is_learned.is_(False),
                     Word.training_version == item.word_training_version,
                     Word.content_version == item.word_content_version,
                 )

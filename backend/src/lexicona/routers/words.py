@@ -286,7 +286,8 @@ class LearnedStateIn(BaseModel):
 async def set_learned_state(
     word_id: str, body: LearnedStateIn, auth: CurrentAuth, db: Db
 ) -> WordOut:
-    # Reversible and independent of progress, meaning, and open training items.
+    # Reversible and independent of progress and meaning.
+    # Learned words leave new sessions. An open item stops scoring while the mark is set.
     word = await owned_word(db, auth.user.id, word_id)
     await db.execute(
         update(Word)
