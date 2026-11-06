@@ -178,14 +178,15 @@ export function MatchingRun({
         <div className={css.matchingColumn} role="group" aria-label="Английские слова">
           {batch.map((item) => {
             const result = answers[item.id]
-            const state =
-              selectedId === item.id
+            const answered =
+              result?.outcome === 'answered' && 'correct' in result ? result : undefined
+            const state = answered
+              ? answered.correct
+                ? css.right
+                : css.wrong
+              : selectedId === item.id
                 ? css.selected
-                : result?.outcome === 'answered' && 'correct' in result
-                  ? result.correct
-                    ? css.right
-                    : css.wrong
-                  : ''
+                : ''
             return (
               <button
                 key={item.id}

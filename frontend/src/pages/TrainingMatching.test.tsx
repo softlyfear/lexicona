@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type TrainingSession } from '../api'
 import { TrainingPage } from './TrainingPage'
+import css from './pages.module.css'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -130,10 +131,14 @@ describe('сопоставление пар', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4) · прогресс 46%')
     expect(screen.getByRole('status')).toHaveTextContent('Повторного штрафа не будет')
     expect(screen.queryByText('Ответ: кот')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'cat' })).toHaveClass(css.wrong)
+    expect(screen.getByRole('button', { name: 'cat' })).not.toHaveClass(css.selected)
 
     await user.click(translations.getByRole('button', { name: 'кот' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 46%')
     expect(screen.getByRole('button', { name: 'cat' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'cat' })).toHaveClass(css.right)
+    expect(screen.getByRole('button', { name: 'cat' })).not.toHaveClass(css.selected)
     expect(translations.getByRole('button', { name: 'кот' })).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'dog' }))
