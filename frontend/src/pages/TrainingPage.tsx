@@ -31,13 +31,13 @@ const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = 
 ]
 const SIZES = [5, 10, 20, 30, 50, 75, 100, 125, 150]
 const WORD_ORDERS: { value: TrainingOrder; label: string }[] = [
-  { value: 'reviewed_desc', label: 'недавно пройденные слова' },
-  { value: 'reviewed_asc', label: 'давно пройденные слова' },
-  { value: 'created_desc', label: 'недавно добавленные слова' },
-  { value: 'created_asc', label: 'давно добавленные слова' },
-  { value: 'progress_asc', label: 'с наименьшим процентом выученности' },
-  { value: 'progress_desc', label: 'с наибольшим процентом выученности' },
-  { value: 'random', label: 'в случайном порядке' },
+  { value: 'reviewed_desc', label: 'Недавно пройденные слова' },
+  { value: 'reviewed_asc', label: 'Давно пройденные слова' },
+  { value: 'created_desc', label: 'Недавно добавленные слова' },
+  { value: 'created_asc', label: 'Давно добавленные слова' },
+  { value: 'progress_asc', label: 'С наименьшим процентом выученности' },
+  { value: 'progress_desc', label: 'С наибольшим процентом выученности' },
+  { value: 'random', label: 'В случайном порядке' },
 ]
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'again', label: 'Повторить' },
