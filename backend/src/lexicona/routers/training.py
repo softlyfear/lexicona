@@ -57,6 +57,7 @@ class SessionIn(BaseModel):
         "progress_asc",
         "progress_desc",
     ] = "random"
+    shuffle: StrictBool = False
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
@@ -242,6 +243,25 @@ def _arrange(words: list[Word], schedules: dict[str, WordProgress], order: str) 
     return sorted(words, key=key)
 
 
+def _shuffle_selected(
+    words: list[Word], size: int | Literal["all"], *, due_count: int = 0
+) -> list[Word]:
+    """Keep the ordered prefix, then shuffle presentation.
+
+    Due words stay ahead of new ones. Size is applied before the shuffle, so a
+    later unusable word does not pull in anything outside that prefix.
+    """
+    selected = words if size == "all" else words[:size]
+    if len(selected) < 2:
+        return selected
+    head = min(due_count, len(selected))
+    due = _rng.sample(selected[:head], head) if head > 1 else selected[:head]
+    tail = selected[head:]
+    if len(tail) > 1:
+        tail = _rng.sample(tail, len(tail))
+    return due + tail
+
+
 def _prompt_text(word: Word, direction: str) -> str:
     if direction == "en_ru":
         return word.headword
@@ -348,6 +368,8 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 
     if body.purpose == "free":
         targets = _arrange(filtered, schedules, body.order)
+        if body.shuffle:
+            targets = _shuffle_selected(targets, body.size)
     else:
         now = utcnow()
         due: list[Word] = []
@@ -359,9 +381,11 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             elif schedule.due_at is not None and schedule.due_at <= now:
                 due.append(word)
         # Due words stay ahead of new ones. The chosen order applies inside each group.
-        targets = _arrange(due, schedules, body.order)
-        if body.include_new:
-            targets += _arrange(new, schedules, body.order)[:10]
+        due_targets = _arrange(due, schedules, body.order)
+        new_targets = _arrange(new, schedules, body.order)[:10] if body.include_new else []
+        targets = due_targets + new_targets
+        if body.shuffle:
+            targets = _shuffle_selected(targets, body.size, due_count=len(due_targets))
         if not targets:
             raise HTTPException(status.HTTP_409_CONFLICT, "no_scheduled_words")
 

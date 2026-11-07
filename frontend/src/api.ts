@@ -26,6 +26,7 @@ export interface TrainingFilters {
   progress_min?: number | null
   progress_max?: number | null
   order?: TrainingOrder
+  shuffle?: boolean
 }
 
 export interface User {

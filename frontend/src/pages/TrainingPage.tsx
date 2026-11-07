@@ -39,6 +39,19 @@ const WORD_ORDERS: { value: TrainingOrder; label: string }[] = [
   { value: 'progress_desc', label: 'С наибольшим процентом выученности' },
   { value: 'random', label: 'В случайном порядке' },
 ]
+function orderHint(purpose: TrainingPurpose, order: TrainingOrder, shuffle: boolean) {
+  if (purpose === 'scheduled') {
+    return shuffle
+      ? 'Слова со сроком повторения остаются первыми. Внутри них и среди новых порядок случайный.'
+      : 'Слова со сроком повторения остаются первыми. Этот порядок действует внутри них и среди новых.'
+  }
+  if (shuffle && order !== 'random') {
+    return 'Сначала отбираются слова в выбранном порядке, в пределах размера занятия. В упражнении они идут в случайном порядке.'
+  }
+  if (order === 'random') return 'Подходящие слова выбираются и идут в случайном порядке.'
+  return 'Подходящие слова идут в выбранном порядке, в пределах размера занятия.'
+}
+
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'again', label: 'Повторить' },
   { value: 'hard', label: 'Трудно' },
@@ -186,6 +199,7 @@ function Setup({
   const [minimum, setMinimum] = useState('')
   const [maximum, setMaximum] = useState('')
   const [order, setOrder] = useState<TrainingOrder>('random')
+  const [shuffle, setShuffle] = useState(false)
   const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
   const parseBound = (value: string) =>
     value === ''
@@ -211,6 +225,7 @@ function Setup({
         filters.progress_max = max
       }
       if (order !== 'random') filters.order = order
+      if (shuffle) filters.shuffle = true
       return api.startTraining(
         direction,
         requestedSize,
@@ -417,12 +432,20 @@ function Setup({
                 ))}
               </select>
             </label>
+            <button
+              type="button"
+              className={shuffle ? `${ui.primary} ${css.shuffle}` : `${ui.button} ${css.shuffle}`}
+              aria-pressed={shuffle}
+              aria-describedby="training-order-hint"
+              onClick={() => {
+                start.reset()
+                setShuffle((value) => !value)
+              }}
+            >
+              Перемешать
+            </button>
             <p id="training-order-hint" className={ui.muted}>
-              {purpose === 'scheduled'
-                ? 'Слова со сроком повторения остаются первыми. Этот порядок действует внутри них и среди новых.'
-                : order === 'random'
-                  ? 'Подходящие слова выбираются и идут в случайном порядке.'
-                  : 'Подходящие слова идут в выбранном порядке, в пределах размера занятия.'}
+              {orderHint(purpose, order, shuffle)}
             </p>
             <p className={ui.muted}>Теги: любой выбранный</p>
             {tags.isLoading && (
@@ -491,6 +514,7 @@ function Setup({
                   setMinimum('')
                   setMaximum('')
                   setOrder('random')
+                  setShuffle(false)
                 }}
               >
                 Очистить фильтры

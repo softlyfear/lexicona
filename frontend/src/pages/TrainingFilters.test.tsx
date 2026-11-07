@@ -105,11 +105,16 @@ describe('фильтры тренировки', () => {
     expect(min).toHaveValue('101')
     expect(screen.getByLabelText('Дом')).toBeChecked()
     await user.selectOptions(screen.getByLabelText('Сначала показывать'), 'progress_asc')
+    await user.click(screen.getByRole('button', { name: 'Перемешать' }))
     await user.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
     expect(min).toHaveValue('')
     expect(max).toHaveValue('')
     expect(screen.getByLabelText('Дом')).not.toBeChecked()
     expect(screen.getByLabelText('Сначала показывать')).toHaveValue('random')
+    expect(screen.getByRole('button', { name: 'Перемешать' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 
   it('в режиме всех слов игнорирует неверный размер, но не неверную границу', async () => {
@@ -150,12 +155,22 @@ describe('фильтры тренировки', () => {
     await user.click(screen.getByLabelText('По расписанию'))
     expect(screen.getByText(/Слова со сроком повторения остаются первыми/)).toBeInTheDocument()
     await user.click(screen.getByLabelText('Свободная практика'))
+    await user.click(screen.getByRole('button', { name: 'Перемешать' }))
+    expect(screen.getByRole('button', { name: 'Перемешать' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(
+      screen.getByText(
+        'Сначала отбираются слова в выбранном порядке, в пределах размера занятия. В упражнении они идут в случайном порядке.',
+      ),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(api.startTraining).toHaveBeenCalledWith(
       'en_ru',
       10,
       'choice',
-      { order: 'progress_asc' },
+      { order: 'progress_asc', shuffle: true },
       'free',
       true,
     )
@@ -184,6 +199,7 @@ describe('фильтры тренировки', () => {
     await waitFor(() => expect(screen.getByLabelText('Дом')).toBeDisabled())
     expect(screen.getByLabelText('Прогресс от, %')).toBeDisabled()
     expect(screen.getByLabelText('Сначала показывать')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Перемешать' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Очистить фильтры' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Начать' })).toBeDisabled()
     expect(api.startTraining).toHaveBeenCalledTimes(1)
