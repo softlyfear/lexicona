@@ -183,6 +183,11 @@
   padding-inline: 0.75rem;
 }
 
+.shuffle {
+  align-self: flex-start;
+  min-height: 2.75rem;
+}
+
 .wordList {
   display: flex;
   flex-direction: column;
