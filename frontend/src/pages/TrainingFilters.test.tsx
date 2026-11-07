@@ -55,7 +55,9 @@ describe('фильтры тренировки', () => {
     await user.click(screen.getByLabelText('Работа'))
     await user.type(screen.getByLabelText('Прогресс от, %'), '100')
     await user.type(screen.getByLabelText('Прогресс до, %'), '158')
-    expect(screen.getByText(/случайном порядке/)).toBeInTheDocument()
+    expect(
+      screen.getByText('Подходящие слова выбираются и идут в случайном порядке.'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(api.startTraining).toHaveBeenCalledWith(
       'en_ru',
@@ -102,10 +104,12 @@ describe('фильтры тренировки', () => {
     expect(screen.getByRole('link', { name: 'Перейти в словарь' })).toHaveAttribute('href', '/')
     expect(min).toHaveValue('101')
     expect(screen.getByLabelText('Дом')).toBeChecked()
+    await user.selectOptions(screen.getByLabelText('Сначала показывать'), 'progress_asc')
     await user.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
     expect(min).toHaveValue('')
     expect(max).toHaveValue('')
     expect(screen.getByLabelText('Дом')).not.toBeChecked()
+    expect(screen.getByLabelText('Сначала показывать')).toHaveValue('random')
   })
 
   it('в режиме всех слов игнорирует неверный размер, но не неверную границу', async () => {
@@ -133,6 +137,30 @@ describe('фильтры тренировки', () => {
     )
   })
 
+  it('передаёт выбранный порядок слов и поясняет его', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.selectOptions(
+      screen.getByLabelText('Сначала показывать'),
+      'с наименьшим процентом выученности',
+    )
+    expect(
+      screen.getByText('Подходящие слова идут в выбранном порядке, в пределах размера занятия.'),
+    ).toBeInTheDocument()
+    await user.click(screen.getByLabelText('По расписанию'))
+    expect(screen.getByText(/Слова со сроком повторения остаются первыми/)).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Свободная практика'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      10,
+      'choice',
+      { order: 'progress_asc' },
+      'free',
+      true,
+    )
+  })
+
   it('ошибка справочника не мешает старту без тегов', async () => {
     vi.mocked(api.listTags).mockRejectedValue(new TypeError('offline'))
     const user = userEvent.setup()
@@ -155,6 +183,7 @@ describe('фильтры тренировки', () => {
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     await waitFor(() => expect(screen.getByLabelText('Дом')).toBeDisabled())
     expect(screen.getByLabelText('Прогресс от, %')).toBeDisabled()
+    expect(screen.getByLabelText('Сначала показывать')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Очистить фильтры' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Начать' })).toBeDisabled()
     expect(api.startTraining).toHaveBeenCalledTimes(1)

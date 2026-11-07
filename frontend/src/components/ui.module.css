@@ -81,6 +81,12 @@ legend.label {
   background: var(--surface);
 }
 
+@media (max-width: 719px) {
+  .card {
+    padding: 0.65rem;
+  }
+}
+
 @media (min-width: 720px) {
   .card {
     padding: 1.25rem;

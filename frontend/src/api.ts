@@ -13,10 +13,19 @@ export type WordSort =
   | 'progress_desc'
 export type WordTrainingFilter = 'active' | 'excluded' | 'learned' | 'all'
 export type TrainingSize = number | 'all'
+export type TrainingOrder =
+  | 'random'
+  | 'reviewed_desc'
+  | 'reviewed_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'progress_asc'
+  | 'progress_desc'
 export interface TrainingFilters {
   tag_ids?: string[]
   progress_min?: number | null
   progress_max?: number | null
+  order?: TrainingOrder
 }
 
 export interface User {
