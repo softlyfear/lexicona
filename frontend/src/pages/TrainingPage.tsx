@@ -9,6 +9,8 @@ import {
   type TerminalResult,
   type NewTrainingMode,
   type ResumedItem,
+  type TrainingFilters,
+  type TrainingOrder,
   type TrainingPurpose,
   type TrainingSession,
   type TrainingSize,
@@ -28,6 +30,15 @@ const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = 
   { mode: 'input', direction: 'ru_en', label: 'Написание слова: RU → EN' },
 ]
 const SIZES = [5, 10, 20, 30, 50, 75, 100, 125, 150]
+const WORD_ORDERS: { value: TrainingOrder; label: string }[] = [
+  { value: 'reviewed_desc', label: 'недавно пройденные слова' },
+  { value: 'reviewed_asc', label: 'давно пройденные слова' },
+  { value: 'created_desc', label: 'недавно добавленные слова' },
+  { value: 'created_asc', label: 'давно добавленные слова' },
+  { value: 'progress_asc', label: 'с наименьшим процентом выученности' },
+  { value: 'progress_desc', label: 'с наибольшим процентом выученности' },
+  { value: 'random', label: 'в случайном порядке' },
+]
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'again', label: 'Повторить' },
   { value: 'hard', label: 'Трудно' },
@@ -174,6 +185,7 @@ function Setup({
   const [tagIds, setTagIds] = useState<string[]>([])
   const [minimum, setMinimum] = useState('')
   const [maximum, setMaximum] = useState('')
+  const [order, setOrder] = useState<TrainingOrder>('random')
   const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
   const parseBound = (value: string) =>
     value === ''
@@ -192,11 +204,21 @@ function Setup({
   const startErrorRef = useRef<HTMLParagraphElement>(null)
   const start = useMutation({
     mutationFn: (requestedSize: TrainingSize) => {
-      const filters =
-        tagIds.length || min !== null || max !== null
-          ? { tag_ids: tagIds, progress_min: min, progress_max: max }
-          : undefined
-      return api.startTraining(direction, requestedSize, mode, filters, purpose, includeNew)
+      const filters: TrainingFilters = {}
+      if (tagIds.length || min !== null || max !== null) {
+        filters.tag_ids = tagIds
+        filters.progress_min = min
+        filters.progress_max = max
+      }
+      if (order !== 'random') filters.order = order
+      return api.startTraining(
+        direction,
+        requestedSize,
+        mode,
+        Object.keys(filters).length ? filters : undefined,
+        purpose,
+        includeNew,
+      )
     },
     onSuccess: (session, size) => {
       if (startScope.current === speechGeneration()) onStart(session, size)
@@ -377,6 +399,31 @@ function Setup({
             disabled={start.isPending}
             aria-labelledby="training-filters-title"
           >
+            <label className={ui.field}>
+              <span className={ui.label}>Сначала показывать</span>
+              <select
+                className={ui.input}
+                value={order}
+                aria-describedby="training-order-hint"
+                onChange={(event) => {
+                  start.reset()
+                  setOrder(event.target.value as TrainingOrder)
+                }}
+              >
+                {WORD_ORDERS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p id="training-order-hint" className={ui.muted}>
+              {purpose === 'scheduled'
+                ? 'Слова со сроком повторения остаются первыми. Этот порядок действует внутри них и среди новых.'
+                : order === 'random'
+                  ? 'Подходящие слова выбираются и идут в случайном порядке.'
+                  : 'Подходящие слова идут в выбранном порядке, в пределах размера занятия.'}
+            </p>
             <p className={ui.muted}>Теги: любой выбранный</p>
             {tags.isLoading && (
               <p role="status" className={ui.muted}>
@@ -443,6 +490,7 @@ function Setup({
                   setTagIds([])
                   setMinimum('')
                   setMaximum('')
+                  setOrder('random')
                 }}
               >
                 Очистить фильтры
@@ -450,9 +498,6 @@ function Setup({
             </div>
           </fieldset>
         </div>
-        {purpose === 'free' && (
-          <p className={ui.muted}>Подходящие слова выбираются и идут в случайном порядке.</p>
-        )}
         {start.isError && (
           <p ref={startErrorRef} className={`${ui.error} ${css.startError}`} role="alert">
             {mode !== 'choice' &&

@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 from typing import Annotated, Any, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
@@ -47,6 +48,15 @@ class SessionIn(BaseModel):
     )
     progress_min: Annotated[int, Field(ge=0, strict=True)] | None = None
     progress_max: Annotated[int, Field(ge=0, strict=True)] | None = None
+    order: Literal[
+        "random",
+        "reviewed_desc",
+        "reviewed_asc",
+        "created_desc",
+        "created_asc",
+        "progress_asc",
+        "progress_desc",
+    ] = "random"
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
@@ -206,6 +216,32 @@ def _answer_side(word: ChoiceCandidate, direction: str) -> tuple[str, str]:
     return word.headword, _choice_key(word.normalized_headword)
 
 
+def _seconds(value: datetime) -> float:
+    return (value - datetime.min).total_seconds()
+
+
+def _arrange(words: list[Word], schedules: dict[str, WordProgress], order: str) -> list[Word]:
+    """Order a session pool. Random stays a shuffle. The other orders are stable."""
+    if order == "random":
+        return _rng.sample(words, len(words))
+
+    def key(word: Word) -> tuple[object, ...]:
+        reviewed = schedules[word.id].last_review_at
+        if order == "reviewed_desc":
+            return (reviewed is None, -_seconds(reviewed) if reviewed else 0, word.id)
+        if order == "reviewed_asc":
+            return (reviewed is None, _seconds(reviewed) if reviewed else 0, word.id)
+        if order == "created_desc":
+            return (-_seconds(word.created_at), word.id)
+        if order == "created_asc":
+            return (_seconds(word.created_at), word.id)
+        if order == "progress_asc":
+            return (word.progress, word.id)
+        return (-word.progress, word.id)
+
+    return sorted(words, key=key)
+
+
 def _prompt_text(word: Word, direction: str) -> str:
     if direction == "en_ru":
         return word.headword
@@ -311,7 +347,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             db.add(schedules[word.id])
 
     if body.purpose == "free":
-        targets = _rng.sample(filtered, len(filtered))
+        targets = _arrange(filtered, schedules, body.order)
     else:
         now = utcnow()
         due: list[Word] = []
@@ -322,9 +358,10 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 new.append(word)
             elif schedule.due_at is not None and schedule.due_at <= now:
                 due.append(word)
-        targets = _rng.sample(due, len(due))
+        # Due words stay ahead of new ones. The chosen order applies inside each group.
+        targets = _arrange(due, schedules, body.order)
         if body.include_new:
-            targets += _rng.sample(new, len(new))[:10]
+            targets += _arrange(new, schedules, body.order)[:10]
         if not targets:
             raise HTTPException(status.HTTP_409_CONFLICT, "no_scheduled_words")
 

@@ -761,6 +761,91 @@ legend.settingLabel {
   background: color-mix(in srgb, var(--surface-raised) 65%, transparent);
 }
 
+@media (max-width: 719px) {
+  .stack,
+  .form {
+    gap: 0.6rem;
+  }
+
+  .title {
+    font-size: 1.2rem;
+  }
+
+  .wordList {
+    gap: 0.4rem;
+  }
+
+  .wordRow {
+    gap: 0.35rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .wordHead {
+    gap: 0.15rem 0.45rem;
+  }
+
+  .wordHead strong {
+    font-size: 0.95rem;
+  }
+
+  .example {
+    font-size: 0.84rem;
+  }
+
+  .wordSide {
+    gap: 0.25rem 0.5rem;
+  }
+
+  .rowActions .actionButton {
+    min-height: 2.75rem;
+    padding: 0.12rem 0.04rem;
+  }
+
+  .group {
+    gap: 0.4rem;
+    padding: 0.5rem 0.55rem;
+  }
+
+  .question {
+    min-height: 3.1rem;
+  }
+
+  .prompt {
+    font-size: 1.12rem;
+  }
+
+  .transcription {
+    font-size: 1rem;
+  }
+
+  .options {
+    gap: 0.35rem;
+  }
+
+  .optionRow {
+    min-height: 2.75rem;
+    padding: 0.25rem 0.45rem 0.25rem 2.15rem;
+  }
+
+  .optionText {
+    font-size: 0.98rem;
+    line-height: 1.3;
+  }
+
+  .statsList {
+    gap: 0.28rem;
+  }
+
+  .score {
+    font-size: 2.15rem;
+  }
+
+  .cardRevealed {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
 @media (min-width: 380px) {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
