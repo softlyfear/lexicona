@@ -5,10 +5,10 @@ install:
 	cd frontend && npm ci
 
 dictionary:
-	cd backend && uv run --locked python -m lexicona.dictionary build
+	cd backend && uv run --locked python -m lexicona.infrastructure.dictionary build
 
 voices:
-	cd backend && uv run --locked python -m lexicona.tts download
+	cd backend && uv run --locked python -m lexicona.infrastructure.tts download
 
 fmt:
 	cd backend && uv run --locked ruff check --fix ../.codex/hooks ../.grok/hooks ../tests ../scripts && uv run --locked ruff format ../.codex/hooks ../.grok/hooks ../tests ../scripts

@@ -4,9 +4,9 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from sqlalchemy import select
 
-from lexicona.db import utcnow
-from lexicona.deps import CurrentAuth, Db
-from lexicona.models import AnswerEvent, Word
+from lexicona.infrastructure.db import utcnow
+from lexicona.infrastructure.models import AnswerEvent, Word
+from lexicona.interfaces.http.deps import CurrentAuth, Db
 
 router = APIRouter(tags=["statistics"])
 

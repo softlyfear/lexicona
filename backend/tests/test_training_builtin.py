@@ -1,7 +1,7 @@
 import pytest
 
-from lexicona import distractors
-from lexicona.normalize import normalize
+from lexicona.domain import distractors
+from lexicona.domain.normalize import normalize
 from tests.conftest import Client, add_word
 
 

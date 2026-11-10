@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 from sqlalchemy import select
 
-from lexicona.deps import CurrentAuth, Db
-from lexicona.models import Tag
-from lexicona.tags import TagOut
+from lexicona.application.tags import TagOut
+from lexicona.infrastructure.models import Tag
+from lexicona.interfaces.http.deps import CurrentAuth, Db
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 

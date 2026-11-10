@@ -5,11 +5,12 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona import dictionary, distractors
-from lexicona.db import Database
-from lexicona.models import TrainingItem, TrainingSession, Word
-from lexicona.normalize import normalize
-from lexicona.routers import training
+from lexicona.domain import distractors
+from lexicona.domain.normalize import normalize
+from lexicona.infrastructure import dictionary
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import TrainingItem, TrainingSession, Word
+from lexicona.interfaces.http.routers import training
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 

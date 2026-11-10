@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 
-from lexicona import translation
 from lexicona.config import Settings
+from lexicona.infrastructure import translation
 from tests.conftest import Client
 from tests.test_dictionary import archive, build_fixture
 

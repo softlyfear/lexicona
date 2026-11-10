@@ -9,10 +9,10 @@ from alembic import command
 from fastapi import FastAPI
 from sqlalchemy import select, update
 
-from lexicona.db import Database, utcnow
-from lexicona.models import TrainingItem, Word, WordProgress
-from lexicona.routers import training
-from lexicona.srs import Grade, review
+from lexicona.domain.srs import Grade, review
+from lexicona.infrastructure.db import Database, utcnow
+from lexicona.infrastructure.models import TrainingItem, Word, WordProgress
+from lexicona.interfaces.http.routers import training
 from tests.conftest import Client, add_legacy_card_item, add_word
 from tests.test_app import alembic_config
 

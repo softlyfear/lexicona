@@ -1,5 +1,5 @@
-from lexicona.dictionary import ChoiceEntry
-from lexicona.normalize import normalize
+from lexicona.domain.choice import ChoiceEntry
+from lexicona.domain.normalize import normalize
 
 # Ordinary EN/RU pairs for choice fillers. One clear sense each, so a quiz
 # never offers a prefix, a sound imitation, or a rare dictionary entry.

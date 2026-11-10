@@ -1,7 +1,7 @@
 import pytest
 
-from lexicona.normalize import hinted_text, normalize
-from lexicona.progress import AnswerKind, Difficulty, apply, delta, with_letter_hint
+from lexicona.domain.normalize import hinted_text, normalize
+from lexicona.domain.progress import AnswerKind, Difficulty, apply, delta, with_letter_hint
 
 D = Difficulty
 

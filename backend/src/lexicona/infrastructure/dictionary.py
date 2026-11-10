@@ -12,13 +12,15 @@ import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 from contextlib import closing
-from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from lexicona.config import Settings
-from lexicona.normalize import normalize
+
+# Explicit re-export: callers and mypy look up ChoiceEntry on this module.
+from lexicona.domain.choice import ChoiceEntry as ChoiceEntry
+from lexicona.domain.normalize import normalize
 
 SOURCE_ID = "freedict-wikdict-eng-rus-2025.11.23"
 SHA256 = "f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39"
@@ -295,14 +297,6 @@ def lookup(path: Path, headword: str) -> dict[str, Any]:
             }
         )
     return {"source": SOURCE, "matches": matches, "spelling_suggestions": suggestions}
-
-
-@dataclass(frozen=True, slots=True)
-class ChoiceEntry:
-    entry_id: int
-    headword: str
-    normalized_headword: str
-    translations: tuple[tuple[str, str], ...]
 
 
 def choice_candidates(path: Path, limit: int = 120) -> list[ChoiceEntry]:

@@ -5,11 +5,11 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona.db import Database
-from lexicona.deps import SESSION_COOKIE
-from lexicona.models import AuthSession, User
-from lexicona.routers import auth
-from lexicona.security import LoginThrottle, hash_password, verify_password
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import AuthSession, User
+from lexicona.infrastructure.security import LoginThrottle, hash_password, verify_password
+from lexicona.interfaces.http.deps import SESSION_COOKIE
+from lexicona.interfaces.http.routers import auth
 from tests.conftest import PASSWORD, Client, _client
 
 NEW_PASSWORD = "  новая🔑пароль  "

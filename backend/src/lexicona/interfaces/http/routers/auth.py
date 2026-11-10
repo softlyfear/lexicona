@@ -5,11 +5,17 @@ from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, insert, literal, select, update
 
-from lexicona.db import utcnow
-from lexicona.deps import SESSION_COOKIE, AppSettings, CurrentAuth, Db
-from lexicona.models import AuthSession, User, new_id
-from lexicona.progress import Difficulty
-from lexicona.security import LoginThrottle, hash_password, new_token, token_hash, verify_password
+from lexicona.domain.progress import Difficulty
+from lexicona.infrastructure.db import utcnow
+from lexicona.infrastructure.models import AuthSession, User, new_id
+from lexicona.infrastructure.security import (
+    LoginThrottle,
+    hash_password,
+    new_token,
+    token_hash,
+    verify_password,
+)
+from lexicona.interfaces.http.deps import SESSION_COOKIE, AppSettings, CurrentAuth, Db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 throttle = LoginThrottle()

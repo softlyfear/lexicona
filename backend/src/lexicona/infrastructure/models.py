@@ -15,8 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from lexicona.db import utcnow
-from lexicona.progress import Difficulty
+from lexicona.domain.progress import Difficulty
+from lexicona.infrastructure.db import utcnow
 
 
 def new_id() -> str:

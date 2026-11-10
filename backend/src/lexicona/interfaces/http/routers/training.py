@@ -15,10 +15,13 @@ from pydantic import (
 from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
-from lexicona import dictionary, distractors, progress, srs
-from lexicona.db import utcnow
-from lexicona.deps import CurrentAuth, Db
-from lexicona.models import (
+from lexicona.domain import distractors, progress, srs
+from lexicona.domain.normalize import hinted_text, normalize
+from lexicona.domain.progress import AnswerKind
+from lexicona.domain.srs import Grade
+from lexicona.infrastructure import dictionary
+from lexicona.infrastructure.db import utcnow
+from lexicona.infrastructure.models import (
     AnswerEvent,
     Tag,
     TrainingItem,
@@ -27,9 +30,7 @@ from lexicona.models import (
     WordProgress,
     WordTag,
 )
-from lexicona.normalize import hinted_text, normalize
-from lexicona.progress import AnswerKind
-from lexicona.srs import Grade
+from lexicona.interfaces.http.deps import CurrentAuth, Db
 
 router = APIRouter(prefix="/training", tags=["training"])
 

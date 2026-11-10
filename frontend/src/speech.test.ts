@@ -300,4 +300,30 @@ describe('серверный голос', () => {
     )
     expect(selected?.id).toBe('en_US-lessac-high')
   })
+
+  it('заменяет удалённый medium голос первым установленным акцентом', () => {
+    const voices = [
+      {
+        id: 'en_US-lessac-high',
+        name: 'Lessac',
+        language: 'en-US' as const,
+        gender: 'female' as const,
+      },
+      { id: 'en_US-ryan-high', name: 'Ryan', language: 'en-US' as const, gender: 'male' as const },
+    ]
+    const selected = selectServerVoice(voices, 'en', {
+      ...preferences,
+      serverEnUS: 'en_US-amy-medium',
+    })
+    expect(selected?.id).toBe('en_US-lessac-high')
+  })
+
+  it('не выбирает серверный русский голос, когда моделей нет', () => {
+    const selected = selectServerVoice(
+      [{ id: 'en_US-lessac-high', name: 'Lessac', language: 'en-US', gender: 'female' }],
+      'ru',
+      { ...preferences, serverRu: 'ru_RU-denis-medium' },
+    )
+    expect(selected).toBeNull()
+  })
 })

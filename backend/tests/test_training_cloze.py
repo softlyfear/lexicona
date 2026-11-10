@@ -6,7 +6,7 @@ import pytest
 from alembic import command
 from fastapi import FastAPI
 
-from lexicona.cloze import mask_example
+from lexicona.domain.cloze import mask_example
 from tests.conftest import Client, add_legacy_cloze_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress

@@ -4,8 +4,8 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona.db import Database
-from lexicona.models import TrainingItem, Word, WordTranslation
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import TrainingItem, Word, WordTranslation
 from tests.conftest import Client
 
 

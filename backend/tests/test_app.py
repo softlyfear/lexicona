@@ -35,7 +35,10 @@ async def test_spa_fallback(tmp_path: Path) -> None:
     (tmp_path / "app.js").write_text("js")
     app = create_app(
         Settings(
-            _env_file=None, database_url=f"sqlite+aiosqlite:///{tmp_path}/s.db", static_dir=tmp_path
+            _env_file=None,
+            database_url=f"sqlite+aiosqlite:///{tmp_path}/s.db",
+            static_dir=tmp_path,
+            tts_dir=tmp_path / "tts",
         )
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

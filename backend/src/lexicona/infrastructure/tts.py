@@ -5,6 +5,8 @@ import importlib.util
 import io
 import json
 import os
+import re
+import shutil
 import tempfile
 import threading
 import urllib.request
@@ -28,31 +30,15 @@ NOISE_W_SCALE = 0.333
 _loaded: OrderedDict[str, Any] = OrderedDict()
 _clips: OrderedDict[tuple[str, float, str], bytes] = OrderedDict()
 
+# Medium and Russian Piper voices stay out of the catalog: they sound worse than
+# these four English high models and worse than the browser Russian voice.
 VOICES = {
     "en_US-lessac-high": ("Lessac", "en-US", "female"),
-    "en_US-kristin-medium": ("Kristin", "en-US", "female"),
     "en_US-ryan-high": ("Ryan", "en-US", "male"),
-    "en_US-joe-medium": ("Joe", "en-US", "male"),
-    "en_US-amy-medium": ("Amy", "en-US", "female"),
-    "en_US-bryce-medium": ("Bryce", "en-US", "male"),
-    "en_US-hfc_female-medium": ("HFC Female", "en-US", "female"),
-    "en_US-hfc_male-medium": ("HFC Male", "en-US", "male"),
-    "en_US-john-medium": ("John", "en-US", "male"),
-    "en_US-kusal-medium": ("Kusal", "en-US", "male"),
     "en_US-ljspeech-high": ("LJ Speech", "en-US", "female"),
-    "en_US-norman-medium": ("Norman", "en-US", "male"),
-    "en_US-reza_ibrahim-medium": ("Reza Ibrahim", "en-US", "male"),
-    "en_US-sam-medium": ("Sam", "en-US", "nonbinary"),
-    "en_GB-alba-medium": ("Alba", "en-GB", "female"),
-    "en_GB-jenny_dioco-medium": ("Jenny", "en-GB", "female"),
-    "en_GB-alan-medium": ("Alan", "en-GB", "male"),
-    "en_GB-northern_english_male-medium": ("Northern English", "en-GB", "male"),
     "en_GB-cori-high": ("Cori", "en-GB", "female"),
-    "ru_RU-denis-medium": ("Denis", "ru-RU", "male"),
-    "ru_RU-dmitri-medium": ("Dmitri", "ru-RU", "male"),
-    "ru_RU-irina-medium": ("Irina", "ru-RU", "female"),
-    "ru_RU-ruslan-medium": ("Ruslan", "ru-RU", "male"),
 }
+_VOICE_DIR = re.compile(r"^[a-z]{2}_[A-Z]{2}-[A-Za-z0-9_]+-(?:x_low|low|medium|high)$")
 
 
 class SpeechError(Exception):
@@ -90,6 +76,18 @@ def voices(directory: Path) -> list[dict[str, str]]:
 
 def runtime_available() -> bool:
     return importlib.util.find_spec("piper") is not None
+
+
+def prune_removed(directory: Path) -> None:
+    """Remove voice directories that are no longer in the pinned catalog."""
+    if not directory.is_dir():
+        return
+    for child in directory.iterdir():
+        if child.is_symlink() or not child.is_dir():
+            continue
+        if child.name in VOICES or _VOICE_DIR.fullmatch(child.name) is None:
+            continue
+        shutil.rmtree(child)
 
 
 def reset_caches() -> None:
@@ -228,8 +226,11 @@ def download_file(url: str, target: Path, expected: str) -> None:
 
 
 def download(directory: Path) -> None:
+    prune_removed(directory)
     manifest: dict[str, Any] = json.loads(
-        importlib.resources.files("lexicona").joinpath("tts_manifest.json").read_text("utf-8")
+        importlib.resources.files("lexicona.infrastructure")
+        .joinpath("tts_manifest.json")
+        .read_text("utf-8")
     )
     if manifest["revision"] != REVISION or set(manifest["voices"]) != set(VOICES):
         raise SpeechError

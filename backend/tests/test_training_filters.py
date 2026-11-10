@@ -4,9 +4,9 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona import distractors
-from lexicona.db import Database
-from lexicona.models import TrainingItem, TrainingSession, Word
+from lexicona.domain import distractors
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import TrainingItem, TrainingSession, Word
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 

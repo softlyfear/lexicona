@@ -3,8 +3,8 @@ from datetime import datetime
 import pytest
 from fastapi import FastAPI
 
-from lexicona.db import Database
-from lexicona.models import Word, WordTranslation
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import Word, WordTranslation
 from tests.conftest import Client, add_word
 
 

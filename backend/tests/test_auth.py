@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 
-from lexicona.models import User
+from lexicona.infrastructure.models import User
 from tests.conftest import Client
 
 

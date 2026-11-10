@@ -1,0 +1,61 @@
+{
+  "revision": "e7229f7d33a10e145e109b886d661984201ac3c4",
+  "voices": {
+    "en_US-lessac-high": [
+      {
+        "file": "en_US-lessac-high.onnx",
+        "sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09"
+      },
+      {
+        "file": "en_US-lessac-high.onnx.json",
+        "sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "7671826d947a0ffc11dd76af0bd890d93e956b00358696ad71348f21aa827100"
+      }
+    ],
+    "en_US-ryan-high": [
+      {
+        "file": "en_US-ryan-high.onnx",
+        "sha256": "b3990d7606e183ec8dbfba70a4607074f162de1a0c412e0180d1ff60bb154eca"
+      },
+      {
+        "file": "en_US-ryan-high.onnx.json",
+        "sha256": "c6d3b98f08315cb4bebf0d49d50fc4ff491b503c64b940cd3d5ca28543b48011"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "7c3b337dd4e96c3f311f476118b15d93867aefa4bee54263e250c45f759fad0d"
+      }
+    ],
+    "en_US-ljspeech-high": [
+      {
+        "file": "en_US-ljspeech-high.onnx",
+        "sha256": "5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a"
+      },
+      {
+        "file": "en_US-ljspeech-high.onnx.json",
+        "sha256": "7e1f4634af596d83cca997fb7a931ba80b70f8a316a2655ee69c55365e0ace14"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "289f7421072d689a3d91f6c632f486af46f9b8b04417536104a4ea667b8a394b"
+      }
+    ],
+    "en_GB-cori-high": [
+      {
+        "file": "en_GB-cori-high.onnx",
+        "sha256": "470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903"
+      },
+      {
+        "file": "en_GB-cori-high.onnx.json",
+        "sha256": "9e7fb5b5671612c22f3c81cbe46c1ae87b031a4632bcb509e499dad6f1e2adec"
+      },
+      {
+        "file": "MODEL_CARD",
+        "sha256": "136e7bd168b6c35b4a5df01a0253297e5773b5775ceae0af5160f264aa58208f"
+      }
+    ]
+  }
+}

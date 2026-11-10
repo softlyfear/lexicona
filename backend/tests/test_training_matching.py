@@ -4,9 +4,9 @@ from typing import Any
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona.db import Database
-from lexicona.models import TrainingItem, WordProgress
-from lexicona.normalize import normalize
+from lexicona.domain.normalize import normalize
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import TrainingItem, WordProgress
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 

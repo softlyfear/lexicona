@@ -16,10 +16,10 @@ from pydantic import (
 from sqlalchemy import ColumnElement, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lexicona.deps import CurrentAuth, Db
-from lexicona.models import Tag, Word, WordProgress, WordTag, WordTranslation
-from lexicona.normalize import normalize
-from lexicona.tags import TagOut, replace_tags, tag_key, tag_name, tags_for_words
+from lexicona.application.tags import TagOut, replace_tags, tag_key, tag_name, tags_for_words
+from lexicona.domain.normalize import normalize
+from lexicona.infrastructure.models import Tag, Word, WordProgress, WordTag, WordTranslation
+from lexicona.interfaces.http.deps import CurrentAuth, Db
 
 router = APIRouter(prefix="/words", tags=["words"])
 

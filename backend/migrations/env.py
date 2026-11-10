@@ -4,8 +4,8 @@ from alembic import context
 from sqlalchemy.engine import Connection
 
 from lexicona.config import Settings
-from lexicona.db import Database
-from lexicona.models import Base
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import Base
 
 config = context.config
 target_metadata = Base.metadata

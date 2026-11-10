@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lexicona.models import Tag, WordTag, new_id
+from lexicona.infrastructure.models import Tag, WordTag, new_id
 
 
 class TagOut(BaseModel):

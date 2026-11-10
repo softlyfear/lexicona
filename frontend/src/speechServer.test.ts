@@ -207,9 +207,11 @@ describe('серверная речь', () => {
     const { result } = renderHook(() => useSpeech())
     expect(result.current.serverVoices[0].id).toBe('us')
     act(() => updateSpeechPreferences({ serverEnUS: 'missing' }))
-    act(() => speak('hello', 'en'))
-    expect(result.current.status).toContain('недоступен')
-    expect(synthesize).not.toHaveBeenCalled()
+    await act(async () => {
+      speak('hello', 'en')
+      await Promise.resolve()
+    })
+    expect(synthesize).toHaveBeenCalledWith('hello', 'us', 1, expect.any(AbortSignal))
   })
 
   it('сохраняет старый en-AU и использует браузер при отсутствии серверного акцента', async () => {

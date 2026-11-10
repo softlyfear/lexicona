@@ -6,9 +6,9 @@ import sys
 from sqlalchemy import delete, select
 
 from lexicona.config import Settings
-from lexicona.db import Database
-from lexicona.models import AuthSession, User
-from lexicona.security import hash_password
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import AuthSession, User
+from lexicona.infrastructure.security import hash_password
 
 MIN_PASSWORD_LENGTH = 8
 

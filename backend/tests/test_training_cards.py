@@ -7,8 +7,8 @@ import pytest
 from alembic import command
 from fastapi import FastAPI
 
-from lexicona.db import Database
-from lexicona.models import TrainingItem
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import TrainingItem
 from tests.conftest import Client, add_legacy_card_item, add_word
 from tests.test_app import alembic_config
 from tests.test_words import set_progress

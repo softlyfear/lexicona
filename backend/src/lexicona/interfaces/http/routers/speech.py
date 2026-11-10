@@ -4,8 +4,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from lexicona import tts
-from lexicona.deps import AppSettings, CurrentAuth
+from lexicona.infrastructure import tts
+from lexicona.interfaces.http.deps import AppSettings, CurrentAuth
 
 router = APIRouter(prefix="/speech", tags=["speech"])
 SPEECH_RATES = (0.5, 0.75, 1, 1.25, 1.5)

@@ -117,17 +117,16 @@ export function selectServerVoice(
         ? preferences.serverEnGB
         : preferences.serverEnUS
   const candidates = voices.filter((voice) => voice.language.toLowerCase() === locale.toLowerCase())
+  if (candidates.length === 0) return null
+  if (requested && candidates.some((voice) => voice.id === requested)) {
+    return candidates.find((voice) => voice.id === requested) ?? null
+  }
   const upgraded =
-    requested?.endsWith('-medium') === true
-      ? `${requested.slice(0, -'medium'.length)}high`
-      : requested
-  const id =
-    requested && candidates.some((voice) => voice.id === requested)
-      ? requested
-      : upgraded && upgraded !== requested && candidates.some((voice) => voice.id === upgraded)
-        ? upgraded
-        : requested
-  return id ? (candidates.find((voice) => voice.id === id) ?? null) : (candidates[0] ?? null)
+    requested?.endsWith('-medium') === true ? `${requested.slice(0, -'medium'.length)}high` : null
+  if (upgraded && candidates.some((voice) => voice.id === upgraded)) {
+    return candidates.find((voice) => voice.id === upgraded) ?? null
+  }
+  return candidates[0]
 }
 
 export function selectVoice(

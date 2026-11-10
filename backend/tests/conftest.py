@@ -6,13 +6,20 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from lexicona.cloze import mask_example
 from lexicona.config import Settings
-from lexicona.db import Database
+from lexicona.domain.cloze import mask_example
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import (
+    Base,
+    TrainingItem,
+    TrainingSession,
+    User,
+    Word,
+    WordProgress,
+)
+from lexicona.infrastructure.security import hash_password
+from lexicona.interfaces.http.routers.auth import throttle
 from lexicona.main import create_app
-from lexicona.models import Base, TrainingItem, TrainingSession, User, Word, WordProgress
-from lexicona.routers.auth import throttle
-from lexicona.security import hash_password
 
 PASSWORD = "correct horse battery"
 
@@ -31,7 +38,11 @@ class Client(AsyncClient):
 @pytest.fixture
 async def app(tmp_path: Path) -> AsyncIterator[FastAPI]:
     application = create_app(
-        Settings(_env_file=None, database_url=f"sqlite+aiosqlite:///{tmp_path}/test.db")
+        Settings(
+            _env_file=None,
+            database_url=f"sqlite+aiosqlite:///{tmp_path}/test.db",
+            tts_dir=tmp_path / "tts",
+        )
     )
     database: Database = application.state.db
     async with database.engine.begin() as connection:

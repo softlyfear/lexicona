@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI
 from sqlalchemy import update
 
-from lexicona.db import Database, utcnow
-from lexicona.models import Word
+from lexicona.infrastructure.db import Database, utcnow
+from lexicona.infrastructure.models import Word
 from tests.conftest import Client, add_word
 from tests.test_srs import set_progress_state
 from tests.test_words import set_progress

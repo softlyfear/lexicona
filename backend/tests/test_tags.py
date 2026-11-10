@@ -4,8 +4,8 @@ from typing import Any
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from lexicona.db import Database
-from lexicona.models import Tag, Word
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.models import Tag, Word
 from tests.conftest import Client, add_word
 from tests.test_training import correct_option, seed, start
 from tests.test_words import set_progress
@@ -136,7 +136,7 @@ async def test_cross_owner_database_constraint(alice: Client, bob: Client, app: 
     import pytest
     from sqlalchemy.exc import IntegrityError
 
-    from lexicona.models import WordTag
+    from lexicona.infrastructure.models import WordTag
 
     word = await add_word(alice, "word", "слово")
     tag = (await add_word(bob, "other", "другой", tags=["private"]))["tags"][0]

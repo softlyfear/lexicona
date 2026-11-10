@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 
-from lexicona import tts
+from lexicona.infrastructure import tts
 from tests.conftest import Client
 
 VOICE = "en_US-lessac-high"
@@ -112,6 +112,8 @@ async def test_missing_voice_and_runtime(
     [
         {"voice_id": "../../secret"},
         {"voice_id": "missing"},
+        {"voice_id": "ru_RU-irina-medium"},
+        {"voice_id": "en_US-amy-medium"},
         {"text": " "},
         {"text": "a" * 2001},
         {"text": 1},
@@ -280,58 +282,43 @@ async def test_cancelled_request_keeps_slot_until_child_exits(
 
 def test_catalog_matches_pinned_manifest() -> None:
     manifest = json.loads(
-        importlib.resources.files("lexicona").joinpath("tts_manifest.json").read_text("utf-8")
+        importlib.resources.files("lexicona.infrastructure")
+        .joinpath("tts_manifest.json")
+        .read_text("utf-8")
     )
     assert manifest["revision"] == tts.REVISION
     assert list(manifest["voices"]) == list(tts.VOICES)
-    added = {
-        "en_US-amy-medium": ("Amy", "en-US", "female"),
-        "en_US-bryce-medium": ("Bryce", "en-US", "male"),
-        "en_US-hfc_female-medium": ("HFC Female", "en-US", "female"),
-        "en_US-hfc_male-medium": ("HFC Male", "en-US", "male"),
-        "en_US-john-medium": ("John", "en-US", "male"),
-        "en_US-kusal-medium": ("Kusal", "en-US", "male"),
+    assert tts.VOICES == {
+        "en_US-lessac-high": ("Lessac", "en-US", "female"),
+        "en_US-ryan-high": ("Ryan", "en-US", "male"),
         "en_US-ljspeech-high": ("LJ Speech", "en-US", "female"),
-        "en_US-norman-medium": ("Norman", "en-US", "male"),
-        "en_US-reza_ibrahim-medium": ("Reza Ibrahim", "en-US", "male"),
-        "en_US-sam-medium": ("Sam", "en-US", "nonbinary"),
         "en_GB-cori-high": ("Cori", "en-GB", "female"),
-        "ru_RU-irina-medium": ("Irina", "ru-RU", "female"),
-        "ru_RU-ruslan-medium": ("Ruslan", "ru-RU", "male"),
     }
-    assert len(tts.VOICES) == 23
-    for voice_id, meta in added.items():
-        assert tts.VOICES[voice_id] == meta
-    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-US") == (
-        "en_US-lessac-high"
-    )
-    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "en-GB") == (
-        "en_GB-alba-medium"
-    )
-    assert next(voice for voice, meta in tts.VOICES.items() if meta[1] == "ru-RU") == (
-        "ru_RU-denis-medium"
-    )
     for voice_id, files in manifest["voices"].items():
         language, _name, quality = voice_id.split("-")
-        expected = (
-            "high"
-            if voice_id
-            in {
-                "en_US-lessac-high",
-                "en_US-ryan-high",
-                "en_US-ljspeech-high",
-                "en_GB-cori-high",
-            }
-            else "medium"
-        )
-        assert quality == expected and language in {"en_US", "en_GB", "ru_RU"}
-        assert tts.VOICES[voice_id][2] in {"female", "male", "nonbinary"}
+        assert quality == "high" and language in {"en_US", "en_GB"}
+        assert tts.VOICES[voice_id][2] in {"female", "male"}
         assert [item["file"] for item in files] == [
             f"{voice_id}.onnx",
             f"{voice_id}.onnx.json",
             "MODEL_CARD",
         ]
         assert all(len(item["sha256"]) == 64 for item in files)
+
+
+def test_prune_removes_medium_and_russian_voices(tmp_path: Path) -> None:
+    kept = tmp_path / "en_US-lessac-high"
+    russian = tmp_path / "ru_RU-irina-medium"
+    medium = tmp_path / "en_US-amy-medium"
+    notes = tmp_path / "notes"
+    for path in (kept, russian, medium, notes):
+        path.mkdir()
+        (path / "file").write_bytes(b"x")
+    (tmp_path / "prepared-manifest.json").write_text("{}")
+    tts.prune_removed(tmp_path)
+    assert kept.is_dir() and notes.is_dir()
+    assert (tmp_path / "prepared-manifest.json").is_file()
+    assert not russian.exists() and not medium.exists()
 
 
 def test_download_reuses_hash_and_rejects_bad_data(

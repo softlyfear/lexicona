@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.config import Settings
-from lexicona.db import Database, utcnow
-from lexicona.models import AuthSession, User
-from lexicona.security import token_hash
+from lexicona.infrastructure.db import Database, utcnow
+from lexicona.infrastructure.models import AuthSession, User
+from lexicona.infrastructure.security import token_hash
 
 SESSION_COOKIE = "lexicona_session"
 CSRF_HEADER = "X-CSRF-Token"

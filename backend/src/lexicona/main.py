@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,9 +10,18 @@ from starlette.exceptions import HTTPException
 from starlette.types import Scope
 
 from lexicona.config import Settings
-from lexicona.db import Database
-from lexicona.deps import Db
-from lexicona.routers import auth, dictionary, speech, statistics, tags, training, words
+from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.tts import prune_removed
+from lexicona.interfaces.http.deps import Db
+from lexicona.interfaces.http.routers import (
+    auth,
+    dictionary,
+    speech,
+    statistics,
+    tags,
+    training,
+    words,
+)
 
 
 class SpaFiles(StaticFiles):
@@ -30,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        await asyncio.to_thread(prune_removed, settings.tts_dir)
         yield
         await database.dispose()
 

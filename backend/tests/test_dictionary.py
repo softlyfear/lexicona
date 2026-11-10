@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 
-from lexicona import dictionary
+from lexicona.infrastructure import dictionary
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 

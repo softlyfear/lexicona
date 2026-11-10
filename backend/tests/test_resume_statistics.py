@@ -8,8 +8,8 @@ from alembic import command
 from fastapi import FastAPI
 from sqlalchemy import select, update
 
-from lexicona.db import Database, utcnow
-from lexicona.models import AnswerEvent, TrainingItem, TrainingSession, User
+from lexicona.infrastructure.db import Database, utcnow
+from lexicona.infrastructure.models import AnswerEvent, TrainingItem, TrainingSession, User
 from tests.conftest import Client, add_word
 from tests.test_app import alembic_config
 

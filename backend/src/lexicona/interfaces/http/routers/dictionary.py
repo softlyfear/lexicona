@@ -5,8 +5,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
 
-from lexicona import dictionary, translation
-from lexicona.deps import AppSettings, CurrentAuth
+from lexicona.infrastructure import dictionary, translation
+from lexicona.interfaces.http.deps import AppSettings, CurrentAuth
 
 router = APIRouter(prefix="/dictionary", tags=["dictionary"])
 

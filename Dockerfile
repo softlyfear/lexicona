@@ -16,7 +16,7 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY backend/ ./
 RUN uv sync --locked --no-dev
-RUN python -m lexicona.dictionary build --output /app/dictionaries/eng-rus-2025.11.23.sqlite3 \
+RUN python -m lexicona.infrastructure.dictionary build --output /app/dictionaries/eng-rus-2025.11.23.sqlite3 \
     && chmod 0444 /app/dictionaries/eng-rus-2025.11.23.sqlite3
 COPY --from=frontend /app/dist /app/static
 
