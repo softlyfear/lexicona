@@ -166,7 +166,8 @@ function SpeechSettings() {
       <h2 id="speech-heading">Озвучивание</h2>
       {serverState === 'loading' && <p role="status">Загружаем серверные голоса…</p>}
       {serverState === 'unavailable' &&
-        (preferences.engineEn !== 'browser' || preferences.engineRu !== 'browser') && (
+        (languageEngine('en', preferences) !== 'browser' ||
+          languageEngine('ru', preferences) !== 'browser') && (
           <div>
             <p>
               Серверные голоса недоступны. Для автоматического источника используется голос
@@ -197,12 +198,13 @@ function SpeechSettings() {
               value={choice}
               onChange={(event) => {
                 const next = event.target.value
-                if (next !== 'auto' && next !== 'server' && next !== 'browser') return
+                if (next !== 'auto' && next !== 'browser' && !(lang === 'en' && next === 'server'))
+                  return
                 updateSpeechPreferences(lang === 'en' ? { engineEn: next } : { engineRu: next })
               }}
             >
               <option value="auto">Автоматически</option>
-              <option value="server">Сервер</option>
+              {lang === 'en' && <option value="server">Сервер</option>}
               <option value="browser">Браузер</option>
             </select>
           </label>

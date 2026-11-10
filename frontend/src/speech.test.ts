@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './api'
 import {
   cancelSpeech,
+  languageEngine,
   selectServerVoice,
   setSpeechOwner,
   speak,
@@ -316,6 +317,11 @@ describe('серверный голос', () => {
       serverEnUS: 'en_US-amy-medium',
     })
     expect(selected?.id).toBe('en_US-lessac-high')
+  })
+
+  it('сохранённый серверный источник русского читается как браузер', () => {
+    expect(languageEngine('ru', preferences)).toBe('browser')
+    expect(languageEngine('en', preferences)).toBe('server')
   })
 
   it('не выбирает серверный русский голос, когда моделей нет', () => {

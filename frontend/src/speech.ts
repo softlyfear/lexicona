@@ -85,7 +85,9 @@ export function languageEngine(
   lang: 'en' | 'ru',
   preferences: SpeechPreferences = snapshot.preferences,
 ) {
-  return lang === 'en' ? preferences.engineEn : preferences.engineRu
+  const engine = lang === 'en' ? preferences.engineEn : preferences.engineRu
+  // Russian server voices were removed; a saved explicit server choice uses the browser.
+  return lang === 'ru' && engine === 'server' ? 'browser' : engine
 }
 
 export function speechEnabled(

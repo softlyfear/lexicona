@@ -32,10 +32,25 @@
 }
 
 .toolbar {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.65rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title action'
+    'search search';
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.toolbar .title {
+  grid-area: title;
+}
+
+.toolbar .search {
+  grid-area: search;
+}
+
+.toolbar .addWord {
+  grid-area: action;
 }
 
 .sessionBar {
@@ -55,18 +70,26 @@
   max-width: none;
 }
 
-.addWord {
-  position: fixed;
-  z-index: 4;
-  right: max(0.75rem, env(safe-area-inset-right));
-  bottom: calc(3.6rem + env(safe-area-inset-bottom));
-  left: max(0.75rem, env(safe-area-inset-left));
+.addWord,
+.pageAction {
+  flex: none;
   width: auto;
+  justify-self: end;
 }
 
-.dictionaryPage,
-.floatingAction {
-  padding-bottom: 2.6rem;
+.pageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  position: sticky;
+  /* The scrollport padding stays visible above top: 0, so pull the bar over it. */
+  top: -0.45rem;
+  z-index: 3;
+  margin: 0 -0.6rem;
+  padding: 0.45rem 0.6rem 0.4rem;
+  background: var(--bg);
+  box-shadow: 0 12px 0 var(--bg);
 }
 
 .dictionaryPage {
@@ -461,8 +484,8 @@ legend.settingLabel {
 
 .levelKind {
   display: grid;
-  grid-template-columns: 4.4rem minmax(3rem, 3.2rem) minmax(3rem, 3.2rem);
-  column-gap: 0.45rem;
+  grid-template-columns: 4.6rem 5.25ch 5.25ch;
+  column-gap: 0.55rem;
   align-items: baseline;
 }
 
@@ -786,7 +809,7 @@ legend.settingLabel {
   }
 
   .title {
-    font-size: 1.2rem;
+    font-size: 1.12rem;
   }
 
   .wordList {
@@ -794,8 +817,8 @@ legend.settingLabel {
   }
 
   .wordRow {
-    gap: 0.35rem;
-    padding: 0.5rem 0.6rem;
+    gap: 0.28rem;
+    padding: 0.4rem 0.5rem;
   }
 
   .wordHead {
@@ -816,7 +839,18 @@ legend.settingLabel {
 
   .rowActions .actionButton {
     min-height: 2.75rem;
-    padding: 0.12rem 0.04rem;
+    padding: 0.08rem 0.04rem;
+  }
+
+  .actionCaption {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sort select,
+  .search {
+    padding-inline: 0.5rem;
+    font-size: 0.92rem;
   }
 
   .group {
@@ -887,38 +921,49 @@ legend.settingLabel {
   .form,
   .formRow,
   .trainingBounds {
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .title {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
   }
 
   .toolbar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
+    grid-template-columns: auto minmax(14rem, 24rem) minmax(0, 1fr);
+    grid-template-areas: 'title search action';
     gap: 0.75rem;
   }
 
   .search {
-    flex: 1 1 14rem;
     width: auto;
     max-width: 24rem;
   }
 
-  .addWord {
-    position: static;
-    right: auto;
-    bottom: auto;
-    left: auto;
-    width: auto;
+  .level {
+    grid-template-columns: auto 9rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 0.85rem;
   }
 
-  .dictionaryPage,
-  .floatingAction {
-    padding-bottom: 0;
+  .level input {
+    grid-row: auto;
+    margin-top: 0;
+  }
+
+  .levelRates {
+    display: contents;
+  }
+
+  .levelKind {
+    grid-template-columns: 3.5rem 5.25ch 5.25ch;
+    justify-self: start;
+  }
+
+  .pageHead {
+    top: -0.85rem;
+    margin-right: -0.9rem;
+    margin-left: -0.9rem;
+    padding: 0.85rem 0.9rem 0.45rem;
   }
 
   .filters {
@@ -959,8 +1004,8 @@ legend.settingLabel {
 
   .wordRow {
     flex-direction: row;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -1028,7 +1073,7 @@ legend.settingLabel {
   }
 
   .group {
-    padding: 0.9rem 1rem;
+    padding: 0.65rem 0.75rem;
   }
 
   .matchingCell {

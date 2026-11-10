@@ -35,6 +35,12 @@ it('показывает установленные голоса по акцен
   expect(screen.queryByText(/в этом браузере/)).not.toBeInTheDocument()
   expect(screen.getByLabelText('Источник EN')).toHaveValue('auto')
   expect(screen.getByLabelText('Источник RU')).toHaveValue('auto')
+  expect(
+    within(screen.getByLabelText('Источник EN')).getByRole('option', { name: 'Сервер' }),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByLabelText('Источник RU')).queryByRole('option', { name: 'Сервер' }),
+  ).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Остановить речь' })).toBeInTheDocument()
   expect(
     within(screen.getByLabelText('Голос EN')).getByRole('option', {
