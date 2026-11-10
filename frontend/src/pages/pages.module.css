@@ -69,6 +69,15 @@
   padding-bottom: 2.6rem;
 }
 
+.dictionaryPage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dictionaryControls {
+  flex: none;
+}
+
 .startError {
   scroll-margin-bottom: 3rem;
 }
@@ -190,10 +199,14 @@
 
 .wordList {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 0.55rem;
+  min-height: 8rem;
   margin: 0;
   padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   list-style: none;
   border: 0;
   background: transparent;

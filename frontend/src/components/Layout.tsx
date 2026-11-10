@@ -33,7 +33,7 @@ export function Layout({ user }: { user: User }) {
   }, [user.id])
   useEffect(() => () => cancelSpeech(), [pathname])
   return (
-    <>
+    <div className={css.shell}>
       <header className={css.header}>
         <div className={css.bar}>
           <NavLink to={dictionaryTo} className={css.brand}>
@@ -75,7 +75,7 @@ export function Layout({ user }: { user: User }) {
       <main className={css.main}>
         <Outlet />
       </main>
-    </>
+    </div>
   )
 }
 

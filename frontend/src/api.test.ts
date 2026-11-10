@@ -128,6 +128,7 @@ describe('api', () => {
     const error = await api.login('a', 'b').catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ApiError)
     expect(errorMessage(error)).toBe('Неверный логин или пароль.')
+    expect(errorMessage(new ApiError(409, 'word_exists'))).toBe('Такое слово уже есть в словаре.')
   })
 
   it('sends untrimmed passwords with CSRF and accepts a rotated session', async () => {

@@ -26,7 +26,8 @@ async def test_tags_roundtrip_and_validation(alice: Client) -> None:
     assert len((await alice.get("/api/tags")).json()) == 4
     for invalid in (["A", " a "], [""], ["a" * 81], list(map(str, range(21))), [1], None):
         assert (await alice.post("/api/words", json={**body, "tags": invalid})).status_code == 422
-    assert (await alice.post("/api/words", json={**body, "tags": ["a" * 80]})).status_code == 201
+    created = await alice.post("/api/words", json={**body, "headword": "three", "tags": ["a" * 80]})
+    assert created.status_code == 201
 
 
 async def test_owner_filter_csrf_and_cascade(alice: Client, bob: Client, anon: Client) -> None:

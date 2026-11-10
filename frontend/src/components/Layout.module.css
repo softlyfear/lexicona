@@ -1,3 +1,10 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .header {
   position: sticky;
   top: 0;
@@ -146,8 +153,14 @@
 }
 
 .main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
   max-width: 960px;
+  width: 100%;
   margin: 0 auto;
+  overflow: auto;
   padding: 0.65rem max(0.7rem, env(safe-area-inset-right))
     calc(4.4rem + env(safe-area-inset-bottom)) max(0.7rem, env(safe-area-inset-left));
 }

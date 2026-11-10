@@ -1,8 +1,10 @@
+import asyncio
+
 from fastapi import FastAPI
 from sqlalchemy import update
 
 from lexicona.db import Database
-from lexicona.models import Word
+from lexicona.models import Word, WordTranslation
 from tests.conftest import Client, add_word
 
 
@@ -85,6 +87,139 @@ async def test_delete(alice: Client) -> None:
     word = await add_word(alice, "cat", "кот")
     assert (await alice.delete(f"/api/words/{word['id']}")).status_code == 204
     assert (await alice.get(f"/api/words/{word['id']}")).status_code == 404
+
+
+async def test_duplicate_headword_is_rejected(alice: Client, bob: Client) -> None:
+    await add_word(alice, "until", "до тех пор")
+    for headword in ("until", "Until", " until ", "until."):
+        response = await alice.post(
+            "/api/words", json={"headword": headword, "translations": ["другой перевод"]}
+        )
+        assert response.status_code == 409, headword
+        assert response.json()["detail"] == "word_exists"
+    await add_word(alice, "ёж", "животное")
+    yo = await alice.post("/api/words", json={"headword": "еж", "translations": ["зверь"]})
+    assert yo.status_code == 409
+    await add_word(alice, "don’t", "не")
+    apostrophe = await alice.post("/api/words", json={"headword": "don't", "translations": ["нет"]})
+    assert apostrophe.status_code == 409
+    created = await bob.post(
+        "/api/words", json={"headword": "until", "translations": ["до тех пор"]}
+    )
+    assert created.status_code == 201
+    excluded = await add_word(alice, "sleigh", "сани")
+    assert (
+        await alice.patch(f"/api/words/{excluded['id']}/training", json={"is_excluded": True})
+    ).status_code == 200
+    learned = await add_word(alice, "validate", "проверять")
+    assert (
+        await alice.patch(f"/api/words/{learned['id']}/learned", json={"is_learned": True})
+    ).status_code == 200
+    for headword in ("Sleigh", "Validate"):
+        again = await alice.post("/api/words", json={"headword": headword, "translations": ["ещё"]})
+        assert again.status_code == 409
+    visible = [word["headword"] for word in (await alice.get("/api/words?training=all")).json()]
+    assert visible.count("until") == 1
+    assert "еж" not in visible
+    assert "ёж" in visible
+
+
+async def test_rename_onto_existing_headword_is_rejected(app: FastAPI, alice: Client) -> None:
+    original = await add_word(alice, "until", "до")
+    other = await add_word(alice, "till", "пока")
+    await set_progress(app, other["id"], 15)
+    response = await alice.put(
+        f"/api/words/{other['id']}",
+        json={"headword": "Until.", "translations": ["до тех пор"]},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "word_exists"
+    kept = (await alice.get(f"/api/words/{other['id']}")).json()
+    assert kept["headword"] == "till"
+    assert kept["translations"] == ["пока"]
+    assert kept["progress"] == 15
+    same = await alice.put(
+        f"/api/words/{original['id']}",
+        json={"headword": "UNTIL", "translations": ["до тех пор, пока не"]},
+    )
+    assert same.status_code == 200
+    assert same.json()["headword"] == "UNTIL"
+    assert same.json()["progress"] == 0
+
+
+async def test_existing_duplicate_stays_editable(app: FastAPI, alice: Client) -> None:
+    await add_word(alice, "until", "до")
+    owner_id = (await alice.get("/api/auth/me")).json()["user"]["id"]
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        extra = Word(owner_id=owner_id, headword="until", normalized_headword="until")
+        extra.translations.append(WordTranslation(position=0, text="пока", normalized_text="пока"))
+        db.add(extra)
+        await db.commit()
+        extra_id = extra.id
+    edited = await alice.put(
+        f"/api/words/{extra_id}", json={"headword": "until", "translations": ["пока не"]}
+    )
+    assert edited.status_code == 200
+    assert edited.json()["translations"] == ["пока не"]
+    blocked = await alice.post(
+        "/api/words", json={"headword": "until", "translations": ["ещё одно"]}
+    )
+    assert blocked.status_code == 409
+
+
+async def test_duplicate_create_waits_for_the_open_write(app: FastAPI, alice: Client) -> None:
+    owner_id = (await alice.get("/api/auth/me")).json()["user"]["id"]
+    database: Database = app.state.db
+    async with database.sessions() as holder:
+        pending = Word(owner_id=owner_id, headword="until", normalized_headword="until")
+        pending.translations.append(WordTranslation(position=0, text="до", normalized_text="до"))
+        holder.add(pending)
+        await holder.flush()
+        task = asyncio.create_task(
+            alice.post("/api/words", json={"headword": "Until.", "translations": ["пока"]})
+        )
+        # A reader still proceeds and must not observe the uncommitted row.
+        # The create stays blocked on the reserved lock instead of inserting a second copy.
+        visible = await asyncio.wait_for(alice.get("/api/words?training=all"), timeout=2)
+        assert visible.status_code == 200
+        assert [word["headword"] for word in visible.json()].count("until") == 0
+        await asyncio.sleep(0.4)
+        blocked = not task.done()
+        await holder.commit()
+    response = await asyncio.wait_for(task, timeout=3)
+    assert blocked, response.text
+    assert response.status_code == 409
+    assert response.json()["detail"] == "word_exists"
+    saved = [word["headword"] for word in (await alice.get("/api/words?training=all")).json()]
+    assert saved.count("until") == 1
+
+
+async def test_rename_waits_for_the_open_write(app: FastAPI, alice: Client) -> None:
+    original = await add_word(alice, "till", "пока")
+    owner_id = (await alice.get("/api/auth/me")).json()["user"]["id"]
+    database: Database = app.state.db
+    async with database.sessions() as holder:
+        pending = Word(owner_id=owner_id, headword="until", normalized_headword="until")
+        pending.translations.append(WordTranslation(position=0, text="до", normalized_text="до"))
+        holder.add(pending)
+        await holder.flush()
+        task = asyncio.create_task(
+            alice.put(
+                f"/api/words/{original['id']}",
+                json={"headword": "until", "translations": ["пока"]},
+            )
+        )
+        await asyncio.sleep(0.4)
+        blocked = not task.done()
+        await holder.commit()
+    response = await asyncio.wait_for(task, timeout=3)
+    assert blocked, response.text
+    assert response.status_code == 409
+    assert response.json()["detail"] == "word_exists"
+    kept = (await alice.get(f"/api/words/{original['id']}")).json()
+    assert kept["headword"] == "till"
+    assert kept["translations"] == ["пока"]
 
 
 async def test_other_users_words_are_invisible(alice: Client, bob: Client) -> None:

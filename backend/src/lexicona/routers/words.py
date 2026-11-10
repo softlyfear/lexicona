@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import ColumnElement, or_, select, update
+from sqlalchemy import ColumnElement, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.deps import CurrentAuth, Db
@@ -136,6 +136,27 @@ async def owned_word(db: AsyncSession, owner_id: str, word_id: str) -> Word:
     return word
 
 
+async def lock_write(db: AsyncSession) -> None:
+    # A deferred read lets two creates both miss the row. The reserved lock makes
+    # the second wait until the first commit, then see that row.
+    await db.execute(text("BEGIN IMMEDIATE"))
+
+
+async def ensure_unique_headword(
+    db: AsyncSession, owner_id: str, normalized: str, *, except_id: str | None = None
+) -> None:
+    """Reject a second dictionary entry with the same normalized headword.
+
+    Existing duplicates stay editable until one is removed. A unique index would
+    stop the migration on a dictionary that already contains them.
+    """
+    query = select(Word.id).where(Word.owner_id == owner_id, Word.normalized_headword == normalized)
+    if except_id is not None:
+        query = query.where(Word.id != except_id)
+    if await db.scalar(query.limit(1)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "word_exists")
+
+
 def _fill(word: Word, body: WordIn) -> None:
     word.headword = body.headword
     word.normalized_headword = normalize(body.headword)
@@ -160,13 +181,15 @@ def _fill(word: Word, body: WordIn) -> None:
     word.source_refs = surviving or None
     # Update rows in place: replacing them would clash on the (word_id, position) key.
     rows = word.translations
-    for position, text in enumerate(body.translations):
+    for position, translation in enumerate(body.translations):
         if position < len(rows):
-            rows[position].text = text
-            rows[position].normalized_text = normalize(text)
+            rows[position].text = translation
+            rows[position].normalized_text = normalize(translation)
         else:
             rows.append(
-                WordTranslation(position=position, text=text, normalized_text=normalize(text))
+                WordTranslation(
+                    position=position, text=translation, normalized_text=normalize(translation)
+                )
             )
     del rows[len(body.translations) :]
 
@@ -233,8 +256,10 @@ async def list_words(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_word(body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
+    await lock_write(db)
     word = Word(owner_id=auth.user.id)
     _fill(word, body)
+    await ensure_unique_headword(db, auth.user.id, word.normalized_headword)
     db.add(word)
     await db.flush()
     db.add(WordProgress(owner_id=auth.user.id, word_id=word.id))
@@ -305,9 +330,12 @@ async def set_learned_state(
 
 @router.put("/{word_id}")
 async def update_word(word_id: str, body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
+    await lock_write(db)
     word = await owned_word(db, auth.user.id, word_id)
     meaning_before = (word.normalized_headword, [t.normalized_text for t in word.translations])
     _fill(word, body)
+    if word.normalized_headword != meaning_before[0]:
+        await ensure_unique_headword(db, auth.user.id, word.normalized_headword, except_id=word.id)
     meaning_after = (word.normalized_headword, [t.normalized_text for t in word.translations])
     if meaning_before != meaning_after:
         # A different word or meaning is a new thing to learn, with a monotonic version.

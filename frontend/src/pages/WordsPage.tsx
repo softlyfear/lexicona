@@ -181,132 +181,134 @@ export function WordsPage({ userId }: { userId: string }) {
 
   return (
     <section className={`${css.stack} ${css.dictionaryPage}`}>
-      <div className={css.toolbar}>
-        <h1 className={css.title}>Словарь</h1>
-        <input
-          className={`${ui.input} ${css.search}`}
-          type="search"
-          placeholder="Поиск по слову или переводу"
-          aria-label="Поиск"
-          value={search}
-          onChange={(e) => updateParameter('q', e.target.value)}
-        />
-        <button
-          className={`${ui.primary} ${css.addWord}`}
-          onClick={() => startEditing({ kind: 'new' })}
-        >
-          Добавить слово
-        </button>
-      </div>
-
-      <div className={css.filters}>
-        <label className={`${ui.field} ${css.sort}`}>
-          <span className={ui.label}>Сортировка</span>
-          <select
-            className={ui.input}
-            value={sort}
-            onChange={(event) => updateParameter('sort', event.target.value)}
+      <div className={`${css.stack} ${css.dictionaryControls}`}>
+        <div className={css.toolbar}>
+          <h1 className={css.title}>Словарь</h1>
+          <input
+            className={`${ui.input} ${css.search}`}
+            type="search"
+            placeholder="Поиск по слову или переводу"
+            aria-label="Поиск"
+            value={search}
+            onChange={(e) => updateParameter('q', e.target.value)}
+          />
+          <button
+            className={`${ui.primary} ${css.addWord}`}
+            onClick={() => startEditing({ kind: 'new' })}
           >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className={`${ui.field} ${css.sort}`}>
-          <span className={ui.label}>Обучение</span>
-          <select
-            className={ui.input}
-            value={training}
-            onChange={(event) => updateParameter('training', event.target.value)}
-          >
-            {TRAINING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <fieldset className={css.tagField}>
-        <legend className={ui.label}>Теги: любой выбранный</legend>
-        {tags.isLoading && (
-          <p role="status" className={ui.muted}>
-            Загружаем теги…
-          </p>
-        )}
-        {tags.isError && (
-          <p role="alert" className={ui.error}>
-            {errorMessage(tags.error)} Не удалось загрузить теги.
-          </p>
-        )}
-        <div className={css.tagList}>
-          {tags.data?.map((tag) => (
-            <label className={css.tag} key={tag.id}>
-              <input
-                type="checkbox"
-                checked={tagIds.includes(tag.id)}
-                disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
-                onChange={(event) =>
-                  updateTags(
-                    event.target.checked
-                      ? [...tagIds, tag.id]
-                      : tagIds.filter((id) => id !== tag.id),
-                  )
-                }
-              />
-              {tag.name}
-            </label>
-          ))}
-        </div>
-        {tagIds.length > 0 && (
-          <button type="button" className={ui.button} onClick={() => updateTags([])}>
-            Снять фильтр тегов
+            Добавить слово
           </button>
-        )}
-      </fieldset>
+        </div>
 
-      {remove.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(remove.error)}
-        </p>
-      )}
-      {trainingState.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(trainingState.error)} Повторите действие.
-        </p>
-      )}
-      {learnedState.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(learnedState.error)} Повторите действие.
-        </p>
-      )}
-      {words.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(words.error)}
-        </p>
-      )}
-      {(words.isFetching || query !== search.trim()) && (
-        <p className={ui.muted} role="status">
-          {words.data ? 'Обновляем список…' : 'Загружаем слова…'}
-        </p>
-      )}
-      {words.data?.length === 0 && (
-        <p className={ui.muted}>
-          {query || tagIds.length > 0
-            ? 'Ничего не найдено.'
-            : training === 'excluded'
-              ? 'Нет исключённых слов.'
-              : training === 'learned'
-                ? 'Нет выученных слов.'
-                : training === 'active'
-                  ? 'Нет слов в обучении. Добавьте слово или верните исключённые.'
-                  : 'Словарь пуст. Добавьте первые слова.'}
-        </p>
-      )}
+        <div className={css.filters}>
+          <label className={`${ui.field} ${css.sort}`}>
+            <span className={ui.label}>Сортировка</span>
+            <select
+              className={ui.input}
+              value={sort}
+              onChange={(event) => updateParameter('sort', event.target.value)}
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={`${ui.field} ${css.sort}`}>
+            <span className={ui.label}>Обучение</span>
+            <select
+              className={ui.input}
+              value={training}
+              onChange={(event) => updateParameter('training', event.target.value)}
+            >
+              {TRAINING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <fieldset className={css.tagField}>
+          <legend className={ui.label}>Теги: любой выбранный</legend>
+          {tags.isLoading && (
+            <p role="status" className={ui.muted}>
+              Загружаем теги…
+            </p>
+          )}
+          {tags.isError && (
+            <p role="alert" className={ui.error}>
+              {errorMessage(tags.error)} Не удалось загрузить теги.
+            </p>
+          )}
+          <div className={css.tagList}>
+            {tags.data?.map((tag) => (
+              <label className={css.tag} key={tag.id}>
+                <input
+                  type="checkbox"
+                  checked={tagIds.includes(tag.id)}
+                  disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                  onChange={(event) =>
+                    updateTags(
+                      event.target.checked
+                        ? [...tagIds, tag.id]
+                        : tagIds.filter((id) => id !== tag.id),
+                    )
+                  }
+                />
+                {tag.name}
+              </label>
+            ))}
+          </div>
+          {tagIds.length > 0 && (
+            <button type="button" className={ui.button} onClick={() => updateTags([])}>
+              Снять фильтр тегов
+            </button>
+          )}
+        </fieldset>
+
+        {remove.isError && (
+          <p className={ui.error} role="alert">
+            {errorMessage(remove.error)}
+          </p>
+        )}
+        {trainingState.isError && (
+          <p className={ui.error} role="alert">
+            {errorMessage(trainingState.error)} Повторите действие.
+          </p>
+        )}
+        {learnedState.isError && (
+          <p className={ui.error} role="alert">
+            {errorMessage(learnedState.error)} Повторите действие.
+          </p>
+        )}
+        {words.isError && (
+          <p className={ui.error} role="alert">
+            {errorMessage(words.error)}
+          </p>
+        )}
+        {(words.isFetching || query !== search.trim()) && (
+          <p className={ui.muted} role="status">
+            {words.data ? 'Обновляем список…' : 'Загружаем слова…'}
+          </p>
+        )}
+        {words.data?.length === 0 && (
+          <p className={ui.muted}>
+            {query || tagIds.length > 0
+              ? 'Ничего не найдено.'
+              : training === 'excluded'
+                ? 'Нет исключённых слов.'
+                : training === 'learned'
+                  ? 'Нет выученных слов.'
+                  : training === 'active'
+                    ? 'Нет слов в обучении. Добавьте слово или верните исключённые.'
+                    : 'Словарь пуст. Добавьте первые слова.'}
+          </p>
+        )}
+      </div>
 
       <ul className={css.wordList}>
         {words.data?.map((word) => (
