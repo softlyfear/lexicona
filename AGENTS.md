@@ -1,175 +1,150 @@
 # Lexicona
 
-Личный EN/RU-словарь с тренировками для владельца и нескольких знакомых (до ~10 человек).
-Работает в браузере на телефоне, планшете и компьютере. Один процесс отдаёт и API, и собранный SPA.
+Personal EN/RU dictionary and training app for roughly ten users. One process
+serves the API and built SPA to phones, tablets, and computers.
 
-## Структура
+## Layout
 
-- `backend/` — FastAPI, SQLAlchemy 2 async + aiosqlite, SQLite в режиме WAL, Alembic, uv.
-  - `src/lexicona/progress.py` — таблица дельт прогресса, `normalize.py` — сравнение ответов.
-  - `src/lexicona/routers/` — `auth`, `words`, `training`. `deps.py` — сессия, CSRF, БД.
-  - `cli.py` — `lexicona-admin create-user | set-password | list-users`. Открытой регистрации нет.
-- `frontend/` — React 19 + TS strict + Vite, TanStack Query, react-router, CSS Modules.
-  - `src/theme.css` — семантические токены темы; в компонентах цвета только через `var(--…)`.
-  - `src/api.ts` — единственное место, где вызывается `fetch`.
-- `Dockerfile`, `compose.yaml`, `Caddyfile` — поставка на VPS (app + Caddy с HTTPS).
-- `.local/` (в git не попадает) — ТЗ `spec.md`, требования, макет, заметки по источникам переводов.
-  Перед новой продуктовой фичей сверяться с ним, особенно `requirements/approved-training.md`.
+- `backend/`: FastAPI, SQLAlchemy 2 async, aiosqlite, SQLite WAL, Alembic, uv.
+  `src/lexicona/progress.py` defines progress deltas; `normalize.py` compares
+  answers. `routers/` contains auth, words, and training; `deps.py` provides
+  sessions, CSRF, and database access. `cli.py` offers
+  `lexicona-admin create-user | set-password | list-users`; no public signup.
+- `frontend/`: React 19, strict TypeScript, Vite, TanStack Query, react-router,
+  CSS Modules. Colors use semantic `var(--…)` tokens from `src/theme.css`;
+  `src/api.ts` is the sole `fetch` entry point.
+- `Dockerfile`, `compose.yaml`, `Caddyfile`: VPS app + Caddy HTTPS delivery;
+  Let's Encrypt certificate paths come from `.env`.
+- `.local/` is excluded from Git: specification, requirements, mockups, and
+  translation-source notes. Check `spec.md` and
+  `requirements/approved-training.md` before product features.
 
-## Команды
+## Commands and gate
 
-Backend (из `backend/`):
-- `uv run uvicorn lexicona.main:create_app --factory --reload` — API на :8000
-- `uv run alembic upgrade head` · `uv run alembic revision --autogenerate -m "…"`
-- `uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest`
+From `backend/`:
 
-Frontend (из `frontend/`):
-- `npm run dev` — Vite на :5173 с прокси `/api` → :8000
-- `npm run format:check && npm run lint && npm test && npm run build` (build проверяет типы)
+```sh
+uv run uvicorn lexicona.main:create_app --factory --reload
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "…"
+uv run ruff format . && uv run ruff check . && uv run mypy && uv run pytest
+```
 
-Перед коммитом назначенный владелец запускает единый `make check`; те же шаги идут в CI
-(`.github/workflows/ci.yml`), отдельный повтор групп проверок не требуется.
-Форматирование после `apply_patch` выполняет `.codex/hooks/format.py`, после `search_replace` и `write` у Grok — `.grok/hooks/format.py`; после shell-правок — `make fmt`.
-Единый gate: `make check`. Установка зависимостей: `make install` (lock-файлы обязательны).
+From `frontend/`:
 
-## Продуктовые правила
+```sh
+npm run dev
+npm run format:check && npm run lint && npm test && npm run build
+```
 
-- Прогресс слова — неотрицательное целое без верхнего ограничения 100; это не CEFR
-  и не вероятность знания. Достижение 100% не удаляет и не исключает слово. Дельты зависят от
-  сложности пользователя (`progress.py`): выбор ±, ввод +/−, пассивное прослушивание только +.
-  Сложность фиксируется в тренировочной сессии при старте.
-- Правильность ответа решает только сервер; правильный вариант не уходит клиенту до ответа.
-  Повторный или параллельный ответ на тот же item не начисляет прогресс второй раз.
-  После первой ошибки в choice/matching/input разрешены исправления с delta=0 без повторного
-  SRS-эффекта. Карточки и cloze удалены из запуска новых занятий; legacy snapshots
-  продолжают поддерживаться.
-- Изменение смысла слова (headword или набор переводов после нормализации) сбрасывает прогресс
-  и повышает `content_version`: ответы на старые вопросы перестают влиять на прогресс.
-  Косметические правки (регистр, пример, заметка) прогресс не трогают.
-- Исключение из обучения и возврат — явные обратимые действия, сохраняющие прогресс
-  и смысловую версию. Отдельная training_version делает прежние открытые задания
-  недоступными и после возврата; новые занятия берут только активные слова.
-- Подсказка, пропуск или сбой TTS не считаются правильным ответом и не штрафуют.
-- Сопоставление EN→RU показывает группы до восьми однозначных пар. Верная пара даёт
-  половину CHOICE-награды (округление вниз, минимум 1); ошибка штрафуется как выбор.
-  Первая попытка определяет эффект, а завершение группы дополнительного прогресса не даёт.
-- Несколько выбранных тегов объединяют слова по OR (любой выбранный) в словаре и тренировках.
-- Текущий объём после уточнения 2026-11-03: продолжение занятия, статистика, PWA-установка,
-  DeepSeek/OpenRouter и дополнительные локальные голоса. Новые режимы, подборки/каталог,
-  импорт/экспорт, темы, регистрация/удаление аккаунта и серверные бэкапы отложены пользователем.
+API development uses port 8000; Vite uses 5173 and proxies `/api` to 8000.
+`npm run build` includes type checks. Install locked dependencies with
+`make install`. The single final gate is `make check`, matching CI in
+`.github/workflows/ci.yml`. Codex's `.codex/hooks/format.py` handles
+`apply_patch`; Grok's `.grok/hooks/format.py` handles `search_replace` and
+`write`. After shell edits run `make fmt`. Hooks require review/trust through
+`/hooks`; the gate remains required without them.
 
-## Инженерные правила
+## Product invariants
 
-- Каждый запрос к данным пользователя фильтруется по `owner_id`. Чужой объект — 404, не 403.
-  На любой новый endpoint — тест, что второй пользователь не видит и не меняет чужое.
-- Мутирующие запросы требуют заголовок `X-CSRF-Token`, его проверяет `current_auth`.
-  Ответы `/api/*` идут с `Cache-Control: no-store`. Слова и токены не класть в localStorage.
-- Смена схемы — только через миграцию Alembic. `tests/test_app.py` проверяет, что модели
-  совпадают с миграциями.
-- Тесты обязательны для бизнес-логики (прогресс, нормализация, правила тренировки),
-  owner-scoping и API. 100% покрытия не требуется.
-- Время хранится как naive UTC (`db.utcnow()`), потому что SQLite отбрасывает tzinfo.
-- Комментарии и docstring’и — минимум, только для неочевидных инвариантов, безопасности,
-  внешних контрактов и лицензий. Не описывать очевидное назначение кода; устаревшие и
-  ненужные пояснения удалять. Правило общее для Codex и Grok.
-- Платный DeepSeek через OpenRouter явно разрешён пользователем 2026-11-03 для языковых
-  подсказок и примеров. Остальные платные API, Redis, Celery и микросервисы не добавлять;
-  локальный TTS выбирать после уточнения места исполнения. Стек не менять без обоснования.
+- Word progress is a nonnegative unbounded integer, not CEFR or a probability.
+  Reaching 100 does not remove or exclude a word. Deltas in `progress.py` depend
+  on difficulty, captured at session start; passive listening only adds progress.
+- Only the server judges correctness; it withholds the right answer until
+  submission. Repeated/concurrent answers cannot credit one item twice.
+  Corrections after the first choice/matching/input error use delta zero with
+  no further SRS effect. Cards/cloze cannot start new sessions, but legacy
+  snapshots remain supported.
+- A normalized headword or translation-set change resets progress and raises
+  `content_version`, invalidating old answers. Case, examples, and notes are
+  cosmetic. Exclude/restore are reversible and preserve progress and content
+  version; separate `training_version` invalidates previous open items even
+  after restoration. New sessions select active words only.
+- Hints, skips, and TTS failure are neither correct answers nor penalties.
+- EN→RU matching groups contain at most eight unambiguous pairs. Correct pairs
+  award half the CHOICE reward, rounded down with minimum one; errors use the
+  CHOICE penalty. The first attempt determines the effect; group completion
+  adds no progress.
+- Multiple selected tags combine by OR in dictionary and training.
+- Approved scope as of 2026-11-03: resume training, statistics, PWA installation,
+  DeepSeek/OpenRouter, and additional local voices. New modes, collections,
+  import/export, themes, signup/account deletion, and server backups are deferred.
 
-## Git
+## Engineering invariants
 
-- Одна задача — один коммит. Тема на русском: `Lexicona: <конкретный результат>`.
-  Уточнения той же задачи включать в её коммит через amend или адресный rebase.
-- После зелёных проверок можно самостоятельно коммитить и пушить в `main`.
-  Force push — только с явного разрешения.
-- В конце сообщения — трейлер без e-mail с фактической моделью того агента, который написал изменение.
-  Codex: `Co-Authored-By: Codex <модель> (reasoning: <уровень>)`.
-  Grok: `Co-Authored-By: <точный id модели> (reasoning: <уровень>)`, например `grok-4.7`.
-  Id и уровень брать из данных запуска; если они недоступны, прямо сообщать об этом и не подставлять чужого агента.
-  Каждая пара модель/уровень — отдельная строка; при amend сохранять прежних соавторов.
-- Переписанную опубликованную историю отправлять только через `--force-with-lease`
-  с явной веткой и проверенным полным прежним хешем, сохранив последующие изменения.
-  При отклонении lease заново проверять изменения; `--force` не использовать.
-- История начинается с нового корневого коммита; старые теги и ветки не переносятся.
-- Автор и коммиттер — пользователь из `git config user.name` / `user.email`.
-  Трейлер содержит реальную модель и версию; адреса ИИ-сервисов запрещены.
+- Every user-data query filters by `owner_id`; inaccessible objects return 404.
+  Each new endpoint needs a second-user isolation test.
+- Mutations require `X-CSRF-Token`, checked by `current_auth`; `/api/*` responses
+  use `Cache-Control: no-store`. Do not store words/tokens in localStorage.
+- Schema changes use Alembic. `tests/test_app.py` checks model/migration parity.
+- Business logic, normalization, training, owner isolation, CSRF, and API
+  regressions need behavioral tests; total coverage of 100% is not required.
+- Store naive UTC via `db.utcnow()` because SQLite discards tzinfo.
+- Paid DeepSeek through OpenRouter was approved on 2026-11-03 for language hints
+  and examples. Other paid APIs, Redis, Celery, and microservices are outside
+  scope. Confirm the execution location before choosing local TTS.
 
-## Деплой
+## Git and deployment
 
-Цель — VPS с Docker. На VPS работает VPN: перед деплоем согласовать порты 80/443,
-поддомен и DNS. Сам ничего не менять.
+Author and committer must be the user from `git config user.name` and `git config user.email`.
 
+Use `main`, one completed task per commit. Incorporate same-task corrections
+into that task's commit only when history rewriting is authorized; preserve
+subsequent changes and existing co-authors. For an authorized published rewrite,
+use an explicit target branch and `--force-with-lease` with the verified full
+previous remote OID. Stop and inspect remote changes if the lease fails.
+Only the orchestrator commits, pushes, or changes branches. The repository
+starts from its new root commit; do not restore old branches or tags.
 
-## Конвейер Codex
+Deployment targets a Docker VPS that also runs VPN. Agree on ports 80/443,
+subdomain, and DNS before changing the server.
 
-Оркестратор ведёт один вертикальный тикет за раз: пользовательский результат, AC,
-границы изменений, исполнители в порядке зависимостей, проверки и ограничения.
-Текущее состояние хранится в `.codex/TASKS.md`, архитектура — в `.codex/PROJECT.md`,
-закрытые тикеты — в `.codex/TASKS-archive.md`. Приватные требования остаются в `.local/`.
+## Ticket workflow
 
-1. Оркестратор определяет AC, план, владельцев и проверки; продуктовые решения берёт из ТЗ.
-   `architect` подключается при конкретном риске архитектуры, API или схемы.
-2. Только нужные `backend-agent`, `frontend-agent`, `devops-agent` выполняют свои части
-   с регрессионными тестами и целевыми проверками. `tests-agent` подключается при
-   конкретном непокрытом сложном регрессионном сценарии.
-3. Назначенный в карточке владелец gate (по умолчанию последний исполнитель) запускает
-   один `make check` после всех правок кода и тестов.
-4. Независимый `code-reviewer` читает весь diff и проверяет AC, безопасность и результаты gate;
-   возвращает `Ship` или `No-Ship` с конкретными файлами и воспроизведением дефектов.
-5. Оркестратор принимает результат либо увеличивает попытку и возвращает находки владельцам.
-   После приёмки он архивирует карточку и коммитит законченный срез.
-   Коммитить, пушить и менять ветки может только оркестратор.
+The orchestrator handles one vertical ticket: outcome, acceptance criteria (AC),
+file boundaries, dependency order, check owner, and limitations. Shared protocol:
+`.codex/TASKS.md`, `.codex/PROJECT.md`, `.codex/TASKS-archive.md`.
+Private product requirements remain under `.local/`.
 
-Роли описаны в `.codex/agents/*.toml`:
-- `architect`, `code-reviewer` — последнее доступное стабильное семейство Sol, effort `high`.
-- `backend-agent`, `frontend-agent`, `devops-agent`, `tests-agent` — последнее доступное
-  стабильное семейство Terra, effort `high`.
-Точный ID модели всегда брать из соответствующего `.codex/agents/<роль>.toml`,
-включая ручное делегирование: не копировать устаревшие версии из истории тикетов.
-Перед запуском через `./scripts/codex` или `make codex` модели обновляются из каталога
-Codex app-server до последних стабильных версий соответствующих семейств с поддержкой `high`.
-`make codex-models` только обновляет конфигурацию. При недоступности каталога сохраняются
-текущие модели. Прямой запуск Codex desktop обходит wrapper; уже запущенная сессия
-автоматически не перезагружается.
-При ручном вызове делегирования явно передавать модель и `high`, если инструмент
-не загружает роль из TOML. Основная сессия сохраняет модель пользователя.
-Оркестратор явно делегирует роль с карточкой тикета, AC, границами файлов и отчётом
-предыдущего участника: дочерний агент может не видеть историю разговора.
-Если вызов агентов недоступен, те же этапы выполняются последовательно в одной сессии;
-самопроверка в отчёте явно отличается от независимого ревью.
-Независимые работы можно распараллеливать только при непересекающихся файлах.
-Не создавать отдельного агента для каждой мелкой правки.
+1. Define AC, owners, and checks from the specification. Use `architect` only
+   for a concrete architecture, API, or schema risk.
+2. Assign only needed `backend-agent`, `frontend-agent`, and `devops-agent`
+   roles in dependency order; use `tests-agent` for an uncovered complex
+   regression. Delegate with the ticket, AC, file boundaries, and prior report.
+3. The designated gate owner, usually the final implementer, runs `make check`
+   after code and tests are complete.
+4. Independent `code-reviewer` reads the whole diff and checks AC, security, and
+   gate evidence; returns `Ship` or `No-Ship` with files and reproduction steps.
+5. The orchestrator accepts and archives the ticket, or increments the attempt
+   and returns findings to owners before another review.
 
-Все роли используют подтверждённый результат gate для того же кода; ревьюер при необходимости
-воспроизводит целевую проверку, а при отсутствии результата возвращает задачу владельцу gate.
-Повторный полный gate нужен после изменений кода, тестов или конфигурации проверок либо
-провала, но не после изменения протокола или статуса и не ради формальности.
-Не требовать 100% общего покрытия: обязательны тесты новых правил, owner-scoping,
-CSRF и регрессий. Не добавлять тесты, которые лишь повторяют конфигурацию.
-Мутационные эксперименты — только на временной копии вне рабочего дерева.
-Отчёты короткие: изменённое поведение, проверки и фактический результат, ограничения.
-Нельзя выдавать прочитанный код за успешный прогон или скрывать неработающую проверку.
+Use the same gate evidence for the same code. Repeat the gate after relevant
+code/test/check-configuration changes or failure; a protocol/status-only edit
+does not require a redundant full run. Run mutation experiments only on a
+temporary copy outside the working tree. Parallel edits require disjoint files;
+do not create agents for every minor edit. If delegation is unavailable or a
+role cannot be selected, perform the stages sequentially and identify review
+as self-review where applicable.
 
-## Настройка окружения Codex
+## Codex integration
 
-После открытия доверенного проекта проверить `/hooks` и доверить определение хука:
-Codex не запускает новые и изменённые локальные хуки до просмотра пользователем.
-Hook — удобство; `make check` остаётся обязательным и без него.
-`.codex/config.toml` не меняет глобальные модели, разрешения, секреты и MCP пользователя.
+Roles are `.codex/agents/*.toml`. `architect`/`code-reviewer` use the latest
+available stable Sol family with effort `high`; backend/frontend/devops/tests
+use the latest stable Terra family with `high`. Read exact IDs from the role
+TOML, including manual delegation; do not copy IDs from old tickets.
+`./scripts/codex` / `make codex` refresh supported stable models through the
+app-server catalog without changing the main session's chosen model.
+`make codex-models` only refreshes config; unavailable catalogs preserve the
+current values. Desktop direct launch bypasses the wrapper and existing sessions
+do not reload automatically. When the tool does not load a role TOML, explicitly
+pass its model, effort, and instructions.
 
-## Конвейер Grok
+## Grok integration
 
-Grok — отдельный агент и не меняет `.codex/**`, `scripts/codex` и
-`scripts/codex_models.py`. Общий протокол тикетов остаётся в `.codex/TASKS.md`,
-`.codex/PROJECT.md` и `.codex/TASKS-archive.md`.
-
-Роли описаны в `.grok/agents/*.md`. Модель и разрешения наследуются от сессии пользователя
-и в проекте не закрепляются: проектный `.grok/config.toml` загружает только MCP, плагины
-и правила разрешений. Запуск оркестратора — `make grok` или
-`GROK_AGENT=lexicona-orchestrator grok`. Хук `.grok/hooks/` форматирует файлы после
-`search_replace` и `write`, когда папка доверена. Context7 подключён в
-`.grok/config.toml` как `https://mcp.context7.com/mcp`. Обязательная проверка — `make check`.
-
-Вертикальный тикет тот же: критерии приёмки, только нужные роли, один gate, независимое
-ревью `code-reviewer` и приёмка. Если инструмент не принимает тип субагента, этапы идут
-в текущей сессии, а самопроверка не называется независимым ревью.
+Grok-specific roles/hooks live under `.grok/`; `.grok/config.toml` loads MCP,
+plugins, and permission rules without pinning the session model. Start with
+`make grok` or `GROK_AGENT=lexicona-orchestrator grok`. Context7 uses the configured
+`https://mcp.context7.com/mcp` endpoint. Use the shared ticket protocol above;
+shared protocol documents are not Codex runtime configuration.
+Changes to `.codex/` runtime config, `scripts/codex`, and
+`scripts/codex_models.py` by Grok require explicit user authorization.

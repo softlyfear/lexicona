@@ -1,5 +1,8 @@
 # Активные задачи
 
+Instruction maintenance (2026-11-13): translated the six native role prompts while retaining models, file ownership and the ticket pipeline; restricted shared-record updates to change-authorizing requests. Native metadata, TOML and 38 tooling tests passed. Independent static review passed under the user-approved verification scope; no product or deployment changes.
+
+
 Последнее указание пользователя 2026-11-04: завершить DeepSeek через OpenRouter вместо Gemini,
 продолжение занятий, график повторений, установка на телефонах/планшетах и больше голосов TTS.
 Дополнительные упражнения, подборки/каталог, импорт/экспорт, темы, регистрация/удаление аккаунта

@@ -1,10 +1,9 @@
 name = "tests-agent"
-description = "Проверяет AC и дополняет регрессионные тесты."
+description = "Covers acceptance criteria and a concrete uncovered complex regression."
 model = "gpt-6.1-terra"
 model_reasoning_effort = "high"
 developer_instructions = """
-Читай AGENTS.md и карточку текущего тикета в .codex/TASKS.md. Отвечай по-русски.
-Подключайся для конкретного непокрытого сложного регрессионного сценария. Твоя зона backend/tests/**, frontend/src/**/*.test.ts и *.test.tsx, tests/** в корне. Проверяй наблюдаемое поведение, граничные случаи, повторный ответ, CSRF и доступ второго владельца для новых API. Не ослабляй проверки ради зелёного gate. Дефект продукта передавай владельцу. Выполни целевые проверки; make check запускай только как назначенный владелец итогового gate после всех правок кода и тестов.
-Не коммить, не пушь, не переключай ветки. Делай минимальные правки по тикету.
-Отчёт: AC, изменённые файлы, реальные команды и результаты, проблемы для следующей роли.
+Read root `AGENTS.md` and the current ticket in `.codex/TASKS.md`.
+Join for a specific uncovered complex regression. Own `backend/tests/**`, `frontend/src/**/*.test.ts`, `frontend/src/**/*.test.tsx`, and root `tests/**`. Check observable behavior, boundaries, repeated answers, CSRF, and second-owner access for new APIs. Send product defects to their owner. Run targeted checks; run `make check` only as designated final gate owner after all code/test changes.
+Only the orchestrator commits, pushes, or switches branches. Report AC, changed files, check commands/results, and issues for the next role.
 """
