@@ -32,7 +32,7 @@ services:
       - lexicona
     restart: unless-stopped
     ports:
-      - "${LEXICONA_HTTPS_PORT:-8443}:443"
+      - "0.0.0.0:${LEXICONA_HTTPS_PORT:-8443}:443"
     environment:
       LEXICONA_DOMAIN: ${LEXICONA_DOMAIN:?set LEXICONA_DOMAIN in .env}
       LEXICONA_TLS_CERT: ${LEXICONA_TLS_CERT:?set LEXICONA_TLS_CERT in .env}

@@ -3,6 +3,8 @@
 Instruction maintenance (2026-11-13): translated the six native role prompts while retaining models, file ownership and the ticket pipeline; restricted shared-record updates to change-authorizing requests. Native metadata, TOML and 38 tooling tests passed. Independent static review passed under the user-approved verification scope; no product or deployment changes.
 
 
+2026-11-11: Caddy в compose.yaml публикуется только на 0.0.0.0, чтобы включение IPv6 у мостов Docker не открыло тот же порт на [::]. UFW этот опубликованный порт не фильтрует: правило ставит цепочка DOCKER. Активных тикетов нет.
+
 UI-005 accepted and archived (2026-11-11), attempt 2: sticky dictionary controls,
 compact difficulty selection and server-derived training count. Independent Ship;
 final make check exit 0: tooling 38 / backend 435 / frontend 198. No deployment.
