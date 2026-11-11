@@ -58,7 +58,9 @@
 }
 
 .navLabel {
+  min-width: 0;
   max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: 0.68rem;
   line-height: 1.15;
   text-align: center;

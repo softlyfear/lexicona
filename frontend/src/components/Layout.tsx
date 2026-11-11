@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { cancelSpeech, setSpeechOwner, useSpeech } from '../speech'
 import { type User } from '../api'
@@ -16,6 +16,10 @@ const LINKS = [
 export function Layout({ user }: { user: User }) {
   const location = useLocation()
   const { pathname } = location
+  const mainRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [pathname])
   // Another section opens the dictionary at `/`. While it is already open, these links
   // keep the current filters instead of dropping them.
   const dictionaryTo = pathname === '/' ? `/${location.search}` : '/'
@@ -72,7 +76,7 @@ export function Layout({ user }: { user: User }) {
           </div>
         )}
       </header>
-      <main className={css.main}>
+      <main ref={mainRef} className={css.main}>
         <Outlet />
       </main>
     </div>

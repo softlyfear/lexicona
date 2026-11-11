@@ -56,7 +56,9 @@ function renderPage(url = '/', userId = 'alice') {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
         <Navigation />
-        <WordsPage userId={userId} />
+        <main>
+          <WordsPage userId={userId} />
+        </main>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -72,6 +74,32 @@ describe('сортировка словаря', () => {
     vi.resetAllMocks()
     vi.mocked(api.listTags).mockResolvedValue([])
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
+  })
+
+  it('раскрывает фильтры и действия, сохраняя видимую сводку', async () => {
+    vi.mocked(api.listTags).mockResolvedValue([{ id: 'home', name: 'Дом' }])
+    const user = userEvent.setup()
+    renderPage('/?sort=progress_desc&training=all&tag_id=home')
+    await screen.findByText('cat')
+    const filters = screen.getByText('Фильтры').closest('summary')!
+    const filterDetails = filters.parentElement!
+    expect(filterDetails).not.toHaveAttribute('open')
+    expect(filters).toHaveTextContent('Прогресс ↓')
+    expect(filters).toHaveTextContent('Все слова')
+    expect(filters).toHaveTextContent('Дом')
+    await user.click(filters)
+    expect(filterDetails).toHaveAttribute('open')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'excluded')
+    await user.click(filters)
+    expect(filterDetails).not.toHaveAttribute('open')
+    expect(filters).toHaveTextContent('Исключённые')
+    expect(params().get('training')).toBe('excluded')
+
+    const actions = screen.getByLabelText('Действия со словом «cat»')
+    expect(actions.parentElement).not.toHaveAttribute('open')
+    await user.click(actions)
+    expect(actions.parentElement).toHaveAttribute('open')
+    expect(screen.getByRole('button', { name: 'Изменить «cat»' })).toHaveTextContent('Изменить')
   })
 
   it('читает начальные q и sort из URL и меняет только выбранный параметр', async () => {
@@ -444,6 +472,19 @@ describe('сортировка словаря', () => {
     ).toBeInTheDocument()
     expect(api.setWordTraining).toHaveBeenNthCalledWith(2, '1', true)
     expect(api.setWordTraining).toHaveBeenNthCalledWith(3, '1', false)
+  })
+
+  it('возвращает прокрутку к началу при открытии и закрытии редактора', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('cat')
+    const main = screen.getByRole('main')
+    main.scrollTop = 500
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    expect(main.scrollTop).toBe(0)
+    main.scrollTop = 300
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(main.scrollTop).toBe(0)
   })
 
   it('изолирует новый редактор и возвращает прежние параметры после отмены', async () => {

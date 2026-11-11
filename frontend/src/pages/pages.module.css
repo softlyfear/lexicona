@@ -26,6 +26,18 @@
   gap: 0.85rem;
 }
 
+.stack > p,
+.stack > h2,
+.form > p,
+.group > p {
+  margin: 0;
+}
+
+.stack > h2 {
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
 .title {
   margin: 0;
   font-size: 1.35rem;
@@ -79,6 +91,7 @@
 
 .pageHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -93,12 +106,34 @@
 }
 
 .dictionaryPage {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: none;
 }
-
 .dictionaryControls {
   flex: none;
+}
+.dictionaryControls p,
+.wordMain p {
+  margin: 0;
+}
+.filterDisclosure {
+  min-width: 0;
+}
+.disclosureSummary,
+.actionSummary {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.disclosureSummary span {
+  margin-left: 0.5rem;
+}
+.filterDisclosure[open] > .filters,
+.filterDisclosure[open] > .tagField {
+  margin-top: 0.6rem;
 }
 
 .startError {
@@ -222,23 +257,22 @@
 
 .wordList {
   display: flex;
-  flex: 1 1 auto;
+  flex: none;
   flex-direction: column;
   gap: 0.55rem;
-  min-height: 8rem;
+  min-height: 0;
   margin: 0;
   padding: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
   list-style: none;
   border: 0;
   background: transparent;
 }
 
 .wordRow {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 0.5rem;
   padding: 0.7rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -249,6 +283,7 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+  padding-right: 2.5rem;
 }
 
 .wordHead {
@@ -263,6 +298,23 @@
   font-size: 1rem;
 }
 
+.wordTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin: 0.15rem 0;
+}
+
+.wordTag {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .example {
   font-size: 0.9rem;
   font-style: italic;
@@ -270,66 +322,59 @@
 
 .wordSide {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    'percent meter'
-    'actions actions';
+  grid-template-columns: auto minmax(2rem, 1fr);
   align-items: center;
   gap: 0.35rem 0.65rem;
   width: 100%;
 }
 
 .percent {
-  grid-area: percent;
   font-variant-numeric: tabular-nums;
   font-size: 0.9rem;
-  text-align: left;
 }
-
 .meter {
-  grid-area: meter;
   min-width: 0;
 }
-
 .learnedOn {
   color: var(--accent);
 }
+.wordActions {
+  min-width: 0;
+}
 
-.rowActions {
-  grid-area: actions;
+.wordActions[open] {
+  margin-top: 0.25rem;
+}
+.actionSummary {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.35rem;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.25rem;
-}
-
-.rowActions .actionButton {
-  position: relative;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-height: 2.85rem;
-  padding: 0.22rem 0.06rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  font-size: 0.68rem;
-  line-height: 1.15;
-  white-space: normal;
-}
-
-.actionIcon {
-  font-size: 1rem;
+  place-items: center;
+  width: 2.5rem;
+  padding: 0;
+  list-style: none;
+  font-size: 1.4rem;
   line-height: 1;
 }
 
-.actionCaption {
-  max-width: 100%;
-  font-size: 0.62rem;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
-  text-align: center;
-  white-space: nowrap;
+.actionSummary::-webkit-details-marker {
+  display: none;
 }
-
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.rowActions .actionButton {
+  gap: 0.3rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 1rem;
+}
 .rowActions .actionButton.learnedOn {
   border-color: var(--accent);
 }
@@ -483,10 +528,15 @@ legend.settingLabel {
 }
 
 .levelKind {
-  display: grid;
-  grid-template-columns: 4.6rem 5.25ch 5.25ch;
-  column-gap: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.35rem;
+  min-width: 0;
   align-items: baseline;
+}
+
+.levelKind > :first-child {
+  flex: 1 0 max-content;
 }
 
 .levelNumber {
@@ -817,7 +867,7 @@ legend.settingLabel {
   }
 
   .wordRow {
-    gap: 0.28rem;
+    gap: 0;
     padding: 0.4rem 0.5rem;
   }
 
@@ -837,20 +887,10 @@ legend.settingLabel {
     gap: 0.25rem 0.5rem;
   }
 
-  .rowActions .actionButton {
-    min-height: 2.75rem;
-    padding: 0.08rem 0.04rem;
-  }
-
-  .actionCaption {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   .sort select,
   .search {
     padding-inline: 0.5rem;
-    font-size: 0.92rem;
+    font-size: 1rem;
   }
 
   .group {
@@ -940,7 +980,7 @@ legend.settingLabel {
   }
 
   .level {
-    grid-template-columns: auto 9rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 9rem) repeat(3, minmax(0, 1fr));
     align-items: center;
     column-gap: 0.85rem;
   }
@@ -955,8 +995,7 @@ legend.settingLabel {
   }
 
   .levelKind {
-    grid-template-columns: 3.5rem 5.25ch 5.25ch;
-    justify-self: start;
+    justify-self: stretch;
   }
 
   .pageHead {
@@ -1003,8 +1042,8 @@ legend.settingLabel {
   }
 
   .wordRow {
-    flex-direction: row;
-    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) 11rem;
+    gap: 0 0.75rem;
     padding: 0.5rem 0.75rem;
     border: 0;
     border-radius: 0;
@@ -1015,44 +1054,18 @@ legend.settingLabel {
     border-top: 1px solid var(--border);
   }
 
+  .wordMain {
+    padding-right: 0;
+  }
+
   .wordSide {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.35rem;
-    width: 11.5rem;
-    flex-shrink: 0;
+    grid-column: 2;
+    grid-row: 1;
+    padding-right: 2.5rem;
   }
 
-  .percent {
-    text-align: right;
-  }
-
-  .rowActions {
-    display: flex;
-    justify-content: space-between;
-  }
-
-  .rowActions .actionButton {
-    flex-direction: row;
-    min-height: 2.25rem;
-    padding: 0.25rem 0.45rem;
-    border-color: transparent;
-    background: transparent;
-    font-size: 1rem;
-  }
-
-  .actionCaption {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .rowActions .actionButton.learnedOn {
-    border-color: transparent;
+  .wordActions {
+    grid-column: 1 / -1;
   }
 
   .choice {
@@ -1069,7 +1082,7 @@ legend.settingLabel {
   }
 
   .levelName {
-    min-width: 8rem;
+    min-width: 0;
   }
 
   .group {
@@ -1100,27 +1113,5 @@ legend.settingLabel {
 
   .feedback > button {
     width: auto;
-  }
-}
-
-@media (min-width: 720px) and (hover: hover) and (pointer: fine) {
-  .rowActions button:hover::after,
-  .rowActions button:focus-visible::after {
-    content: attr(title);
-    position: absolute;
-    z-index: 3;
-    top: calc(100% + 0.35rem);
-    right: 0;
-    left: auto;
-    padding: 0.15rem 0.45rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1.3;
-    white-space: nowrap;
-    pointer-events: none;
   }
 }

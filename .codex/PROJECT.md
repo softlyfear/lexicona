@@ -103,8 +103,13 @@ word_training_version. Eligibility проверяется в write path: нес�
 UI показывает реальный процент, визуальную шкалу и aria-valuenow ограничивает 100,
 а aria-valuetext сообщает фактическое значение.
 
-Действие исключения/возврата находится рядом с edit/delete; статус строки показывается
-только для исключённого слова. Сортировка и фильтр обучения размещены в flex/wrap строке.
+Dictionary filters use a native details disclosure with the current sort, training
+scope and selected tags visible in its summary. Each word has a keyboard-accessible
+ellipsis disclosure containing labeled learned/exclude/restore/edit/delete actions;
+learned and excluded statuses remain visible when it is closed. Static tag badges
+are separate from interactive tag selectors. Layout.main is the only dictionary
+scrollport; page/list keep their natural content height. Route and editor changes
+reset main scrolling; URL filter changes preserve it. Speech buttons use inline SVG.
 Создание и редактирование слова открывают отдельный редактор внутри страницы, скрывая
 выдачу/фильтры; отмена или успешное сохранение возвращают прежние q/sort/training/tag_id из URL.
 

@@ -1860,3 +1860,48 @@ URL сохраняется. Ответ карточки после сервер�
 Финальный `make check` зелёный: tooling 17, backend 329, frontend 134, ruff/mypy/format/lint/
 typecheck/build. Dev frontend/backend отвечают HTTP 200. Независимый reviewer: Ship, дефектов нет;
 лично 57 затронутых UI-тестов и diff --check.
+
+## UI-004 — responsive density and full UI review (2026-11-11)
+
+Status: done. Accepted by root after independent Ship, attempt 2.
+Owners: frontend-agent (frontend/src and gate), root (browser checks and protocol),
+code-reviewer (read-only review). API, schema and product scope are unchanged.
+
+Acceptance criteria met: compact phone dictionary, slightly denser desktop,
+visible active-filter summary with URL/per-user persistence, native keyboard
+disclosures for filters and labeled secondary word actions, readable body/input
+text, wrapping long content, preserved progress/status/pending/error semantics,
+and a single main scrollport. Static tag badges and SVG speech icons reduce
+wasted space. Route/editor changes reset scroll; filter changes preserve it.
+
+Review covered dictionary, editor, training setup/exercises, statistics, settings,
+account and login. Attempt 1 found enlarged-text rate/navigation overlap and a
+desktop list shrinking below its contents. Attempt 2 fixes both; enlarged labels
+wrap and page/list retain natural height. No blocking findings remain.
+
+Verification:
+
+- Final make check with pipefail and captured output: exit 0; tooling 30,
+  backend 422, frontend 193; formatting, ruff, mypy, lint, typecheck/build pass.
+  Tooling includes unrelated untracked sync tests present in the shared tree;
+  their implementation is not part of this ticket. UI file hashes matched gate.
+- Chromium: 35 layout cases at 320/390/768/1280 and enlarged root text 200%,
+  including login and editor. No main horizontal overflow or page exceptions.
+  The statistics table retains its own contained scrolling at enlarged text.
+- Live isolated API: keyboard Enter disclosures, tag filtering/reload/clear,
+  learned and exclude/restore without progress loss, editor/cancel/navigation
+  scroll reset; choice/matching/input start at all four widths.
+- Identical fixture comparison, EN/RU speech controls enabled: at 390x844,
+  ordinary rows 189px -> 137px, list starts at 429px -> 203px, fully visible
+  short records 1 -> 4. At 1280x844, list starts at 280px -> 172px and fully
+  visible records 4 -> 5; ordinary desktop row height stays 118px.
+  Long content grows naturally; these counts are not universal device promises.
+- Independent code-reviewer: Ship. git diff --check passes.
+
+Local ignored evidence: .local/ui-review-ui004/ (gate log, JSON and PNGs).
+Gate log SHA256: 0a72e971be79d86629c2d357b5eae93860bd57069a1c8c7d59bcf08f8fde152e.
+Orca DOM checks worked; its screenshot capture timed out, so installed headless
+Chromium supplied visual evidence. No production data, deployment or external
+service calls were needed. Physical Android/iOS and audible speech remain
+unverified. Exact root-session model metadata was unavailable; its AI trailer is
+omitted. Verified contributing implementation model: gpt-6.1-terra.

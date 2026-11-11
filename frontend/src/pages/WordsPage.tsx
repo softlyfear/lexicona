@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   api,
@@ -26,6 +26,14 @@ const SORT_OPTIONS: { value: WordSort; label: string }[] = [
   { value: 'progress_asc', label: 'Прогресс: по возрастанию' },
   { value: 'progress_desc', label: 'Прогресс: по убыванию' },
 ]
+const SORT_SUMMARY: Record<WordSort, string> = {
+  created_desc: 'Новые',
+  created_asc: 'Старые',
+  headword_asc: 'Слово А–Я',
+  headword_desc: 'Слово Я–А',
+  progress_asc: 'Прогресс ↑',
+  progress_desc: 'Прогресс ↓',
+}
 const TRAINING_OPTIONS: { value: WordTrainingFilter; label: string }[] = [
   { value: 'active', label: 'В обучении' },
   { value: 'excluded', label: 'Исключённые' },
@@ -63,6 +71,11 @@ export function WordsPage({ userId }: { userId: string }) {
     return stored?.tagIds ?? []
   }, [settled, specifiesTags, stored, urlTagKey])
   const [editing, setEditing] = useState<Editing>(null)
+  const pageRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const main = pageRef.current?.closest('main')
+    if (main) main.scrollTop = 0
+  }, [editing])
   const urlReflectsFilters =
     (specifiesSort || sort === 'created_desc') &&
     (specifiesTraining || training === 'active') &&
@@ -162,7 +175,7 @@ export function WordsPage({ userId }: { userId: string }) {
 
   if (editing) {
     return (
-      <section className={css.stack}>
+      <section ref={pageRef} className={css.stack}>
         <h1 className={css.title}>
           {editing.kind === 'new' ? 'Добавить слово' : 'Редактировать слово'}
         </h1>
@@ -180,7 +193,7 @@ export function WordsPage({ userId }: { userId: string }) {
   }
 
   return (
-    <section className={`${css.stack} ${css.dictionaryPage}`}>
+    <section ref={pageRef} className={`${css.stack} ${css.dictionaryPage}`}>
       <div className={`${css.stack} ${css.dictionaryControls}`}>
         <div className={css.toolbar}>
           <h1 className={css.title}>Словарь</h1>
@@ -200,75 +213,86 @@ export function WordsPage({ userId }: { userId: string }) {
           </button>
         </div>
 
-        <div className={css.filters}>
-          <label className={`${ui.field} ${css.sort}`}>
-            <span className={ui.label}>Сортировка</span>
-            <select
-              className={ui.input}
-              value={sort}
-              onChange={(event) => updateParameter('sort', event.target.value)}
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <details className={css.filterDisclosure}>
+          <summary className={css.disclosureSummary}>
+            <strong>Фильтры</strong>
+            <span className={ui.muted}>
+              {SORT_SUMMARY[sort]} ·{' '}
+              {TRAINING_OPTIONS.find((option) => option.value === training)?.label}
+              {tagIds.length > 0 &&
+                ` · Теги: ${tagIds.map((id) => tags.data?.find((tag) => tag.id === id)?.name ?? id).join(', ')}`}
+            </span>
+          </summary>
+          <div className={css.filters}>
+            <label className={`${ui.field} ${css.sort}`}>
+              <span className={ui.label}>Сортировка</span>
+              <select
+                className={ui.input}
+                value={sort}
+                onChange={(event) => updateParameter('sort', event.target.value)}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className={`${ui.field} ${css.sort}`}>
-            <span className={ui.label}>Обучение</span>
-            <select
-              className={ui.input}
-              value={training}
-              onChange={(event) => updateParameter('training', event.target.value)}
-            >
-              {TRAINING_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <fieldset className={css.tagField}>
-          <legend className={ui.label}>Теги: любой выбранный</legend>
-          {tags.isLoading && (
-            <p role="status" className={ui.muted}>
-              Загружаем теги…
-            </p>
-          )}
-          {tags.isError && (
-            <p role="alert" className={ui.error}>
-              {errorMessage(tags.error)} Не удалось загрузить теги.
-            </p>
-          )}
-          <div className={css.tagList}>
-            {tags.data?.map((tag) => (
-              <label className={css.tag} key={tag.id}>
-                <input
-                  type="checkbox"
-                  checked={tagIds.includes(tag.id)}
-                  disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
-                  onChange={(event) =>
-                    updateTags(
-                      event.target.checked
-                        ? [...tagIds, tag.id]
-                        : tagIds.filter((id) => id !== tag.id),
-                    )
-                  }
-                />
-                {tag.name}
-              </label>
-            ))}
+            <label className={`${ui.field} ${css.sort}`}>
+              <span className={ui.label}>Обучение</span>
+              <select
+                className={ui.input}
+                value={training}
+                onChange={(event) => updateParameter('training', event.target.value)}
+              >
+                {TRAINING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-          {tagIds.length > 0 && (
-            <button type="button" className={ui.button} onClick={() => updateTags([])}>
-              Снять фильтр тегов
-            </button>
-          )}
-        </fieldset>
+
+          <fieldset className={css.tagField}>
+            <legend className={ui.label}>Теги: любой выбранный</legend>
+            {tags.isLoading && (
+              <p role="status" className={ui.muted}>
+                Загружаем теги…
+              </p>
+            )}
+            {tags.isError && (
+              <p role="alert" className={ui.error}>
+                {errorMessage(tags.error)} Не удалось загрузить теги.
+              </p>
+            )}
+            <div className={css.tagList}>
+              {tags.data?.map((tag) => (
+                <label className={css.tag} key={tag.id}>
+                  <input
+                    type="checkbox"
+                    checked={tagIds.includes(tag.id)}
+                    disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                    onChange={(event) =>
+                      updateTags(
+                        event.target.checked
+                          ? [...tagIds, tag.id]
+                          : tagIds.filter((id) => id !== tag.id),
+                      )
+                    }
+                  />
+                  {tag.name}
+                </label>
+              ))}
+            </div>
+            {tagIds.length > 0 && (
+              <button type="button" className={ui.button} onClick={() => updateTags([])}>
+                Снять фильтр тегов
+              </button>
+            )}
+          </fieldset>
+        </details>
 
         {remove.isError && (
           <p className={ui.error} role="alert">
@@ -329,9 +353,9 @@ export function WordsPage({ userId }: { userId: string }) {
                 ))}
               </div>
               {word.tags.length > 0 && (
-                <div className={css.tagList} aria-label="Теги слова">
+                <div className={css.wordTags} aria-label="Теги слова">
                   {word.tags.map((tag) => (
-                    <span className={css.tag} key={tag.id}>
+                    <span className={css.wordTag} key={tag.id}>
                       {tag.name}
                     </span>
                   ))}
@@ -343,12 +367,16 @@ export function WordsPage({ userId }: { userId: string }) {
                 </div>
               )}
               {word.is_excluded && <p className={ui.muted}>Исключено из обучения</p>}
+              {word.is_learned && <p className={ui.muted}>Выучено</p>}
             </div>
-            <div className={css.wordSide}>
-              <span className={css.percent}>{word.progress}%</span>
-              <div className={css.meter}>
-                <ProgressBar value={word.progress} />
-              </div>
+            <details className={css.wordActions}>
+              <summary
+                className={css.actionSummary}
+                aria-label={`Действия со словом «${word.headword}»`}
+                title={`Действия со словом «${word.headword}»`}
+              >
+                ⋯
+              </summary>
               <div className={css.rowActions}>
                 <button
                   type="button"
@@ -367,10 +395,10 @@ export function WordsPage({ userId }: { userId: string }) {
                   title={word.is_learned ? 'Снять отметку «выучено»' : 'Отметить как выученное'}
                   onClick={() => learnedState.mutate({ id: word.id, isLearned: !word.is_learned })}
                 >
-                  <span className={css.actionIcon} aria-hidden="true">
+                  <span aria-hidden="true">
                     {learnedState.isPending && learnedState.variables?.id === word.id ? '…' : '✓'}
                   </span>
-                  <span className={css.actionCaption}>{word.is_learned ? 'Снять' : 'Выучено'}</span>
+                  <span>{word.is_learned ? 'Снять' : 'Выучено'}</span>
                 </button>
                 <button
                   type="button"
@@ -382,16 +410,14 @@ export function WordsPage({ userId }: { userId: string }) {
                   aria-label={`${word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'} «${word.headword}»`}
                   title={word.is_excluded ? 'Вернуть в обучение' : 'Исключить из обучения'}
                 >
-                  <span className={css.actionIcon} aria-hidden="true">
+                  <span aria-hidden="true">
                     {trainingState.isPending && trainingState.variables?.id === word.id
                       ? '…'
                       : word.is_excluded
                         ? '↩'
                         : '⊘'}
                   </span>
-                  <span className={css.actionCaption}>
-                    {word.is_excluded ? 'Вернуть' : 'Исключить'}
-                  </span>
+                  <span>{word.is_excluded ? 'Вернуть' : 'Исключить'}</span>
                 </button>
                 <button
                   className={`${ui.ghost} ${css.actionButton}`}
@@ -399,22 +425,25 @@ export function WordsPage({ userId }: { userId: string }) {
                   aria-label={`Изменить «${word.headword}»`}
                   title="Изменить"
                 >
-                  <span className={css.actionIcon} aria-hidden="true">
-                    ✎
-                  </span>
-                  <span className={css.actionCaption}>Изменить</span>
+                  <span aria-hidden="true">✎</span>
+                  <span>Изменить</span>
                 </button>
                 <button
                   className={`${ui.ghost} ${css.actionButton}`}
+                  disabled={remove.isPending}
                   onClick={() => confirmDelete(word)}
                   aria-label={`Удалить «${word.headword}»`}
                   title="Удалить"
                 >
-                  <span className={css.actionIcon} aria-hidden="true">
-                    ✕
-                  </span>
-                  <span className={css.actionCaption}>Удалить</span>
+                  <span aria-hidden="true">✕</span>
+                  <span>Удалить</span>
                 </button>
+              </div>
+            </details>
+            <div className={css.wordSide}>
+              <span className={css.percent}>{word.progress}%</span>
+              <div className={css.meter}>
+                <ProgressBar value={word.progress} />
               </div>
             </div>
           </li>

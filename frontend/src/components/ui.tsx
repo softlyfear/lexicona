@@ -31,7 +31,7 @@ export function SpeakButton({
   return (
     <button
       type="button"
-      className={className ? `${ui.ghost} ${className}` : ui.ghost}
+      className={`${ui.ghost} ${ui.speak} ${className ?? ''}`}
       onClick={(event) => {
         event.stopPropagation()
         speak(text, code)
@@ -39,7 +39,20 @@ export function SpeakButton({
       aria-label={`Произнести ${lang === 'en-US' ? 'EN' : 'RU'} «${text}»`}
       {...props}
     >
-      🔊
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+        <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12" />
+      </svg>
     </button>
   )
 }
