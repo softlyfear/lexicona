@@ -59,6 +59,9 @@ class SessionIn(BaseModel):
         "progress_desc",
     ] = "random"
     shuffle: StrictBool = False
+    selection_seed: (
+        Annotated[str, StringConstraints(pattern=r"^[0-9a-fA-F]{32}$", strict=True)] | None
+    ) = None
 
     @model_validator(mode="after")
     def valid_mode_direction(self) -> Self:
@@ -71,6 +74,14 @@ class SessionIn(BaseModel):
         ):
             raise ValueError("progress_max must be at least progress_min")
         return self
+
+
+class PreviewOut(BaseModel):
+    count: int
+    selection_seed: str
+    unavailable_reason: (
+        Literal["no_matching_words", "no_scheduled_words", "not_enough_words"] | None
+    )
 
 
 class ItemOut(BaseModel):
@@ -222,10 +233,12 @@ def _seconds(value: datetime) -> float:
     return (value - datetime.min).total_seconds()
 
 
-def _arrange(words: list[Word], schedules: dict[str, WordProgress], order: str) -> list[Word]:
+def _arrange(
+    words: list[Word], schedules: dict[str, WordProgress], order: str, rng: random.Random
+) -> list[Word]:
     """Order a session pool. Random stays a shuffle. The other orders are stable."""
     if order == "random":
-        return _rng.sample(words, len(words))
+        return rng.sample(words, len(words))
 
     def key(word: Word) -> tuple[object, ...]:
         reviewed = schedules[word.id].last_review_at
@@ -245,7 +258,7 @@ def _arrange(words: list[Word], schedules: dict[str, WordProgress], order: str) 
 
 
 def _shuffle_selected(
-    words: list[Word], size: int | Literal["all"], *, due_count: int = 0
+    words: list[Word], size: int | Literal["all"], rng: random.Random, *, due_count: int = 0
 ) -> list[Word]:
     """Keep the ordered prefix, then shuffle presentation.
 
@@ -256,10 +269,10 @@ def _shuffle_selected(
     if len(selected) < 2:
         return selected
     head = min(due_count, len(selected))
-    due = _rng.sample(selected[:head], head) if head > 1 else selected[:head]
+    due = rng.sample(selected[:head], head) if head > 1 else selected[:head]
     tail = selected[head:]
     if len(tail) > 1:
-        tail = _rng.sample(tail, len(tail))
+        tail = rng.sample(tail, len(tail))
     return due + tail
 
 
@@ -308,8 +321,9 @@ def _build_item(
     return _prompt_text(target, direction), options, correct
 
 
-@router.post("/sessions", status_code=status.HTTP_201_CREATED)
-async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
+async def _select_targets(
+    body: SessionIn, auth: CurrentAuth, db: Db, rng: random.Random
+) -> tuple[list[Word], dict[str, WordProgress], list[ChoiceCandidate], str | None]:
     builtin_pool = distractors.choice_candidates() if body.mode == "choice" else []
     tag_ids = set(body.tag_ids)
     if tag_ids:
@@ -323,11 +337,13 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 
     pool = list(
         await db.scalars(
-            select(Word).where(
+            select(Word)
+            .where(
                 Word.owner_id == auth.user.id,
                 Word.is_excluded.is_(False),
                 Word.is_learned.is_(False),
             )
+            .order_by(Word.id)
         )
     )
     matching_ids: set[str] | None = None
@@ -350,7 +366,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         and not filtered
         and (tag_ids or body.progress_min is not None or body.progress_max is not None)
     ):
-        raise HTTPException(status.HTTP_409_CONFLICT, "no_matching_words")
+        return [], {}, [*pool, *builtin_pool], "no_matching_words"
 
     schedules = {
         schedule.word_id: schedule
@@ -364,13 +380,19 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     for word in filtered:
         if word.id not in schedules:
             # API-created and migrated words already have one; keep direct ORM fixtures valid too.
-            schedules[word.id] = WordProgress(owner_id=auth.user.id, word_id=word.id)
-            db.add(schedules[word.id])
+            schedules[word.id] = WordProgress(
+                owner_id=auth.user.id,
+                word_id=word.id,
+                has_review=False,
+                progress_version=1,
+                last_review_at=None,
+                due_at=None,
+            )
 
     if body.purpose == "free":
-        targets = _arrange(filtered, schedules, body.order)
+        targets = _arrange(filtered, schedules, body.order, rng)
         if body.shuffle:
-            targets = _shuffle_selected(targets, body.size)
+            targets = _shuffle_selected(targets, body.size, rng)
     else:
         now = utcnow()
         due: list[Word] = []
@@ -382,22 +404,14 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             elif schedule.due_at is not None and schedule.due_at <= now:
                 due.append(word)
         # Due words stay ahead of new ones. The chosen order applies inside each group.
-        due_targets = _arrange(due, schedules, body.order)
-        new_targets = _arrange(new, schedules, body.order)[:10] if body.include_new else []
+        due_targets = _arrange(due, schedules, body.order, rng)
+        new_targets = _arrange(new, schedules, body.order, rng)[:10] if body.include_new else []
         targets = due_targets + new_targets
         if body.shuffle:
-            targets = _shuffle_selected(targets, body.size, due_count=len(due_targets))
+            targets = _shuffle_selected(targets, body.size, rng, due_count=len(due_targets))
         if not targets:
-            raise HTTPException(status.HTTP_409_CONFLICT, "no_scheduled_words")
+            return [], schedules, [*pool, *builtin_pool], "no_scheduled_words"
 
-    session = TrainingSession(
-        owner_id=auth.user.id,
-        mode=body.mode,
-        direction=body.direction,
-        purpose=body.purpose,
-        difficulty=auth.user.difficulty,
-        requested_size=str(body.size),
-    )
     if body.mode == "matching":
         matching_targets: list[Word] = []
         current_batch: list[Word] = []
@@ -416,6 +430,49 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             current_batch.append(target)
             if len(current_batch) == 8:
                 current_batch = []
+        targets = matching_targets
+    else:
+        eligible: list[Word] = []
+        for target in targets:
+            if body.size != "all" and len(eligible) == body.size:
+                break
+            if (
+                body.mode != "choice"
+                or _build_item(target, [*pool, *builtin_pool], body.direction) is not None
+            ):
+                eligible.append(target)
+        targets = eligible
+    return targets, schedules, [*pool, *builtin_pool], None if targets else "not_enough_words"
+
+
+@router.post("/sessions/preview")
+async def preview_session(body: SessionIn, auth: CurrentAuth, db: Db) -> PreviewOut:
+    seed = (
+        body.selection_seed if body.selection_seed is not None else f"{_rng.getrandbits(128):032x}"
+    )
+    targets, _, _, reason = await _select_targets(body, auth, db, random.Random(int(seed, 16)))  # noqa: S311
+    return PreviewOut(count=len(targets), selection_seed=seed, unavailable_reason=reason)
+
+
+@router.post("/sessions", status_code=status.HTTP_201_CREATED)
+async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionOut:
+    rng = random.Random(int(body.selection_seed, 16)) if body.selection_seed is not None else _rng  # noqa: S311
+    targets, schedules, pool, reason = await _select_targets(body, auth, db, rng)
+    if reason is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, reason)
+    for schedule in schedules.values():
+        if schedule not in db:
+            db.add(schedule)
+    session = TrainingSession(
+        owner_id=auth.user.id,
+        mode=body.mode,
+        direction=body.direction,
+        purpose=body.purpose,
+        difficulty=auth.user.difficulty,
+        requested_size=str(body.size),
+    )
+    if body.mode == "matching":
+        matching_targets = targets
         for offset in range(0, len(matching_targets), 8):
             batch = matching_targets[offset : offset + 8]
             options = _rng.sample([_answer_side(word, "en_ru")[0] for word in batch], len(batch))
@@ -437,7 +494,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             if body.size != "all" and len(session.items) == body.size:
                 break
             if body.mode == "choice":
-                built = _build_item(target, [*pool, *builtin_pool], body.direction)
+                built = _build_item(target, pool, body.direction)
                 if built is None:
                     continue
                 prompt, options, correct = built

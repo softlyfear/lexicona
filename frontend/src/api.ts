@@ -29,6 +29,12 @@ export interface TrainingFilters {
   shuffle?: boolean
 }
 
+export interface TrainingPreview {
+  count: number
+  selection_seed: string
+  unavailable_reason: 'no_matching_words' | 'no_scheduled_words' | 'not_enough_words' | null
+}
+
 export interface User {
   id: string
   login: string
@@ -379,8 +385,26 @@ export const api = {
     filters?: TrainingFilters,
     purpose: TrainingPurpose = 'free',
     includeNew = true,
+    selectionSeed?: string,
   ) =>
     request<TrainingSession>('POST', '/training/sessions', {
+      mode,
+      direction,
+      size,
+      purpose,
+      include_new: includeNew,
+      selection_seed: selectionSeed,
+      ...filters,
+    }),
+  previewTraining: (
+    direction: Direction,
+    size: TrainingSize,
+    mode: NewTrainingMode,
+    filters: TrainingFilters | undefined,
+    purpose: TrainingPurpose,
+    includeNew: boolean,
+  ) =>
+    request<TrainingPreview>('POST', '/training/sessions/preview', {
       mode,
       direction,
       size,

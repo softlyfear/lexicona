@@ -3,6 +3,10 @@
 Instruction maintenance (2026-11-13): translated the six native role prompts while retaining models, file ownership and the ticket pipeline; restricted shared-record updates to change-authorizing requests. Native metadata, TOML and 38 tooling tests passed. Independent static review passed under the user-approved verification scope; no product or deployment changes.
 
 
+UI-005 accepted and archived (2026-11-11), attempt 2: sticky dictionary controls,
+compact difficulty selection and server-derived training count. Independent Ship;
+final make check exit 0: tooling 38 / backend 435 / frontend 198. No deployment.
+
 UI-004 accepted and archived (2026-11-11), attempt 2: compact responsive dictionary,
 35 Chromium layout cases, live API action/training smoke checks, independent Ship.
 Final make check: exit 0, tooling 30 / backend 422 / frontend 193. No deployment.

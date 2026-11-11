@@ -213,30 +213,54 @@ function Setup({
     min !== undefined && max !== undefined && (min === null || max === null || min <= max)
   const size = Number(sizeText)
   const validSize = /^\d+$/u.test(sizeText) && Number.isSafeInteger(size) && size >= 1
+  const validSetup = (sizeMode === 'all' || validSize) && validBounds
+  const requestedSize = sizeMode === 'all' ? 'all' : size
+  const filters: TrainingFilters = {}
+  if (tagIds.length || min !== null || max !== null) {
+    filters.tag_ids = [...tagIds].sort()
+    filters.progress_min = min
+    filters.progress_max = max
+  }
+  if (order !== 'random') filters.order = order
+  if (shuffle) filters.shuffle = true
+  const activeFilters = Object.keys(filters).length ? filters : undefined
+  const preview = useQuery({
+    queryKey: [
+      'training',
+      'preview',
+      direction,
+      requestedSize,
+      mode,
+      activeFilters,
+      purpose,
+      includeNew,
+    ],
+    queryFn: () =>
+      api.previewTraining(direction, requestedSize, mode, activeFilters, purpose, includeNew),
+    enabled: validSetup,
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+  })
+  const currentPreview =
+    validSetup && !preview.isFetching && !preview.isError ? preview.data : undefined
   const starting = useRef(false)
   const startScope = useRef(0)
   const startErrorRef = useRef<HTMLParagraphElement>(null)
   const start = useMutation({
-    mutationFn: (requestedSize: TrainingSize) => {
-      const filters: TrainingFilters = {}
-      if (tagIds.length || min !== null || max !== null) {
-        filters.tag_ids = tagIds
-        filters.progress_min = min
-        filters.progress_max = max
-      }
-      if (order !== 'random') filters.order = order
-      if (shuffle) filters.shuffle = true
+    mutationFn: ({ requestedSize, seed }: { requestedSize: TrainingSize; seed: string }) => {
       return api.startTraining(
         direction,
         requestedSize,
         mode,
-        Object.keys(filters).length ? filters : undefined,
+        activeFilters,
         purpose,
         includeNew,
+        seed,
       )
     },
-    onSuccess: (session, size) => {
-      if (startScope.current === speechGeneration()) onStart(session, size)
+    onSuccess: (session, variables) => {
+      if (startScope.current === speechGeneration()) onStart(session, variables.requestedSize)
     },
     onSettled: () => {
       starting.current = false
@@ -248,11 +272,11 @@ function Setup({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if ((sizeMode === 'number' && !validSize) || !validBounds || starting.current) return
+    if (!validSetup || !currentPreview || currentPreview.count === 0 || starting.current) return
     cancelSpeech()
     startScope.current = speechGeneration()
     starting.current = true
-    start.mutate(sizeMode === 'all' ? 'all' : size)
+    start.mutate({ requestedSize, seed: currentPreview.selection_seed })
   }
 
   return (
@@ -260,13 +284,41 @@ function Setup({
       <form className={css.form} onSubmit={submit} noValidate>
         <div className={css.pageHead}>
           <h1 className={css.title}>Тренировка</h1>
-          <button
-            className={`${ui.primary} ${css.pageAction}`}
-            type="submit"
-            disabled={start.isPending || (sizeMode === 'number' && !validSize) || !validBounds}
-          >
-            Начать
-          </button>
+          <div className={css.previewControls}>
+            <span className={ui.muted}>
+              {!validSetup ? (
+                'Проверьте параметры'
+              ) : preview.isError ? (
+                'Не удалось подсчитать'
+              ) : currentPreview ? (
+                <>
+                  Слов: <strong className={css.previewCount}>{currentPreview.count}</strong>
+                </>
+              ) : (
+                'Подсчёт…'
+              )}
+            </span>
+            {currentPreview?.count === 0 && currentPreview.unavailable_reason && (
+              <span className={ui.muted}>
+                {errorMessage(new ApiError(409, currentPreview.unavailable_reason))}
+              </span>
+            )}
+            {currentPreview?.count === 0 && !currentPreview.unavailable_reason && (
+              <span className={ui.muted}>Нет подходящих слов. Измените параметры занятия.</span>
+            )}
+            {validSetup && preview.isError && (
+              <button type="button" className={ui.button} onClick={() => void preview.refetch()}>
+                Повторить подсчёт
+              </button>
+            )}
+            <button
+              className={`${ui.primary} ${css.pageAction}`}
+              type="submit"
+              disabled={start.isPending || !currentPreview || currentPreview.count === 0}
+            >
+              Начать
+            </button>
+          </div>
         </div>
         <div className={`${ui.card} ${css.form}`}>
           <div className={css.group}>

@@ -225,6 +225,49 @@ describe('api', () => {
     })
   })
 
+  it('uses the preview endpoint with CSRF and sends its seed when starting', async () => {
+    setCsrfToken('secret')
+    const seed = '0123456789abcdef0123456789abcdef'
+    const fetchMock = mockFetch(200, { count: 2, selection_seed: seed, unavailable_reason: null })
+    const filters = {
+      tag_ids: ['a'],
+      progress_min: 10,
+      order: 'progress_asc' as const,
+      shuffle: true,
+    }
+    const preview = await api.previewTraining(
+      'en_ru',
+      'all',
+      'matching',
+      filters,
+      'scheduled',
+      false,
+    )
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/training/sessions/preview')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(JSON.parse(init.body as string)).toEqual({
+      mode: 'matching',
+      direction: 'en_ru',
+      size: 'all',
+      purpose: 'scheduled',
+      include_new: false,
+      ...filters,
+    })
+    await api.startTraining(
+      'en_ru',
+      'all',
+      'matching',
+      filters,
+      'scheduled',
+      false,
+      preview.selection_seed,
+    )
+    const [, startInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
+    expect(JSON.parse(startInit.body as string)).toMatchObject({ selection_seed: seed, ...filters })
+  })
+
   it('sends reveal and skip mutations with CSRF and no payload', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { outcome: 'skipped', delta: 0, progress: 5 })

@@ -11,6 +11,12 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      previewTraining: () =>
+        Promise.resolve({
+          count: 10,
+          selection_seed: '0123456789abcdef0123456789abcdef',
+          unavailable_reason: null,
+        }),
       latestTraining: () => Promise.resolve(null),
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
@@ -77,7 +83,15 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'input', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      10,
+      'input',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled()
     await user.type(input, 'кот 1')
     expect(api.answer).not.toHaveBeenCalled()
@@ -151,7 +165,15 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     const input = await screen.findByRole('textbox', { name: 'Введите слово' })
-    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 10, 'input', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'ru_en',
+      10,
+      'input',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
     await user.type(input, 'cat{Enter}')
     expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
     expect(input).toHaveValue('cat')

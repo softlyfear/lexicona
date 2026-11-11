@@ -1905,3 +1905,50 @@ Chromium supplied visual evidence. No production data, deployment or external
 service calls were needed. Physical Android/iOS and audible speech remain
 unverified. Exact root-session model metadata was unavailable; its AI trailer is
 omitted. Verified contributing implementation model: gpt-6.1-terra.
+
+## UI-005 — sticky controls, difficulty redesign and training count (2026-11-11)
+
+Status: done. Accepted by root after independent Ship, attempt 2.
+Owners: backend-agent (selection/API/tests), frontend-agent (UI/tests/final gate),
+root (contract, browser checks and protocol), architect (preview consistency
+advice), code-reviewer (independent read-only review).
+
+All requested outcomes are implemented: reduced Training header padding, a
+compact count beside Start, pinned dictionary search/add/filter controls, and a
+single five-level difficulty selector with the saved level's gain/penalty table.
+Difficulty uses two columns on wide screens and one on phones; pending/error
+handling and future-session semantics are preserved. Expanded dictionary filters
+can scroll within their bounded sticky panel; words retain the main scrollport.
+
+POST /training/sessions/preview shares the start planner, all filters, scheduling,
+size/all, order, shuffle-prefix eligibility and matching ambiguity checks. Its
+response contains only count, selection_seed and nullable unavailable_reason;
+no session, item or missing schedule is persisted. Start reuses the preview seed
+for selection only; answer options/indices keep independent SystemRandom. No
+schema, dependency or external service change. Data edits or due-time crossings
+can change eligibility between preview and start; start remains authoritative.
+The client hides stale/invalid counts and disables unavailable starts, with retry
+for preview failures. Existing start failures remain visible.
+
+Attempt 1 review found enlarged-text dictionary title/button overlap. Attempt 2
+adds wrapping toolbar layout, a shorter counter label, table/fieldset/shuffle
+width constraints and visible keyboard focus below the pinned panel.
+
+Verification: final make check exit 0, tooling 38 / backend 435 / frontend 198;
+formatting, ruff, mypy, lint, typecheck/build pass. Root and reviewer matched all
+19 changed code/test files to the gate snapshot. Log SHA256:
+6e913ed3a373f9a01b087a38795eb5c1573f49a3a97702dfd5408eaca6d4b688.
+New backend tests cover preview/start parity, ambiguity/seed variation, finite
+shuffle prefixes, scheduling/new-word cap, filters, read-only behavior, ownership,
+CSRF and no-store. Frontend tests cover count requests/seed, late-response races,
+invalid/loading/error/retry/empty states and confirmed difficulty values.
+
+Chromium evidence: 21 layout cases (320/390/768/1280, plus 320/390/768 at root
+font 200%), 10 count cases including live choice/matching/input start parity,
+and 38 keyboard-focus cases with closed/expanded sticky filters. No observed
+page exceptions or main horizontal overflow. Root inspected final phone/desktop
+and enlarged-text PNGs. Evidence is ignored under .local/ui-review-ui005/.
+Independent review: Ship; git diff --check passes. No deployment or production
+data mutation. Physical Android/iOS remain unverified. Exact root-session model
+metadata was unavailable, so its trailer is omitted; verified implementation
+contributors both used gpt-6.1-terra.

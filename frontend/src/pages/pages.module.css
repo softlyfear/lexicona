@@ -44,25 +44,23 @@
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'title action'
-    'search search';
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.75rem;
 }
 
 .toolbar .title {
-  grid-area: title;
+  flex: 1 0 auto;
 }
 
 .toolbar .search {
-  grid-area: search;
+  order: 2;
+  flex: 1 0 100%;
 }
 
 .toolbar .addWord {
-  grid-area: action;
+  max-width: 100%;
 }
 
 .sessionBar {
@@ -100,9 +98,31 @@
   top: -0.45rem;
   z-index: 3;
   margin: 0 -0.6rem;
-  padding: 0.45rem 0.6rem 0.4rem;
+  padding: 0 0.6rem 0.4rem;
   background: var(--bg);
   box-shadow: 0 12px 0 var(--bg);
+}
+
+.previewControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.previewControls span {
+  overflow-wrap: anywhere;
+}
+
+.previewCount {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .dictionaryPage {
@@ -110,6 +130,15 @@
 }
 .dictionaryControls {
   flex: none;
+  position: sticky;
+  top: -0.45rem;
+  z-index: 3;
+  max-height: 50dvh;
+  margin: -0.45rem -0.6rem 0;
+  padding: 0.45rem 0.6rem 0.4rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
 }
 .dictionaryControls p,
 .wordMain p {
@@ -252,7 +281,10 @@
 
 .shuffle {
   align-self: flex-start;
+  min-width: 0;
   min-height: 2.75rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .wordList {
@@ -266,6 +298,10 @@
   list-style: none;
   border: 0;
   background: transparent;
+}
+
+.wordList :is(button, summary) {
+  scroll-margin-top: calc(50dvh + 0.5rem);
 }
 
 .wordRow {
@@ -383,6 +419,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -501,50 +539,46 @@ legend.settingLabel {
   flex: none;
 }
 
-.levelName {
+.difficultyPanel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  gap: 0.75rem;
   min-width: 0;
 }
 
-.level {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  column-gap: 0.6rem;
-  row-gap: 0.28rem;
-}
-
-.level input {
-  grid-row: 1 / span 2;
-  margin-top: 0.18rem;
-}
-
-.levelRates {
-  display: grid;
-  gap: 0.08rem;
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  line-height: 1.3;
-}
-
-.levelKind {
+.difficultyControl {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.35rem;
+  flex-direction: column;
+  gap: 0.6rem;
   min-width: 0;
-  align-items: baseline;
 }
 
-.levelKind > :first-child {
-  flex: 1 0 max-content;
+.difficultyControl p {
+  margin: 0;
 }
 
-.levelNumber {
-  color: var(--text);
+.ratesTable {
+  width: min(100%, 28rem);
+  table-layout: fixed;
+  border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+}
+
+.ratesTable caption {
+  margin-bottom: 0.25rem;
   font-weight: 600;
+  text-align: left;
+}
+
+.ratesTable th,
+.ratesTable td {
+  padding: 0.2rem 0.3rem;
   text-align: right;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.ratesTable th:first-child {
+  text-align: left;
 }
 
 .question {
@@ -969,9 +1003,21 @@ legend.settingLabel {
   }
 
   .toolbar {
-    grid-template-columns: auto minmax(14rem, 24rem) minmax(0, 1fr);
-    grid-template-areas: 'title search action';
     gap: 0.75rem;
+  }
+
+  .toolbar .title {
+    flex: 0 0 auto;
+  }
+
+  .toolbar .search {
+    order: 1;
+    flex: 1 1 14rem;
+  }
+
+  .toolbar .addWord {
+    order: 2;
+    margin-left: auto;
   }
 
   .search {
@@ -979,30 +1025,17 @@ legend.settingLabel {
     max-width: 24rem;
   }
 
-  .level {
-    grid-template-columns: auto minmax(0, 9rem) repeat(3, minmax(0, 1fr));
-    align-items: center;
-    column-gap: 0.85rem;
-  }
-
-  .level input {
-    grid-row: auto;
-    margin-top: 0;
-  }
-
-  .levelRates {
-    display: contents;
-  }
-
-  .levelKind {
-    justify-self: stretch;
-  }
-
   .pageHead {
     top: -0.85rem;
     margin-right: -0.9rem;
     margin-left: -0.9rem;
-    padding: 0.85rem 0.9rem 0.45rem;
+    padding: 0 0.9rem 0.45rem;
+  }
+
+  .dictionaryControls {
+    top: -0.85rem;
+    margin: -0.85rem -0.9rem 0;
+    padding: 0.85rem 0.9rem 0.4rem;
   }
 
   .filters {
@@ -1079,10 +1112,6 @@ legend.settingLabel {
   .choice input {
     width: 1.1rem;
     height: 1.1rem;
-  }
-
-  .levelName {
-    min-width: 0;
   }
 
   .group {

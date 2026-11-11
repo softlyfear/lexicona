@@ -68,7 +68,7 @@ describe('профиль и смена пароля', () => {
     queryClient.clear()
   })
 
-  it('логин в шапке — ссылка на профиль, пять уровней подписаны процентами', async () => {
+  it('логин в шапке — ссылка на профиль, сложность показывает сохранённые значения', async () => {
     const user = userEvent.setup()
     render(
       <QueryClientProvider client={queryClient}>
@@ -92,14 +92,11 @@ describe('профиль и смена пароля', () => {
     expect(screen.queryByRole('heading', { name: 'Озвучивание' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('link', { name: 'Настройки' }))
     expect(screen.queryByRole('heading', { name: 'Смена пароля' })).not.toBeInTheDocument()
-    for (const text of [
-      /^Очень легко, выбор \+10% −10%, пары \+5% −10%, ввод \+20% −10%$/,
-      /^Легко, выбор \+7% −7%, пары \+3% −7%, ввод \+14% −7%$/,
-      /^Средне, выбор \+4% −4%, пары \+2% −4%, ввод \+8% −4%$/,
-      /^Сложно, выбор \+3% −3%, пары \+1% −3%, ввод \+6% −3%$/,
-      /^Очень сложно, выбор \+2% −2%, пары \+1% −2%, ввод \+4% −2%$/,
-    ])
-      expect(screen.getByRole('radio', { name: text })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Сложность' })).toHaveValue('medium')
+    expect(screen.getByRole('option', { name: 'Очень сложно' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Прогресс для уровня «Средне»' })).toHaveTextContent(
+      'выбор+4%−4%',
+    )
   })
 
   it('проверяет длину Unicode и подтверждение, не отправляя невалидные данные', async () => {
@@ -176,8 +173,10 @@ describe('профиль и смена пароля', () => {
     )
     const user = userEvent.setup()
     renderSettings()
-    await user.click(screen.getByLabelText(/Очень легко/))
-    expect(screen.getByLabelText(/Очень легко/)).toBeDisabled()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Сложность' }), 'very_easy')
+    expect(screen.getByRole('combobox', { name: 'Сложность' })).toBeDisabled()
+    expect(screen.getByText('Сохраняем сложность…')).toHaveAttribute('role', 'status')
+    expect(screen.getByRole('table', { name: 'Прогресс для уровня «Средне»' })).toBeInTheDocument()
     const bob = { user: { ...initial.user, id: 'b', login: 'bob' }, csrf_token: 'bob' }
     vi.spyOn(api, 'login').mockResolvedValue(bob)
     await act(async () => {
@@ -185,6 +184,32 @@ describe('профиль и смена пароля', () => {
     })
     await act(async () => resolve({ ...initial.user, difficulty: 'very_easy' }))
     expect(queryClient.getQueryData(['session'])).toEqual(bob)
+  })
+
+  it('показывает новые значения только после сохранения и сохраняет прежние при ошибке', async () => {
+    let resolve!: (value: Session['user']) => void
+    vi.spyOn(api, 'updateSettings')
+      .mockReturnValueOnce(
+        new Promise((r) => {
+          resolve = r
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError('offline'))
+    const user = userEvent.setup()
+    renderSettings()
+    const select = screen.getByRole('combobox', { name: 'Сложность' })
+    await user.selectOptions(select, 'hard')
+    expect(select).toHaveValue('medium')
+    expect(screen.getByRole('table', { name: 'Прогресс для уровня «Средне»' })).toBeInTheDocument()
+    await act(async () => resolve({ ...initial.user, difficulty: 'hard' }))
+    await waitFor(() => expect(select).toHaveValue('hard'))
+    expect(screen.getByRole('table', { name: 'Прогресс для уровня «Сложно»' })).toHaveTextContent(
+      'пары+1%−3%',
+    )
+    await user.selectOptions(select, 'easy')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи с сервером')
+    expect(select).toHaveValue('hard')
+    expect(screen.getByRole('table', { name: 'Прогресс для уровня «Сложно»' })).toBeInTheDocument()
   })
 
   it('401 смены пароля закрывает только текущую сессию', async () => {

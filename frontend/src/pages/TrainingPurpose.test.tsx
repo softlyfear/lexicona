@@ -11,6 +11,12 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      previewTraining: () =>
+        Promise.resolve({
+          count: 10,
+          selection_seed: '0123456789abcdef0123456789abcdef',
+          unavailable_reason: null,
+        }),
       latestTraining: () => Promise.resolve(null),
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
@@ -73,6 +79,7 @@ describe('тип занятия', () => {
       undefined,
       'scheduled',
       false,
+      '0123456789abcdef0123456789abcdef',
     )
     expect(await screen.findByText('cat')).toBeInTheDocument()
   })
@@ -101,6 +108,7 @@ describe('тип занятия', () => {
       undefined,
       'free',
       true,
+      '0123456789abcdef0123456789abcdef',
     )
   })
 

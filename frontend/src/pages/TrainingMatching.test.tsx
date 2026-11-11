@@ -13,6 +13,12 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      previewTraining: () =>
+        Promise.resolve({
+          count: 10,
+          selection_seed: '0123456789abcdef0123456789abcdef',
+          unavailable_reason: null,
+        }),
       latestTraining: () => Promise.resolve(null),
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
@@ -120,7 +126,15 @@ describe('сопоставление пар', () => {
       })
     renderPage()
     const translations = await start(user)
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'matching', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      10,
+      'matching',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
     expect(screen.getByRole('button', { name: 'Завершить' })).toHaveClass(ui.button)
     expect(screen.getByRole('group', { name: 'Английские слова' }).parentElement).toHaveStyle({
       gridTemplateRows: 'repeat(2, auto)',

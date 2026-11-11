@@ -11,6 +11,12 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      previewTraining: () =>
+        Promise.resolve({
+          count: 10,
+          selection_seed: '0123456789abcdef0123456789abcdef',
+          unavailable_reason: null,
+        }),
       latestTraining: () => Promise.resolve(null),
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: vi.fn(),
@@ -70,6 +76,7 @@ describe('фильтры тренировки', () => {
       },
       'free',
       true,
+      '0123456789abcdef0123456789abcdef',
     )
     expect(await screen.findByText('Все подходящие слова: 1')).toBeInTheDocument()
     expect(screen.queryByText(/запрошенных слов/)).not.toBeInTheDocument()
@@ -139,6 +146,7 @@ describe('фильтры тренировки', () => {
       expect.objectContaining({ progress_max: 0 }),
       'free',
       true,
+      '0123456789abcdef0123456789abcdef',
     )
   })
 
@@ -173,6 +181,7 @@ describe('фильтры тренировки', () => {
       { order: 'progress_asc', shuffle: true },
       'free',
       true,
+      '0123456789abcdef0123456789abcdef',
     )
   })
 
@@ -182,7 +191,15 @@ describe('фильтры тренировки', () => {
     renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('можно начать без них')
     await user.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', 10, 'choice', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      10,
+      'choice',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
   })
 
   it('блокирует фильтры и повторный старт во время запроса', async () => {

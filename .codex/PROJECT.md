@@ -107,9 +107,12 @@ Dictionary filters use a native details disclosure with the current sort, traini
 scope and selected tags visible in its summary. Each word has a keyboard-accessible
 ellipsis disclosure containing labeled learned/exclude/restore/edit/delete actions;
 learned and excluded statuses remain visible when it is closed. Static tag badges
-are separate from interactive tag selectors. Layout.main is the only dictionary
-scrollport; page/list keep their natural content height. Route and editor changes
-reset main scrolling; URL filter changes preserve it. Speech buttons use inline SVG.
+are separate from interactive tag selectors. The word list scrolls in Layout.main;
+page/list keep their natural content height. Search/add/filters form a sticky panel,
+bounded to half the viewport with internal scrolling for expanded long filters.
+Toolbar controls wrap for enlarged text; focus margins keep word actions visible.
+Route/editor changes reset main scrolling; URL filter changes preserve it.
+Speech buttons use inline SVG.
 Создание и редактирование слова открывают отдельный редактор внутри страницы, скрывая
 выдачу/фильтры; отмена или успешное сохранение возвращают прежние q/sort/training/tag_id из URL.
 
@@ -136,6 +139,21 @@ all возвращает весь пригодный набор. UI сохран
 только в состоянии экрана и объясняет сокращённый числовой набор через items.length;
 для all показывает фактическое количество всех подходящих слов.
 Presets 5/10/20/30/50/75/100/125/150 и свободный ввод управляют одним размером.
+
+POST /training/sessions/preview accepts the same SessionIn as start plus optional
+32-hex selection_seed. It returns only count, selection_seed and nullable
+unavailable_reason. Preview and start share owner-scoped filtering and selection;
+preview never writes sessions, items or missing schedules. A local seeded RNG
+stabilizes target ordering/shuffling/matching; options and correct indices retain
+SystemRandom. Start accepts the shown preview seed. Pool changes, including a due
+time crossing now, can change the eventual start result. The frontend query key
+includes the whole setup; invalid/loading/error/empty previews disable Start,
+stale counts are hidden and failed previews have retry. All requests use auth,
+CSRF and no-store; no schema or persistent preview-token state is introduced.
+
+Difficulty settings use one five-option native select and a gain/penalty table
+for the confirmed level, in two columns when space permits. Saving locks the
+selector; errors keep confirmed values. Only future sessions use a changed level.
 
 Targets отбираются по OR личных tag_ids и включительному progress_min/max>=0,
 без max100, затем случайно; least-known больше не применяется. Пустые границы

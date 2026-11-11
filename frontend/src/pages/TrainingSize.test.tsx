@@ -11,6 +11,12 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      previewTraining: () =>
+        Promise.resolve({
+          count: 10,
+          selection_seed: '0123456789abcdef0123456789abcdef',
+          unavailable_reason: null,
+        }),
       latestTraining: () => Promise.resolve(null),
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
@@ -63,7 +69,15 @@ describe('размер занятия', () => {
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     expect(size).toHaveValue('75')
     await user.click(screen.getByRole('button', { name: 'Начать' }))
-    expect(api.startTraining).toHaveBeenCalledWith('ru_en', 75, 'input', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'ru_en',
+      75,
+      'input',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
     expect(await screen.findByText('Доступно 1 из 75 запрошенных слов')).toBeInTheDocument()
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
   })
@@ -90,7 +104,15 @@ describe('размер занятия', () => {
     const input = screen.getByRole('textbox', { name: 'Своё число слов' })
     await user.clear(input)
     await user.type(input, `${n}{Enter}`)
-    expect(api.startTraining).toHaveBeenCalledWith('en_ru', n, 'choice', undefined, 'free', true)
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      n,
+      'choice',
+      undefined,
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
     expect(await screen.findByText('кот')).toBeInTheDocument()
     if (n === 1) expect(screen.queryByText(/Доступно .* запрошенных слов/)).not.toBeInTheDocument()
     else expect(screen.getByText(`Доступно 1 из ${n} запрошенных слов`)).toBeInTheDocument()

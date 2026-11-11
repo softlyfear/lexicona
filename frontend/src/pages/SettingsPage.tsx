@@ -72,6 +72,7 @@ export function SettingsPage({ user }: { user: User }) {
   })
 
   const busy = update.isPending
+  const savedLevel = LEVELS.find((level) => level.value === user.difficulty) ?? LEVELS[2]
   function updateDifficulty(difficulty: Difficulty) {
     if (locked.current) return
     locked.current = true
@@ -82,42 +83,52 @@ export function SettingsPage({ user }: { user: User }) {
   return (
     <section className={css.stack}>
       <h1 className={css.title}>Настройки</h1>
-      <div className={`${ui.card} ${css.form}`}>
-        <fieldset className={css.choices} disabled={busy}>
-          <legend className={ui.label}>Сложность</legend>
-          {LEVELS.map((level) => (
-            <label key={level.value} className={`${css.choice} ${css.level}`}>
-              <input
-                type="radio"
-                name="difficulty"
-                checked={user.difficulty === level.value}
-                onChange={() => updateDifficulty(level.value)}
-              />
-              <span className={css.levelName}>
-                {level.label}
-                <span className="visually-hidden">
-                  {`, ${levelRates(level.choice, level.typed)
-                    .map(([kind, gain, loss]) => `${kind} +${gain}% −${loss}%`)
-                    .join(', ')}`}
-                </span>
-              </span>
-              <span className={css.levelRates} aria-hidden="true">
-                {levelRates(level.choice, level.typed).map(([kind, gain, loss]) => (
-                  <span key={kind} className={css.levelKind}>
-                    <span>{kind}</span>
-                    <span className={css.levelNumber}>+{gain}%</span>
-                    <span className={css.levelNumber}>−{loss}%</span>
-                  </span>
-                ))}
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        {difficultyError && (
-          <p className={ui.error} role="alert">
-            {difficultyError}
+      <div className={`${ui.card} ${css.difficultyPanel}`}>
+        <div className={css.difficultyControl}>
+          <label className={ui.field}>
+            <span className={ui.label}>Сложность</span>
+            <select
+              className={ui.input}
+              value={user.difficulty}
+              disabled={busy}
+              onChange={(event) => updateDifficulty(event.target.value as Difficulty)}
+            >
+              {LEVELS.map((level) => (
+                <option key={level.value} value={level.value}>
+                  {level.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {busy && <p role="status">Сохраняем сложность…</p>}
+          <p className={ui.muted}>
+            Сложность применяется к новым занятиям. Текущее занятие сохраняет прежние настройки.
           </p>
-        )}
+          {difficultyError && (
+            <p className={ui.error} role="alert">
+              {difficultyError}
+            </p>
+          )}
+        </div>
+        <table className={css.ratesTable}>
+          <caption>Прогресс для уровня «{savedLevel.label}»</caption>
+          <thead>
+            <tr>
+              <th scope="col">Упражнение</th>
+              <th scope="col">Верно</th>
+              <th scope="col">Ошибка</th>
+            </tr>
+          </thead>
+          <tbody>
+            {levelRates(savedLevel.choice, savedLevel.typed).map(([kind, gain, loss]) => (
+              <tr key={kind}>
+                <th scope="row">{kind}</th>
+                <td>+{gain}%</td>
+                <td>−{loss}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <SpeechSettings />
     </section>
