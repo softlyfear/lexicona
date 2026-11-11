@@ -88,6 +88,17 @@ API development uses port 8000; Vite uses 5173 and proxies `/api` to 8000.
 
 Author and committer must be the user from `git config user.name` and `git config user.email`.
 
+### Task-scoped history-rewrite authorization
+
+Global GIT prohibits history rewriting and force-push by default. The user
+explicitly requested replacement of this task commit on 2026-11-11:
+`b48b76e6ad944856c4e242c106e2cfb47a0d754e`.
+This is a task-scoped exception for this repository, preserving independent
+later commits and using the verified old remote OID as an explicit lease.
+It is not standing permission for later tasks: another rewrite requires an
+explicit user request naming that work. The procedure below applies only
+within such an authorized scope; a guard accepting its syntax is not approval.
+
 Use `main`, one completed task per commit. Incorporate same-task corrections
 into that task's commit only when history rewriting is authorized; preserve
 subsequent changes and existing co-authors. For an authorized published rewrite,
@@ -148,3 +159,8 @@ plugins, and permission rules without pinning the session model. Start with
 shared protocol documents are not Codex runtime configuration.
 Changes to `.codex/` runtime config, `scripts/codex`, and
 `scripts/codex_models.py` by Grok require explicit user authorization.
+
+## Repository synchronization
+
+For safe upstream synchronization use [.agents/WORKFLOW.md](.agents/WORKFLOW.md).
+Its local Git opt-in records the specifically approved server-sync exception.
