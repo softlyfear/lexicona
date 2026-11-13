@@ -3,8 +3,8 @@ export function parseTranslations(text: string): string[] {
   const result: string[] = []
   for (const line of text.split('\n')) {
     const value = line.trim()
-    const key = value.toLocaleLowerCase('ru').replaceAll('ё', 'е')
-    if (value && !seen.has(key)) {
+    const key = normalizedAnswer(value)
+    if (value && key && !seen.has(key)) {
       seen.add(key)
       result.push(value)
     }
@@ -325,4 +325,13 @@ export function tagKey(name: string): string {
     normalizeTagName(name),
     (char) => CASEFOLD_EXCEPTIONS[char] ?? char.toLowerCase(),
   ).join('')
+}
+
+// Same comparison the server uses for answers, headwords, and translations.
+export function normalizedAnswer(value: string): string {
+  return tagKey(value)
+    .replaceAll('ё', 'е')
+    .replace(/[’‘ʼ`]/g, "'")
+    .replace(/(?<!\.)\.$/u, '')
+    .trimEnd()
 }

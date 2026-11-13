@@ -446,3 +446,31 @@ it('не добавляет и не подставляет точный повт
   expect(screen.getByLabelText('Пример (EN)')).toHaveValue('First example.')
   expect(screen.getByLabelText('Перевод примера')).toHaveValue('Первый пример.')
 })
+
+it('отправляет один перевод, если строки совпадают после нормализации', async () => {
+  const user = userEvent.setup()
+  const { submit } = form({ ...word, translations: [] })
+  await user.type(screen.getByLabelText(/Переводы/), "кот{enter}кот.{enter}Don’t{enter}don't")
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({ headword: 'book', translations: ['кот', 'Don’t'] }),
+  )
+})
+
+it('не отправляет слово или перевод из одной точки', async () => {
+  const user = userEvent.setup()
+  const head = form({ ...word, headword: '.', translations: ['кот'] })
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(head.submit).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Слово и переводы не могут состоять только из точки.',
+  )
+  head.unmount()
+
+  const translation = form({ ...word, headword: 'cat', translations: ['.'] })
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(translation.submit).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Слово и переводы не могут состоять только из точки.',
+  )
+})

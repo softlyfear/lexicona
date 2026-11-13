@@ -10,7 +10,7 @@ import {
   type WordInput,
 } from '../api'
 import { forgetSession, getSessionRevision } from '../session'
-import { normalizeTagName, parseTranslations, tagKey } from '../words'
+import { normalizeTagName, normalizedAnswer, parseTranslations, tagKey } from '../words'
 import css from '../pages/pages.module.css'
 import { SpeakButton } from './ui'
 import ui from './ui.module.css'
@@ -51,13 +51,6 @@ const partsOfSpeech: Record<string, string> = {
   suffix: 'суффикс',
 }
 const partOfSpeech = (value: string) => partsOfSpeech[value.toLowerCase()] ?? value
-const translationKey = (value: string) =>
-  tagKey(value)
-    .replaceAll('ё', 'е')
-    .replace(/[’‘ʼ`]/g, "'")
-    .replace(/(?<!\.)\.$/, '')
-    .trimEnd()
-
 const optional = (value: string) => value.trim() || null
 const americanScore = (value: string) => Number(/[ɹrɚɝ]/.test(value)) + Number(value.includes('oʊ'))
 
@@ -252,7 +245,7 @@ export function WordForm({
   function chooseTranslation(value: string, entryId: number | null) {
     if (revision.current !== getSessionRevision()) return
     const current = parseTranslations(translations)
-    if (current.some((item) => translationKey(item) === translationKey(value))) {
+    if (current.some((item) => normalizedAnswer(item) === normalizedAnswer(value))) {
       setChoiceError('Такой перевод уже добавлен.')
       return
     }
@@ -294,8 +287,21 @@ export function WordForm({
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    const head = headword.trim()
+    const lines = translations
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+    if (!head || lines.length === 0) {
+      setLocalError('Нужно слово и хотя бы один перевод.')
+      return
+    }
+    if (!normalizedAnswer(head) || lines.some((line) => !normalizedAnswer(line))) {
+      setLocalError('Слово и переводы не могут состоять только из точки.')
+      return
+    }
     const parsed = parseTranslations(translations)
-    if (!headword.trim() || parsed.length === 0) {
+    if (parsed.length === 0) {
       setLocalError('Нужно слово и хотя бы один перевод.')
       return
     }
@@ -305,7 +311,7 @@ export function WordForm({
     }
     setLocalError(null)
     onSubmit({
-      headword: headword.trim(),
+      headword: head,
       translations: parsed,
       transcription: optional(transcription),
       example_en: optional(exampleEn),
@@ -320,11 +326,11 @@ export function WordForm({
     })
   }
 
-  const selectedTranslations = new Set(parseTranslations(translations).map(translationKey))
+  const selectedTranslations = new Set(parseTranslations(translations).map(normalizedAnswer))
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
   function translationChoice(value: string, entryId: number | null) {
-    const added = selectedTranslations.has(translationKey(value))
+    const added = selectedTranslations.has(normalizedAnswer(value))
     return (
       <button
         type="button"

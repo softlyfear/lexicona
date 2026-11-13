@@ -50,6 +50,11 @@ def test_letter_hint_halves_only_a_positive_reward() -> None:
         ("КОТ.", ["кот"], "КОТ.", True),
         ("", ["agent"], "a", False),
         ("ag", ["agent"], "age", False),
+        ("ко", ["кошка", "кот"], "кош", False),
+        ("", ["меня", "я"], "м", False),
+        ("", ["кошка", "к"], "к", False),
+        ("ко", ["кот", "кошка"], "кот", True),
+        ("", ["я", "меня"], "я", True),
     ],
 )
 def test_hinted_text_adds_one_character(

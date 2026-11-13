@@ -75,6 +75,13 @@ class WordIn(BaseModel):
             raise ValueError("source refs must match current field values")
         return self
 
+    @field_validator("headword")
+    @classmethod
+    def meaningful_headword(cls, value: str) -> str:
+        if not normalize(value):
+            raise ValueError("headword must not be blank")
+        return value
+
     @field_validator("tags")
     @classmethod
     def valid_tags(cls, value: list[str]) -> list[str]:
@@ -88,7 +95,10 @@ class WordIn(BaseModel):
     @field_validator("translations")
     @classmethod
     def unique_translations(cls, value: list[str]) -> list[str]:
-        if len({normalize(text) for text in value}) != len(value):
+        normalized = [normalize(text) for text in value]
+        if any(not text for text in normalized):
+            raise ValueError("translations must not be blank")
+        if len(set(normalized)) != len(value):
             raise ValueError("translations must be unique")
         return value
 
@@ -155,6 +165,11 @@ async def ensure_unique_headword(
         query = query.where(Word.id != except_id)
     if await db.scalar(query.limit(1)) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "word_exists")
+
+
+def _meaning(word: Word) -> tuple[str, frozenset[str]]:
+    # Order is not part of the meaning. The same translations keep their progress.
+    return word.normalized_headword, frozenset(item.normalized_text for item in word.translations)
 
 
 def _fill(word: Word, body: WordIn) -> None:
@@ -332,12 +347,11 @@ async def set_learned_state(
 async def update_word(word_id: str, body: WordIn, auth: CurrentAuth, db: Db) -> WordOut:
     await lock_write(db)
     word = await owned_word(db, auth.user.id, word_id)
-    meaning_before = (word.normalized_headword, [t.normalized_text for t in word.translations])
+    meaning_before = _meaning(word)
     _fill(word, body)
     if word.normalized_headword != meaning_before[0]:
         await ensure_unique_headword(db, auth.user.id, word.normalized_headword, except_id=word.id)
-    meaning_after = (word.normalized_headword, [t.normalized_text for t in word.translations])
-    if meaning_before != meaning_after:
+    if meaning_before != _meaning(word):
         # A different word or meaning is a new thing to learn, with a monotonic version.
         word.progress = 0
         word.content_version += 1

@@ -34,8 +34,19 @@ async def test_validation(alice: Client) -> None:
         {"headword": "cat", "translations": ["x"] * 11},
         {"headword": "x" * 201, "translations": ["x"]},
         {"headword": "cat", "translations": ["кот"], "note": "x" * 4001},
+        {"headword": ".", "translations": ["кот"]},
+        {"headword": " . ", "translations": ["кот"]},
+        {"headword": "cat", "translations": ["."]},
+        {"headword": "cat", "translations": [" . "]},
+        {"headword": "cat", "translations": ["кот", "кот."]},
+        {"headword": "cat", "translations": ["кот дома", "кот  дома"]},
+        {"headword": "cat", "translations": ["Don’t", "don't"]},
     ]:
         assert (await alice.post("/api/words", json=payload)).status_code == 422, payload
+    ellipsis = await alice.post(
+        "/api/words", json={"headword": "...", "translations": ["многоточие"]}
+    )
+    assert ellipsis.status_code == 201
 
 
 async def test_search_by_headword_or_translation(alice: Client) -> None:
@@ -73,14 +84,39 @@ async def test_meaning_edit_resets_progress(app: FastAPI, alice: Client) -> None
     assert response.json()["progress"] == 0
 
 
-async def test_translations_can_be_reordered_and_extended(alice: Client) -> None:
+async def test_translations_can_be_reordered_and_extended(app: FastAPI, alice: Client) -> None:
     word = await add_word(alice, "cat", "кот", "кошка")
+    await set_progress(app, word["id"], 40)
     response = await alice.put(
         f"/api/words/{word['id']}",
         json={"headword": "cat", "translations": ["кошка", "кот", "котик"]},
     )
     assert response.status_code == 200
     assert response.json()["translations"] == ["кошка", "кот", "котик"]
+    assert response.json()["progress"] == 0
+
+
+async def test_reordering_the_same_translations_keeps_progress(app: FastAPI, alice: Client) -> None:
+    word = await add_word(alice, "cat", "кот", "кошка")
+    await set_progress(app, word["id"], 40)
+    reordered = await alice.put(
+        f"/api/words/{word['id']}",
+        json={"headword": "cat", "translations": ["кошка", "кот"]},
+    )
+    assert reordered.status_code == 200
+    assert reordered.json()["translations"] == ["кошка", "кот"]
+    assert reordered.json()["progress"] == 40
+    cosmetic = await alice.put(
+        f"/api/words/{word['id']}",
+        json={"headword": "cat", "translations": ["Кот.", "КОШКА"]},
+    )
+    assert cosmetic.status_code == 200
+    assert cosmetic.json()["translations"] == ["Кот.", "КОШКА"]
+    assert cosmetic.json()["progress"] == 40
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        saved = await db.get(Word, word["id"])
+        assert saved is not None and saved.content_version == 1
 
 
 async def test_delete(alice: Client) -> None:

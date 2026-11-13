@@ -228,5 +228,12 @@ describe('TrainingPage', () => {
 describe('parseTranslations', () => {
   it('keeps one translation per line without blanks or repeats', () => {
     expect(parseTranslations(' кот \n\nКот\nкошка\nёж\nеж')).toEqual(['кот', 'кошка', 'ёж'])
+    expect(parseTranslations("кот\nкот.\nкот  дома\nкот дома\nDon’t\ndon't\n.\n...")).toEqual([
+      'кот',
+      'кот  дома',
+      'Don’t',
+      '...',
+    ])
+    expect(parseTranslations('Straße\nstrasse')).toEqual(['Straße'])
   })
 })

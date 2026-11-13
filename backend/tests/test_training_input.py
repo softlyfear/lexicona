@@ -107,6 +107,35 @@ async def test_input_snapshot_stale_meaning_and_difficulty(app: FastAPI, alice: 
     assert response.json()["delta"] == 4  # very_hard was frozen at the second session start
 
 
+async def test_letter_hint_stays_with_the_primary_translation(alice: Client) -> None:
+    await add_word(alice, "cat", "кошка", "кот")
+    item = await start_input(alice)
+    hinted = await alice.post(f"/api/training/items/{item['id']}/hint", json={"text": "ко"})
+    assert hinted.status_code == 200
+    assert hinted.json() == {"text": "кош", "complete": False}
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кошка"})
+    assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 4
+    assert answered.json()["progress"] == 4
+
+
+async def test_reordering_translations_keeps_the_open_answer_score(
+    app: FastAPI, alice: Client
+) -> None:
+    word = await add_word(alice, "cat", "кот", "кошка")
+    await set_progress(app, word["id"], 40)
+    item = await start_input(alice)
+    edited = await alice.put(
+        f"/api/words/{word['id']}",
+        json={"headword": "cat", "translations": ["кошка", "кот"]},
+    )
+    assert edited.json()["progress"] == 40
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кот"})
+    assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 8
+    assert answered.json()["progress"] == 48
+
+
 async def test_letter_hint_reveals_one_character_and_halves_the_gain(alice: Client) -> None:
     await add_word(alice, "cat", "кот")
     item = await start_input(alice)

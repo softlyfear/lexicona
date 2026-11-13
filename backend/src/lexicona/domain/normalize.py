@@ -22,7 +22,8 @@ def hinted_text(current: str, answers: list[str]) -> tuple[str, bool]:
     """Return one more correct character and whether that text is a full answer.
 
     The result is a prefix of one expected answer. A wrong tail is replaced by
-    that prefix. An already accepted answer is returned unchanged.
+    that prefix. An already accepted answer is returned unchanged. Equal prefixes
+    stay with the earlier answer, which is the primary translation.
     """
     if not answers:
         raise ValueError("no answers")
@@ -33,7 +34,8 @@ def hinted_text(current: str, answers: list[str]) -> tuple[str, bool]:
     best_matched = -1
     for answer in answers:
         matched = _matched_prefix(folded, answer)
-        if matched > best_matched or (matched == best_matched and len(answer) < len(best)):
+        # A shorter synonym must not replace the translation already being typed.
+        if matched > best_matched:
             best = answer
             best_matched = matched
     if best_matched >= len(best):
