@@ -3,6 +3,12 @@
 Instruction maintenance (2026-11-13): translated the six native role prompts while retaining models, file ownership and the ticket pipeline; restricted shared-record updates to change-authorizing requests. Native metadata, TOML and 38 tooling tests passed. Independent static review passed under the user-approved verification scope; no product or deployment changes.
 
 
+SEC-001 accepted and archived (2026-11-13): pin six CI Actions and remediate
+runtime tooling/vendor dependencies and zlib. Independent Ship; make check
+exit 0: tooling 38 / backend 435 / frontend 198. Final image build and isolated
+non-root migration/API/SPA smoke passed. No deployment. Remaining OS findings
+outside targeted patches are not declared resolved.
+
 2026-11-11: Caddy в compose.yaml публикуется только на 0.0.0.0, чтобы включение IPv6 у мостов Docker не открыло тот же порт на [::]. UFW этот опубликованный порт не фильтрует: правило ставит цепочка DOCKER. Активных тикетов нет.
 
 UI-005 accepted and archived (2026-11-11), attempt 2: sticky dictionary controls,

@@ -1952,3 +1952,27 @@ Independent review: Ship; git diff --check passes. No deployment or production
 data mutation. Physical Android/iOS remain unverified. Exact root-session model
 metadata was unavailable, so its trailer is omitted; verified implementation
 contributors both used gpt-6.1-terra.
+
+
+## SEC-001 — CI action pinning and runtime dependency remediation (2026-11-13)
+
+Status: accepted. Scope: Dockerfile and CI action references; no application,
+lockfile, database, or deployment changes. Six action references are pinned to
+verified commit SHA values. uv 0.13.5 addresses GHSA-hq85-5cpj-mr62; pip 26.3
+refreshes its vendored urllib3/msgpack/certifi. Only zlib1g is upgraded through
+APT, to the Debian DSA-6613-1 fixed package. Preserve UID 10001 and data paths.
+
+Verification: make check exit 0 (tooling 38, backend 435, frontend 198 tests;
+format/lint/type/build checks passed). Final Docker build exit 0; isolated smoke
+with --network none, --read-only, and temporary /data passed migrations,
+/api/health HTTP 200 with no-store, and SPA HTTP 200. Runtime versions verified:
+Python 3.14.10, uv 0.13.5, pip 26.3, apt/libapt 3.0.4,
+zlib1g 1:1.3.dfsg+really1.3.1-1+deb13u1, vendored urllib3 2.8.0,
+msgpack 1.2.4, certifi 2026.10.23. Independent code review: Ship, no findings.
+
+The remaining setuptools 70.3.0 vendor-metadata entry does not provide the
+PackageIndex implementation referenced by GHSA-5rjg-fvgr-3xxf; the module is
+absent in the final image. No full post-change vulnerability scan is claimed.
+Other OS advisories from old local images need individual applicability review;
+no unsupported system-library patches were introduced. Next external step:
+deploy only after authorization, then verify the deployed image separately.

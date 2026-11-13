@@ -6,7 +6,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.14-slim
-RUN pip install --no-cache-dir uv==0.11.31
+RUN pip install --no-cache-dir --upgrade pip==26.3 uv==0.13.5
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -20,7 +20,10 @@ RUN python -m lexicona.infrastructure.dictionary build --output /app/dictionarie
     && chmod 0444 /app/dictionaries/eng-rus-2025.11.23.sqlite3
 COPY --from=frontend /app/dist /app/static
 
-RUN useradd --system --uid 10001 lexicona && mkdir /data && chown lexicona /data
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 lexicona && mkdir /data && chown lexicona /data
 USER lexicona
 ENV LEXICONA_DATABASE_URL=sqlite+aiosqlite:////data/lexicona.db \
     LEXICONA_DICTIONARY_PATH=/app/dictionaries/eng-rus-2025.11.23.sqlite3 \
