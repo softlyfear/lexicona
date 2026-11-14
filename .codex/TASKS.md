@@ -1,5 +1,12 @@
 # Активные задачи
 
+SPEECH-005 accepted and archived (2026-11-14), attempt 1: all 28 English Kokoro
+voices exposed with stable IDs and defaults. Task-only snapshot make check exit 0:
+tooling 38 / backend 465 / frontend 203. All 28 real API WAV checks passed.
+Local test server uses that snapshot while unrelated preference-sync work remains
+unfinished; the shared dirty tree has 23 backend test failures. Independent Ship
+applies to this task's verified snapshot.
+
 SPEECH-004 accepted and archived (2026-11-14), attempt 1: optional local
 Kokoro-82M CPU runtime with isolated Python 3.13, four US/GB voices and an
 isolated test account/database. Independent Ship. Final make check exit 0:

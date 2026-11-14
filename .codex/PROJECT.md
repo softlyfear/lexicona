@@ -248,7 +248,9 @@ keeping Piper as the default. `runtime/kokoro` locks an isolated Python 3.13
 environment; the backend stays on Python 3.14. `infrastructure/kokoro.py` manages
 one CPU worker over stdin/stdout, bounded by a semaphore, 30-second timeout and
 16 MiB WAV limit; failure kills/reaps the worker and permits a fresh start.
-Heart/Michael use en-US; Emma/Isabella use en-GB; Russian uses the browser.
+SPEECH-005 exposes all 28 English voices from the installed model: 20 en-US
+(11 female, 9 male), 8 en-GB (4 female, 4 male). Heart/Emma remain the automatic
+US/GB defaults; existing voice IDs are preserved. Russian uses the browser.
 Explicit `make kokoro-voices` downloads pinned SHA-256 models into `tts/kokoro`;
 synthesis does not download models. The optional runtime is not in the Docker
 image. A local test database/account are isolated under ignored `.local/`.

@@ -73,8 +73,26 @@ for line in sys.stdin.buffer:
 def test_catalog_requires_both_models(tmp_path: Path) -> None:
     assert kokoro.voices(tmp_path) == []
     install_fake_models(tmp_path)
-    assert [voice["id"] for voice in kokoro.voices(tmp_path)] == list(kokoro.VOICES)
-    assert {voice["language"] for voice in kokoro.voices(tmp_path)} == {"en-US", "en-GB"}
+    catalog = kokoro.voices(tmp_path)
+    groups = {
+        (
+            "af",
+            "en-US",
+            "female",
+        ): "alloy aoede bella heart jessica kore nicole nova river sarah sky",
+        ("am", "en-US", "male"): "adam echo eric fenrir liam michael onyx puck santa",
+        ("bf", "en-GB", "female"): "alice emma isabella lily",
+        ("bm", "en-GB", "male"): "daniel fable george lewis",
+    }
+    expected = {
+        f"kokoro-{prefix}_{name}": (name.title(), locale, gender)
+        for (prefix, locale, gender), names in groups.items()
+        for name in names.split()
+    }
+    assert len(catalog) == len(expected) == 28
+    assert {v["id"]: (v["name"], v["language"], v["gender"]) for v in catalog} == expected
+    assert next(v["id"] for v in catalog if v["language"] == "en-US") == "kokoro-af_heart"
+    assert next(v["id"] for v in catalog if v["language"] == "en-GB") == "kokoro-bf_emma"
     (tmp_path / "kokoro" / "voices-v1.0.bin").unlink()
     assert kokoro.voices(tmp_path) == []
 
@@ -96,7 +114,7 @@ async def test_api_auth_csrf_voice_selection_and_synthesis(
     assert (await anon.get("/api/speech/voices")).status_code == 401
     listing = await bob.get("/api/speech/voices")
     assert listing.status_code == 200 and listing.headers["cache-control"] == "no-store"
-    assert listing.json()["available"] and len(listing.json()["voices"]) == 4
+    assert listing.json()["available"] and len(listing.json()["voices"]) == 28
     payload = {"text": "hello", "voice_id": VOICE, "rate": 0.75}
     alice.headers.pop("X-CSRF-Token")
     assert (await alice.post("/api/speech/synthesize", json=payload)).status_code == 403
@@ -106,6 +124,11 @@ async def test_api_auth_csrf_voice_selection_and_synthesis(
     assert response.headers["cache-control"] == "no-store"
     with wave.open(io.BytesIO(response.content)) as audio:
         assert b"af_heart:0.75:hello" in audio.readframes(audio.getnframes())
+    for voice_id in ("kokoro-af_sky", "kokoro-bm_george"):
+        response = await alice.post("/api/speech/synthesize", json=payload | {"voice_id": voice_id})
+        assert response.status_code == 200
+        with wave.open(io.BytesIO(response.content)) as audio:
+            assert voice_id.removeprefix("kokoro-").encode() in audio.readframes(audio.getnframes())
     assert (
         await alice.post("/api/speech/synthesize", json=payload | {"voice_id": "en_US-lessac-high"})
     ).status_code == 422

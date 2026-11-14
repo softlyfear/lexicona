@@ -1,5 +1,25 @@
 # Закрытые задачи
 
+## SPEECH-005 — complete English Kokoro catalog (2026-11-14)
+
+- Status: accepted; attempt 1; orchestrator root; independent review: Ship for the
+  verified task-only snapshot. Backend owner updated the catalog and API tests.
+- All 28 installed English voices are available: US 11 female/9 male and GB
+  4 female/4 male. Existing IDs and Heart/Emma automatic defaults are preserved.
+  No model, dependency, worker, frontend or other-language changes.
+- Every voice produced a valid non-silent mono PCM16/24 kHz WAV through the
+  authenticated local API. The local test server was restarted and settings opened.
+- Final make fmt and make check passed on a temporary task-only snapshot of HEAD
+  plus this task: tooling 38, backend 465, frontend 203; mypy/lint/build passed.
+  All source files match HEAD except task-owned changes, verified byte for byte.
+- The shared working tree's independent preference-sync work changed during
+  execution. Its gate had 23 backend failures; its new preferences_revision column
+  also prevented the old test database from logging in. No unrelated fixes or
+  database migrations were made. The trial now runs from the verified snapshot
+  with the existing project-local test database/account and model files.
+- Listening preference remains subjective; all voices are exposed without a
+  claim of equal quality. Existing unrelated changes remain excluded from Git.
+
 ## SPEECH-004 — optional local Kokoro trial (2026-11-14)
 
 - Status: accepted; attempt 1; orchestrator root; independent code-reviewer: Ship.
