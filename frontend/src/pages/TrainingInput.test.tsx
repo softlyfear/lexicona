@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api } from '../api'
 import { TrainingPage } from './TrainingPage'
+import { summaryFixture } from './trainingSummaryFixture'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -11,6 +12,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      trainingSummary: vi.fn(),
       previewTraining: () =>
         Promise.resolve({
           count: 10,
@@ -53,6 +55,9 @@ describe('письменная тренировка', () => {
   })
 
   it('отправляет ввод по Enter, показывает ответ сервера и итог', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture({ answered: 2 }, { correct: 1, incorrect: 1, accuracy_percent: 50 }),
+    )
     const user = userEvent.setup()
     vi.mocked(api.answerText)
       .mockResolvedValueOnce({
@@ -113,7 +118,8 @@ describe('письменная тренировка', () => {
     await user.type(retry, 'собака{Enter}')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
+    expect(screen.getByText('С ответом: 2')).toBeInTheDocument()
   })
 
   it('подсказка открывает одну букву и сама отправляет полное слово', async () => {

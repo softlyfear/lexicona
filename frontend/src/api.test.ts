@@ -17,6 +17,16 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('requests session summary read-only through the shared request entry point', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, { id: 'session' })
+    await api.trainingSummary('session')
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/training/sessions/session/summary')
+    expect(init.method).toBe('GET')
+    expect(init.headers).not.toHaveProperty('X-CSRF-Token')
+    expect(init.credentials).toBe('same-origin')
+  })
   it('sends speech synthesis with CSRF and abort signal and returns binary audio', async () => {
     setCsrfToken('secret')
     const fetchMock = vi.fn(async () => new Response('wav', { status: 200 }))

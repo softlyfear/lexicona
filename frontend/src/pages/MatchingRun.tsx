@@ -16,6 +16,7 @@ import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
 import { resumedResult } from './resume'
+import { TrainingSummary } from './TrainingSummary'
 
 function isTerminal(result: TerminalResult | undefined): result is TerminalResult {
   return !!result && (result.outcome !== 'answered' || !('correct' in result) || result.correct)
@@ -119,35 +120,7 @@ export function MatchingRun({
   }
 
   if (done) {
-    const terminal = Object.values(answers).filter(isTerminal)
-    const answered = terminal.filter(
-      (result) => result.outcome === 'answered' && 'correct' in result,
-    )
-    const correct = answered.filter((result) => 'correct' in result && result.correct).length
-    const assisted = terminal.filter((result) => result.outcome === 'assisted').length
-    const skipped = terminal.filter((result) => result.outcome === 'skipped').length
-    const unavailable = terminal.filter((result) => result.outcome === 'unavailable').length
-    return (
-      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
-        <h1 className={css.title}>Готово</h1>
-        {answered.length > 0 && (
-          <p className={css.score}>
-            {correct} из {answered.length}
-          </p>
-        )}
-        <p>
-          Верно: {correct} · Неверно: {answered.length - correct}
-        </p>
-        <p>С помощью: {assisted}</p>
-        <p>Пропущено: {skipped}</p>
-        <p>Недоступно: {unavailable}</p>
-        <div className={css.actions}>
-          <button className={ui.primary} onClick={onFinish} autoFocus>
-            Завершить
-          </button>
-        </div>
-      </section>
-    )
+    return <TrainingSummary sessionId={session.id} onFinish={onFinish} finishing={finishing} />
   }
 
   const usedOptions = new Set(

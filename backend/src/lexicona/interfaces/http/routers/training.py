@@ -101,6 +101,30 @@ class SessionOut(BaseModel):
     items: list[ItemOut]
 
 
+class CompletionCounts(BaseModel):
+    answered: int = 0
+    assisted: int = 0
+    skipped: int = 0
+    unavailable: int = 0
+    pending: int = 0
+
+
+class FirstAttemptCounts(BaseModel):
+    correct: int = 0
+    incorrect: int = 0
+    unknown: int = 0
+    not_attempted: int = 0
+    not_applicable: int = 0
+    accuracy_percent: float | None = None
+
+
+class SessionSummaryOut(BaseModel):
+    id: str
+    total: int
+    completion: CompletionCounts
+    first_attempt: FirstAttemptCounts
+
+
 class AnswerIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -710,6 +734,57 @@ async def finish_session(session_id: str, auth: CurrentAuth, db: Db) -> dict[str
     if session is None:
         raise HTTPException(404, "session_not_found")
     return {"id": session.id, "status": session.status, "finished_at": session.finished_at}
+
+
+@router.get("/sessions/{session_id}/summary")
+async def session_summary(session_id: str, auth: CurrentAuth, db: Db) -> SessionSummaryOut:
+    session = await db.scalar(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id, TrainingSession.owner_id == auth.user.id
+        )
+    )
+    if session is None:
+        raise HTTPException(404, "session_not_found")
+    snapshot = await _session_snapshot(session, auth, db)
+    events = {
+        event.item_id: event.correct
+        for event in await db.scalars(
+            select(AnswerEvent).where(
+                AnswerEvent.owner_id == auth.user.id, AnswerEvent.session_id == session.id
+            )
+        )
+    }
+    completion = CompletionCounts()
+    first = FirstAttemptCounts()
+    for item, shown in zip(session.items, snapshot["items"], strict=True):
+        category = shown["result"]["outcome"] if shown["state"] == "done" else "pending"
+        setattr(completion, category, getattr(completion, category) + 1)
+        if session.mode == "cards":
+            first.not_applicable += 1
+        elif item.id in events:
+            # Events record first submissions, including those made with letter hints.
+            if events[item.id]:
+                first.correct += 1
+            else:
+                first.incorrect += 1
+        elif (
+            item.is_correct is not None
+            or item.outcome == "answered"
+            or (
+                session.created_at < auth.user.statistics_started_at
+                and item.answered_at is not None
+            )
+        ):
+            # Mutable terminal answers cannot reconstruct a missing first attempt.
+            first.unknown += 1
+        else:
+            first.not_attempted += 1
+    known = first.correct + first.incorrect
+    if known and not first.unknown:
+        first.accuracy_percent = round(first.correct * 100 / known, 1)
+    return SessionSummaryOut(
+        id=session.id, total=len(session.items), completion=completion, first_attempt=first
+    )
 
 
 def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:

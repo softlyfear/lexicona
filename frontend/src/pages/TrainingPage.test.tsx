@@ -6,6 +6,7 @@ import { ApiError, api, type Word } from '../api'
 import * as speech from '../speech'
 import { parseTranslations } from '../words'
 import { TrainingPage } from './TrainingPage'
+import { summaryFixture } from './trainingSummaryFixture'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -13,6 +14,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      trainingSummary: vi.fn(),
       previewTraining: () =>
         Promise.resolve({
           count: 10,
@@ -196,6 +198,9 @@ describe('TrainingPage', () => {
   })
 
   it('runs a session: answer, see feedback, finish with a score', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture({ answered: 2 }, { correct: 1, incorrect: 1, accuracy_percent: 50 }),
+    )
     const user = userEvent.setup()
     vi.mocked(api.answer)
       .mockResolvedValueOnce({
@@ -246,7 +251,7 @@ describe('TrainingPage', () => {
     await user.keyboard('1')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0)')
     await user.keyboard('{Enter}')
-    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
   })
 
   it('не показывает кнопку правки без идентификатора слова', async () => {

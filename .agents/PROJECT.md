@@ -280,3 +280,10 @@ synthesis does not download models. The optional runtime is not in the Docker
 image. A local test database/account are isolated under ignored `.local/`.
 Long text may reach the synthesis timeout; listening quality remains a manual
 assessment. The existing authenticated speech API and frontend catalog are reused.
+
+FEEDBACK-001 adds owner-scoped GET /training/sessions/{id}/summary. Completion
+counts and first-submission accuracy are separate dimensions: immutable
+AnswerEvent supplies correct/incorrect even after correction, reveal or skip.
+Missing historical evidence is unknown rather than reconstructed from terminal
+correctness; accuracy_percent is null when evidence is incomplete. Letter hints
+may precede a first submission, so this is not an unassisted-knowledge metric.

@@ -179,6 +179,26 @@ export interface TrainingSession {
   items: TrainingItem[]
 }
 
+export interface TrainingSummary {
+  id: string
+  total: number
+  completion: {
+    answered: number
+    assisted: number
+    skipped: number
+    unavailable: number
+    pending: number
+  }
+  first_attempt: {
+    correct: number
+    incorrect: number
+    unknown: number
+    not_attempted: number
+    not_applicable: number
+    accuracy_percent: number | null
+  }
+}
+
 export interface RetryableResult {
   outcome: 'retryable'
   correct: false
@@ -467,6 +487,8 @@ export const api = {
     }),
   latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
   getTraining: (id: string) => request<ResumedSession>('GET', `/training/sessions/${id}`),
+  trainingSummary: (id: string) =>
+    request<TrainingSummary>('GET', `/training/sessions/${id}/summary`),
   finishTraining: (id: string) =>
     request<{ id: string; status: 'finished'; finished_at: string }>(
       'POST',

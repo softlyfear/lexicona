@@ -27,6 +27,7 @@ import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech, speak, speechEnabled, speechGeneration, useSpeech } from '../speech'
 import { MatchingRun } from './MatchingRun'
+import { TrainingSummary } from './TrainingSummary'
 import { resumedResult } from './resume'
 import css from './pages.module.css'
 
@@ -746,11 +747,6 @@ export function Run({
   const [revealed, setRevealed] = useState<string[] | null>(
     initial?.result?.outcome === 'revealed' ? initial.result.expected_answers : null,
   )
-  const [results, setResults] = useState<TerminalResult[]>(() =>
-    snapshots.flatMap((item) =>
-      item?.state === 'done' && resumedResult(item) ? [resumedResult(item)!] : [],
-    ),
-  )
   const [attempt, setAttempt] = useState<TerminalResult | null>(initialResult ?? null)
   const [hintError, setHintError] = useState('')
   const [hintPending, setHintPending] = useState(false)
@@ -787,8 +783,6 @@ export function Run({
       setAttempt(data)
       if (data.outcome === 'answered' && 'correct' in data && !data.correct) {
         locked.current = false
-      } else {
-        setResults((previous) => [...previous, data])
       }
     },
     onError: () => {
@@ -887,39 +881,7 @@ export function Run({
   })
 
   if (done) {
-    const answers = results.filter((r) => r.outcome === 'answered' && 'correct' in r)
-    const correct = answers.filter((r) => 'correct' in r && r.correct).length
-    const assisted = results.filter((r) => r.outcome === 'assisted').length
-    const skipped = results.filter((r) => r.outcome === 'skipped').length
-    const graded = results.filter((r) => r.outcome === 'answered' && 'grade' in r).length
-    const unavailable = results.filter((r) => r.outcome === 'unavailable').length
-    return (
-      <section className={`${ui.card} ${css.stack} ${css.summary}`}>
-        <h1 className={css.title}>Готово</h1>
-        {session.mode === 'cards' ? (
-          <p>Оценено карточек: {graded}</p>
-        ) : (
-          <>
-            {answers.length > 0 && (
-              <p className={css.score}>
-                {correct} из {answers.length}
-              </p>
-            )}
-            <p>
-              Верно: {correct} · Неверно: {answers.length - correct}
-            </p>
-            <p>С помощью: {assisted}</p>
-          </>
-        )}
-        <p>Пропущено: {skipped}</p>
-        <p>Недоступно: {unavailable}</p>
-        <div className={css.actions}>
-          <button className={ui.primary} onClick={onFinish} autoFocus>
-            Завершить
-          </button>
-        </div>
-      </section>
-    )
+    return <TrainingSummary sessionId={session.id} onFinish={onFinish} finishing={finishing} />
   }
 
   const promptLang = session.direction === 'ru_en' ? 'ru' : 'en'

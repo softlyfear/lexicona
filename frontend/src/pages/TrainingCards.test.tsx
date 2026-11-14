@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type CardAnswerResult, type CardRevealResult, type TrainingSession } from '../api'
 import { Run } from './TrainingPage'
+import { summaryFixture } from './trainingSummaryFixture'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -11,6 +12,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      trainingSummary: vi.fn(),
       previewTraining: () =>
         Promise.resolve({
           count: 10,
@@ -40,6 +42,9 @@ describe('карточки', () => {
   beforeEach(() => vi.resetAllMocks())
 
   it('раскрывает и оценивает карточку только после ответов сервера', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture({ answered: 1 }, { not_applicable: 1 }),
+    )
     const user = userEvent.setup()
     let finishReveal!: (value: CardRevealResult) => void
     let finishAnswer!: (value: CardAnswerResult) => void
@@ -87,8 +92,9 @@ describe('карточки', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Хорошо (+4) · прогресс 4%')
     expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Оценено карточек: 1')).toBeInTheDocument()
-    expect(screen.queryByText(/Верно|правильн/i)).not.toBeInTheDocument()
+    expect(await screen.findByText('С ответом: 1')).toBeInTheDocument()
+    expect(screen.getByText('Не применяется: 1')).toBeInTheDocument()
+    expect(screen.getByText('Точность: неизвестна')).toBeInTheDocument()
   })
 
   it('позволяет повторить раскрытие и самооценку после сетевой ошибки', async () => {

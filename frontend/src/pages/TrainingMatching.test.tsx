@@ -6,6 +6,7 @@ import { api, type TrainingSession } from '../api'
 import ui from '../components/ui.module.css'
 import { TrainingPage } from './TrainingPage'
 import css from './pages.module.css'
+import { summaryFixture } from './trainingSummaryFixture'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -13,6 +14,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      trainingSummary: vi.fn(),
       previewTraining: () =>
         Promise.resolve({
           count: 10,
@@ -100,6 +102,9 @@ describe('сопоставление пар', () => {
   })
 
   it('сопоставляет две колонки и разрешает исправление без второго штрафа', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture({ answered: 2 }, { correct: 1, incorrect: 1, accuracy_percent: 50 }),
+    )
     const user = userEvent.setup()
     vi.mocked(api.answer)
       .mockResolvedValueOnce({
@@ -165,7 +170,9 @@ describe('сопоставление пар', () => {
     await user.click(screen.getByRole('button', { name: 'dog' }))
     await user.click(translations.getByRole('button', { name: 'собака' }))
     await user.click(await screen.findByRole('button', { name: 'Завершить занятие' }))
-    expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
+    expect(screen.getByText('С ответом: 2')).toBeInTheDocument()
+    expect(api.trainingSummary).toHaveBeenCalledWith('s')
     expect(api.answer).toHaveBeenCalledTimes(3)
   })
 
@@ -235,6 +242,12 @@ describe('сопоставление пар', () => {
   })
 
   it('переходит между группами и учитывает reveal/skip без дополнительного ответа', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture(
+        { answered: 3, assisted: 1, skipped: 1 },
+        { correct: 3, not_attempted: 2, accuracy_percent: 100 },
+      ),
+    )
     const user = userEvent.setup()
     const items = [
       { id: 'cat', prompt: 'cat', options: ['кот', 'собака', 'лиса', 'сова'] },
@@ -284,7 +297,7 @@ describe('сопоставление пар', () => {
     await user.click(screen.getByRole('button', { name: 'wolf' }))
     await user.click(screen.getByRole('button', { name: 'волк' }))
     await user.click(await screen.findByRole('button', { name: 'Завершить занятие' }))
-    expect(await screen.findByText('3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Верно: 3 · Неверно: 0')).toBeInTheDocument()
     expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
     expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
     expect(api.answer).toHaveBeenCalledTimes(3)
@@ -320,6 +333,12 @@ describe('сопоставление пар', () => {
   })
 
   it('работает с клавиатуры и учитывает недоступное задание', async () => {
+    vi.mocked(api.trainingSummary).mockResolvedValue(
+      summaryFixture(
+        { answered: 1, unavailable: 1 },
+        { correct: 1, not_attempted: 1, accuracy_percent: 100 },
+      ),
+    )
     const user = userEvent.setup()
     vi.mocked(api.answer)
       .mockResolvedValueOnce({
@@ -350,7 +369,7 @@ describe('сопоставление пар', () => {
     const finish = await screen.findByRole('button', { name: 'Завершить занятие' })
     finish.focus()
     await user.keyboard('{Enter}')
-    expect(await screen.findByText('1 из 1')).toBeInTheDocument()
+    expect(await screen.findByText('Верно: 1 · Неверно: 0')).toBeInTheDocument()
     expect(screen.getByText('Недоступно: 1')).toBeInTheDocument()
   })
 

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
 import { Run, TrainingPage } from './TrainingPage'
+import { summaryFixture } from './trainingSummaryFixture'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -11,6 +12,7 @@ vi.mock('../api', async (original) => {
     ...actual,
     api: {
       startTraining: vi.fn(),
+      trainingSummary: vi.fn(),
       previewTraining: () =>
         Promise.resolve({
           count: 10,
@@ -69,6 +71,9 @@ describe('недоступное задание', () => {
   ] as const)(
     '%s не засчитывает unavailable как ответ или пропуск',
     async (mode, direction, label) => {
+      vi.mocked(api.trainingSummary).mockResolvedValue(
+        summaryFixture({ unavailable: 1 }, { not_attempted: 1 }),
+      )
       vi.mocked(api.startTraining).mockResolvedValue({
         id: 's',
         purpose: 'free',

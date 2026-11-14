@@ -1,5 +1,49 @@
 # Активные задачи
 
+## Manual feedback queue — 2026-11-14
+
+Source: user screenshots 1–13 and the implementation plan in the current session.
+No deployment or historical data fabrication is authorized.
+
+- FEEDBACK-001 / accurate first-attempt session summary / accepted / attempt 1.
+  AC: corrected retries retain their first error; errors survive reveal/skip;
+  resume and matching agree; unknown legacy accuracy is not invented; terminal
+  completion categories remain separate from first-attempt accuracy.
+  Owners: backend-agent for owner-scoped result contract and behavioral tests;
+  frontend-agent for API types, summary and client regressions (final gate owner).
+  Check: targeted tests, make check, independent code-reviewer, orchestrator acceptance.
+  Evidence: backend targeted 121 and frontend targeted 68 passed; final make check
+  exit 0 (tooling 20 / backend 480 / frontend 252), lint/type/build passed.
+  No browser visual check. GET /training/sessions/{id}/summary supplies authoritative
+  completion and first-attempt counts; hints may precede the first submission.
+  Independent code-reviewer: Ship. Orchestrator accepted; no historical data repair.
+- FEEDBACK-002 / answer-specific apostrophe and hyphen-space tolerance / implementation / attempt 1.
+  AC: accept youre/you're and low life/low-life without fuzzy spelling or changing
+  headword uniqueness; preserve hints, one-time scoring and meaningful negations.
+  Owner: backend-agent; files: domain/normalize.py, training router and related
+  backend tests only. Gate owner: backend-agent. Check: focused domain/API tests,
+  make check and independent code-reviewer.
+- FEEDBACK-003 / prominent revealed answer, playback, nearby Next / planned.
+  AC: authorized answer only, correct speech language, cancellation and compact
+  responsive keyboard-accessible controls; failures never affect progress.
+- FEEDBACK-004 / filtered dictionary count / planned.
+  AC: right-aligned count reflects search/scope/OR-tags, zero, loading and mutations.
+- FEEDBACK-005 / persisted optional automatic next / planned.
+  AC: default off; confirmed correct including retry advances once after feedback;
+  speech coordination and timer cancellation; no auto-next on reveal/error/skip;
+  matching retains group completion semantics; older preferences remain valid.
+- FEEDBACK-006 / independent transcription draft / planned.
+  AC: compact IPA-only button; existing translations untouched; explicit Save;
+  stale-response protection, provenance, auth/CSRF/no-store and failure tests.
+- FEEDBACK-007 / AI translation drafts in add/edit / planned.
+  AC: explicit existing OpenRouter provider; request 3–5 common distinct meanings
+  but allow fewer; no verified-frequency claim; preserve manual translations;
+  no automatic save; bounded validated output and stale/error/isolation tests.
+
+Delivery order: 001 → 002 → 003 → 004 → 005 → 006 → 007.
+Each ticket receives exact file boundaries, evidence, review and acceptance before
+the next implementation ticket. Existing work must remain untouched.
+
 NAV-001 accepted and archived (2026-11-14): Lexicona and Dictionary links
 return from add/edit forms to the dictionary list even on same-URL navigation,
 without saving drafts or dropping dictionary filters. Native link behavior
