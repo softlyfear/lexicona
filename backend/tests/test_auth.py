@@ -100,6 +100,7 @@ SPEECH = {
     "speak_ru": False,
     "engine_en": "server",
     "engine_ru": "browser",
+    # A Piper id saved before Kokoro stays valid, so the speech section is not dropped.
     "server_en_us": "en_US-lessac-high",
     "server_en_gb": None,
     "server_ru": None,

@@ -1,7 +1,8 @@
-"""Optional local Kokoro runtime, isolated from the application's Python version."""
+"""Local Kokoro runtime, isolated from the application's Python version."""
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import struct
@@ -15,7 +16,19 @@ from pathlib import Path
 from typing import Any
 
 from lexicona.config import Settings
-from lexicona.infrastructure.tts import SpeechBusy, SpeechError, SpeechTimeout, _validate_wav
+
+
+class SpeechError(Exception):
+    pass
+
+
+class SpeechBusy(SpeechError):
+    pass
+
+
+class SpeechTimeout(SpeechError):
+    pass
+
 
 VOICES = {
     "kokoro-af_heart": ("Heart", "en-US", "female"),
@@ -64,6 +77,21 @@ _slot = threading.BoundedSemaphore(1)
 _worker: subprocess.Popen[bytes] | None = None
 _worker_key: tuple[Path, Path] | None = None
 _clips: OrderedDict[tuple[Path, Path, str, float, str], bytes] = OrderedDict()
+
+
+def _validate_wav(data: bytes) -> None:
+    if len(data) > MAX_WAV_BYTES:
+        raise SpeechError
+    with wave.open(io.BytesIO(data), "rb") as wav:
+        channels, width, frames = wav.getnchannels(), wav.getsampwidth(), wav.getnframes()
+        if (
+            channels not in (1, 2)
+            or width not in (1, 2, 3, 4)
+            or wav.getframerate() <= 0
+            or frames <= 0
+            or len(wav.readframes(frames)) != frames * channels * width
+        ):
+            raise SpeechError
 
 
 def installed(directory: Path) -> bool:

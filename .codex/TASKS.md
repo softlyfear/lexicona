@@ -1,5 +1,14 @@
 # Активные задачи
 
+SPEECH-006 accepted (2026-11-14): server speech is Kokoro only. Piper is
+removed from the app, image, and client. The Kokoro interpreter is installed
+under /opt/uv-python so the container user can run it. Russian stays in the
+browser. A saved Piper voice id does not drop the speech section; synthesis
+of that id is rejected. Models stay a separate download. Independent Ship.
+Combined make check exit 0: tooling 38 / backend 463 / frontend 221.
+No deployment. The full application image was not rebuilt. The screen was
+not opened in a browser.
+
 UNIQUE-001 accepted (2026-11-14): the word form rejects a duplicate normalized
 headword for a single word and a multi-word phrase, including a learned or
 excluded row. A shorter word stays allowed. A note on an existing duplicate

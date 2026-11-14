@@ -127,11 +127,6 @@ export function selectServerVoice(
   if (requested && candidates.some((voice) => voice.id === requested)) {
     return candidates.find((voice) => voice.id === requested) ?? null
   }
-  const upgraded =
-    requested?.endsWith('-medium') === true ? `${requested.slice(0, -'medium'.length)}high` : null
-  if (upgraded && candidates.some((voice) => voice.id === upgraded)) {
-    return candidates.find((voice) => voice.id === upgraded) ?? null
-  }
   return candidates[0]
 }
 

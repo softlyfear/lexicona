@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 
-from lexicona.infrastructure import kokoro, tts
+from lexicona.infrastructure import kokoro
 from tests.conftest import Client
 
 VOICE = "kokoro-af_heart"
@@ -108,7 +108,6 @@ def test_runtime_probe_rejects_missing_and_unusable_interpreters(tmp_path: Path)
 async def test_api_auth_csrf_voice_selection_and_synthesis(
     app: FastAPI, anon: Client, alice: Client, bob: Client, fake_worker: Path
 ) -> None:
-    app.state.settings.tts_engine = "kokoro"
     app.state.settings.kokoro_python = Path(sys.executable)
     app.state.settings.tts_dir = fake_worker
     assert (await anon.get("/api/speech/voices")).status_code == 401
@@ -132,15 +131,12 @@ async def test_api_auth_csrf_voice_selection_and_synthesis(
     assert (
         await alice.post("/api/speech/synthesize", json=payload | {"voice_id": "en_US-lessac-high"})
     ).status_code == 422
-    app.state.settings.tts_engine = "piper"
-    assert (await alice.post("/api/speech/synthesize", json=payload)).status_code == 422
 
 
 async def test_slow_runtime_probe_does_not_block_health(
     app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_fake_models(tmp_path)
-    app.state.settings.tts_engine = "kokoro"
     app.state.settings.tts_dir = tmp_path
     entered = threading.Event()
     release = threading.Event()
@@ -171,13 +167,13 @@ def test_worker_reuse_long_input_cache_crash_and_restart(fake_worker: Path) -> N
     assert kokoro._worker is initial
     with wave.open(io.BytesIO(first)) as audio:
         assert b"a" * 2000 in audio.readframes(audio.getnframes())
-    with pytest.raises(tts.SpeechError):
+    with pytest.raises(kokoro.SpeechError):
         kokoro.synthesize(fake_worker, python, VOICE, "crash", 1)
     assert initial.poll() is not None and kokoro._worker is None
     assert kokoro.synthesize(fake_worker, python, VOICE, "new", 1)
     assert kokoro._worker is not initial
     for invalid in ("empty", "oversize", "truncated"):
-        with pytest.raises(tts.SpeechError):
+        with pytest.raises(kokoro.SpeechError):
             kokoro.synthesize(fake_worker, python, VOICE, invalid, 1)
         assert kokoro._worker is None
         assert kokoro.synthesize(fake_worker, python, VOICE, "after " + invalid, 1)
@@ -187,7 +183,7 @@ def test_timeout_kills_worker_and_allows_next_request(
     fake_worker: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(kokoro, "TIMEOUT_SECONDS", 0.1)
-    with pytest.raises(tts.SpeechTimeout):
+    with pytest.raises(kokoro.SpeechTimeout):
         kokoro.synthesize(fake_worker, Path(sys.executable), VOICE, "hang", 1)
     assert kokoro._worker is None
     assert kokoro.synthesize(fake_worker, Path(sys.executable), VOICE, "after", 1)
@@ -212,7 +208,7 @@ async def test_cancellation_does_not_release_slot_while_worker_busy(
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    with pytest.raises(tts.SpeechBusy):
+    with pytest.raises(kokoro.SpeechBusy):
         kokoro.synthesize(fake_worker, Path(sys.executable), VOICE, "other", 1)
     for _ in range(100):
         if kokoro._slot.acquire(blocking=False):
@@ -237,7 +233,72 @@ def test_download_checks_size_hash_and_preserves_existing_file(
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: io.BytesIO(b"wrong"))
     kokoro.download(tmp_path)
     monkeypatch.setattr(kokoro, "FILES", {"model": (len(data), "0" * 64)})
-    with pytest.raises(tts.SpeechError):
+    with pytest.raises(kokoro.SpeechError):
         kokoro.download(tmp_path)
     assert target.read_bytes() == data
     assert os.listdir(target.parent) == ["model"]
+
+
+@pytest.mark.parametrize("rate", [0.5, 1, 1.25, 1.5])
+async def test_speech_accepts_playback_rates(
+    app: FastAPI, alice: Client, fake_worker: Path, rate: float
+) -> None:
+    app.state.settings.kokoro_python = Path(sys.executable)
+    app.state.settings.tts_dir = fake_worker
+    response = await alice.post(
+        "/api/speech/synthesize", json={"text": "test", "voice_id": VOICE, "rate": rate}
+    )
+    assert response.status_code == 200 and response.headers["content-type"] == "audio/wav"
+    assert response.content.startswith(b"RIFF")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"voice_id": "../../secret"},
+        {"voice_id": "missing"},
+        {"voice_id": "ru_RU-irina-medium"},
+        {"voice_id": "en_US-amy-medium"},
+        {"text": " "},
+        {"text": "a" * 2001},
+        {"text": 1},
+        {"rate": True},
+        {"rate": "1"},
+        {"rate": 2},
+        {"extra": "x"},
+        {"text": " " * 2001},
+    ],
+)
+async def test_speech_rejects_invalid_inputs(alice: Client, change: dict[str, Any]) -> None:
+    payload = {"text": "test", "voice_id": VOICE, "rate": 1} | change
+    response = await alice.post("/api/speech/synthesize", json=payload)
+    assert response.status_code == 422 and response.headers["cache-control"] == "no-store"
+
+
+async def test_speech_rejects_unpaired_surrogate(alice: Client) -> None:
+    body = b'{"text":"\\ud800","voice_id":"kokoro-af_heart","rate":1}'
+    response = await alice.post(
+        "/api/speech/synthesize", content=body, headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("error", "code", "detail"),
+    [
+        (kokoro.SpeechError, 503, "speech_unavailable"),
+        (kokoro.SpeechBusy, 503, "speech_busy"),
+        (kokoro.SpeechTimeout, 504, "speech_timeout"),
+    ],
+)
+async def test_speech_errors_are_safe(
+    alice: Client, monkeypatch: pytest.MonkeyPatch, error: type[Exception], code: int, detail: str
+) -> None:
+    def fail(*args: Any, **kwargs: Any) -> bytes:
+        raise error("private")
+
+    monkeypatch.setattr(kokoro, "synthesize", fail)
+    response = await alice.post(
+        "/api/speech/synthesize", json={"text": "private", "voice_id": VOICE, "rate": 1}
+    )
+    assert response.status_code == code and response.json() == {"detail": detail}

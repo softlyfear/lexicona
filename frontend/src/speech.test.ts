@@ -359,35 +359,28 @@ describe('серверный голос', () => {
     speakRu: true,
     engineEn: 'server',
     engineRu: 'server',
-    serverEnUS: 'en_US-lessac-medium',
+    serverEnUS: 'en_US-lessac-high',
     serverEnGB: null,
     serverRu: null,
   } satisfies SpeechPreferences
 
-  it('берёт high вместо сохранённого medium того же диктора', () => {
-    const selected = selectServerVoice(
-      [{ id: 'en_US-lessac-high', name: 'Lessac', language: 'en-US', gender: 'female' }],
-      'en',
-      preferences,
-    )
-    expect(selected?.id).toBe('en_US-lessac-high')
-  })
-
-  it('заменяет удалённый medium голос первым установленным акцентом', () => {
+  it('заменяет сохранённый голос Piper первым голосом того же акцента', () => {
     const voices = [
       {
-        id: 'en_US-lessac-high',
-        name: 'Lessac',
+        id: 'kokoro-af_heart',
+        name: 'Heart',
         language: 'en-US' as const,
         gender: 'female' as const,
       },
-      { id: 'en_US-ryan-high', name: 'Ryan', language: 'en-US' as const, gender: 'male' as const },
+      {
+        id: 'kokoro-am_michael',
+        name: 'Michael',
+        language: 'en-US' as const,
+        gender: 'male' as const,
+      },
     ]
-    const selected = selectServerVoice(voices, 'en', {
-      ...preferences,
-      serverEnUS: 'en_US-amy-medium',
-    })
-    expect(selected?.id).toBe('en_US-lessac-high')
+    const selected = selectServerVoice(voices, 'en', preferences)
+    expect(selected?.id).toBe('kokoro-af_heart')
   })
 
   it('сохранённый серверный источник русского читается как браузер', () => {
@@ -397,7 +390,7 @@ describe('серверный голос', () => {
 
   it('не выбирает серверный русский голос, когда моделей нет', () => {
     const selected = selectServerVoice(
-      [{ id: 'en_US-lessac-high', name: 'Lessac', language: 'en-US', gender: 'female' }],
+      [{ id: 'kokoro-af_heart', name: 'Heart', language: 'en-US', gender: 'female' }],
       'ru',
       { ...preferences, serverRu: 'ru_RU-denis-medium' },
     )

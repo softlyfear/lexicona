@@ -7,8 +7,7 @@ install:
 dictionary:
 	cd backend && uv run --locked python -m lexicona.infrastructure.dictionary build
 
-voices:
-	cd backend && uv run --locked python -m lexicona.infrastructure.tts download
+voices: kokoro-voices
 
 kokoro-install:
 	UV_PYTHON_DOWNLOADS=never uv sync --locked --project runtime/kokoro --python 3.13
