@@ -85,6 +85,7 @@ export interface DictionaryLookup {
   matches: DictionaryMatch[]
   spelling_suggestions?: string[]
   machine_translation?: MachineTranslation | null
+  machine_transcription?: string | null
 }
 export interface DictionaryNotices {
   source: DictionarySource

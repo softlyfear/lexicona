@@ -221,6 +221,46 @@ it('показывает варианты DeepSeek и автоматически
   )
 })
 
+it('подставляет американскую IPA для словарной фразы без транскрипции', async () => {
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    source,
+    matches: [
+      {
+        entry_id: 7,
+        headword: 'cut to the chase',
+        part_of_speech: 'v',
+        translations: ['перейти к делу'],
+        transcriptions: [],
+        match: 'exact',
+      },
+    ],
+    machine_translation: null,
+    machine_transcription: '/ˌkʌt tə ðə ˈtʃeɪs/',
+  })
+  const user = userEvent.setup()
+  const { submit } = form({ ...word, headword: 'cut to the chase', transcription: '' })
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('button', { name: 'перейти к делу' })).toBeInTheDocument()
+  expect(screen.getByText('Варианты из словаря в порядке источника.')).toBeInTheDocument()
+  expect(
+    screen.getByText('В словаре нет транскрипции — показана американская.'),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Машинный перевод/)).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('/ˌkʌt tə ðə ˈtʃeɪs/')
+  await user.click(screen.getByRole('button', { name: 'перейти к делу' }))
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      headword: 'cut to the chase',
+      translations: ['ручной', 'перейти к делу'],
+      transcription: '/ˌkʌt tə ðə ˈtʃeɪs/',
+      source_refs: [
+        { source_id: source.id, entry_id: 7, field: 'translation', value: 'перейти к делу' },
+      ],
+    }),
+  )
+})
+
 it('позволяет сохранять вручную при пустом результате и ошибке и повторить запрос', async () => {
   vi.spyOn(api, 'lookupDictionary')
     .mockResolvedValueOnce({ source, matches: [] })

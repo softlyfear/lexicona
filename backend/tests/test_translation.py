@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from lexicona.config import Settings
-from lexicona.infrastructure import translation
+from lexicona.infrastructure import dictionary, translation
 from tests.conftest import Client
 from tests.test_dictionary import archive, build_fixture
 
@@ -270,14 +270,216 @@ async def test_external_can_cover_missing_local_index(
             "openrouter", "перевод", ("вариант",), "/ˈfɹeɪz/"
         ),
     )
+
+    def unexpected(settings: Settings, text: str) -> str:
+        raise AssertionError("IPA is already present")
+
+    monkeypatch.setattr(translation, "transcribe", unexpected)
     response = await alice.post("/api/dictionary/lookup", json={"headword": "phrase"})
     assert response.status_code == 200
-    assert response.json()["machine_translation"] == {
+    body = response.json()
+    assert body["machine_translation"] == {
         "provider": "openrouter",
         "text": "перевод",
         "alternatives": ["вариант"],
         "transcription": "/ˈfɹeɪz/",
     }
+    assert body["machine_transcription"] is None
+
+
+async def test_dictionary_phrase_without_ipa_gets_generated_transcription(
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def lookup(path: Path, headword: str) -> dict[str, Any]:
+        return {
+            "source": dictionary.SOURCE,
+            "matches": [
+                {
+                    "entry_id": 7,
+                    "headword": headword,
+                    "part_of_speech": "v",
+                    "translations": ["перейти к делу"],
+                    "transcriptions": [],
+                    "match": "exact",
+                }
+            ],
+            "spelling_suggestions": [],
+        }
+
+    monkeypatch.setattr(dictionary, "lookup", lookup)
+
+    def unexpected(settings: Settings, text: str) -> translation.MachineTranslation:
+        raise AssertionError("dictionary hit")
+
+    monkeypatch.setattr(translation, "translate", unexpected)
+    seen: list[str] = []
+
+    def transcribe(settings: Settings, text: str) -> str:
+        seen.append(text)
+        return "/ˌkʌt tə ðə ˈtʃeɪs/"
+
+    monkeypatch.setattr(translation, "transcribe", transcribe)
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "cut to the chase"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["machine_translation"] is None
+    assert body["machine_transcription"] == "/ˌkʌt tə ðə ˈtʃeɪs/"
+    assert body["matches"][0]["translations"] == ["перейти к делу"]
+    assert seen == ["cut to the chase"]
+
+
+async def test_dictionary_ipa_skips_generation(
+    app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "index.sqlite3"
+    build_fixture(monkeypatch, path, archive())
+    app.state.settings.dictionary_path = path
+
+    def unexpected(settings: Settings, text: str) -> str:
+        raise AssertionError("dictionary IPA exists")
+
+    monkeypatch.setattr(translation, "transcribe", unexpected)
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "apple"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matches"][0]["transcriptions"] == ["/a/"]
+    assert body["machine_translation"] is None
+    assert body["machine_transcription"] is None
+
+
+async def test_transcription_failure_keeps_dictionary_phrase(
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        dictionary,
+        "lookup",
+        lambda path, headword: {
+            "source": dictionary.SOURCE,
+            "matches": [
+                {
+                    "entry_id": 7,
+                    "headword": headword,
+                    "part_of_speech": "v",
+                    "translations": ["перейти к делу"],
+                    "transcriptions": [],
+                    "match": "exact",
+                }
+            ],
+            "spelling_suggestions": [],
+        },
+    )
+
+    def timeout(settings: Settings, text: str) -> None:
+        raise translation.TranslationTimeout
+
+    monkeypatch.setattr(translation, "transcribe", timeout)
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "cut to the chase"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["machine_transcription"] is None
+    assert body["matches"][0]["translations"] == ["перейти к делу"]
+
+
+async def test_deepl_translation_receives_generated_ipa(
+    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.state.settings.dictionary_path = Path("/missing/index.sqlite3")
+    monkeypatch.setattr(
+        translation,
+        "translate",
+        lambda settings, text: translation.MachineTranslation("deepl", "перейти к делу"),
+    )
+    monkeypatch.setattr(translation, "transcribe", lambda settings, text: "/ˌkʌt tə ðə ˈtʃeɪs/")
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "cut to the chase"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matches"] == []
+    assert body["machine_transcription"] is None
+    assert body["machine_translation"] == {
+        "provider": "deepl",
+        "text": "перейти к делу",
+        "alternatives": [],
+        "transcription": "/ˌkʌt tə ðə ˈtʃeɪs/",
+    }
+
+
+def test_transcribe_requests_complete_phrase_ipa(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def post(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> Any:
+        calls.append((url, headers, payload, timeout))
+        return {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": json.dumps({"transcription_us": "  /ˌkʌt tə ðə ˈtʃeɪs/  "})
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(translation, "_post", post)
+    result = translation.transcribe(
+        Settings(_env_file=None, openrouter_api_key="test-secret"), "cut to the chase"
+    )
+    assert result == "/ˌkʌt tə ðə ˈtʃeɪs/"
+    url, headers, payload, timeout = calls[0]
+    assert url == "https://openrouter.ai/api/v1/chat/completions"
+    assert headers == {"Authorization": "Bearer test-secret"}
+    assert timeout == 60
+    assert payload["messages"][1]["content"] == "cut to the chase"
+    assert "ˈ" in payload["messages"][0]["content"]
+    assert "function words" in payload["messages"][0]["content"]
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert schema["required"] == ["transcription_us"]
+    assert "translations" not in schema["properties"]
+
+
+def test_transcribe_without_key_does_not_call_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected(*args: object) -> None:
+        raise AssertionError("no key")
+
+    monkeypatch.setattr(translation, "_post", unexpected)
+    assert translation.transcribe(Settings(_env_file=None), "cut to the chase") is None
+    assert (
+        translation.transcribe(Settings(_env_file=None, openrouter_api_key=""), "cut to the chase")
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["{}", '{"transcription_us":"' + ("a" * 301) + '"}', '{"transcription_us":1}'],
+)
+def test_invalid_transcription_response(content: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        translation,
+        "_post",
+        lambda *args: {"choices": [{"finish_reason": "stop", "message": {"content": content}}]},
+    )
+    with pytest.raises(translation.TranslationError):
+        translation.transcribe(
+            Settings(_env_file=None, openrouter_api_key="test-secret"), "cut to the chase"
+        )
+
+
+def test_empty_transcription_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        translation,
+        "_post",
+        lambda *args: {
+            "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"transcription_us":"   "}'}}
+            ]
+        },
+    )
+    assert (
+        translation.transcribe(
+            Settings(_env_file=None, openrouter_api_key="test-secret"), "cut to the chase"
+        )
+        is None
+    )
 
 
 def test_openrouter_example_request_and_response(monkeypatch: pytest.MonkeyPatch) -> None:

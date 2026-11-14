@@ -45,9 +45,12 @@ provider=openrouter выбирает его напрямую. Фиксирова
 15с DeepL/60с LLM timeout, без redirects, ответ до64KiB и строгий JSON-разбор без duplicate keys.
 Модель по умолчанию ~deepseek/deepseek-flash-latest, JSON schema, reasoning отключён.
 DeepSeek возвращает 1..3 перевода и сгенерированную US IPA.
-Ответ добавляет machine_translation {provider,text,alternatives,transcription}, не связанный
-с FreeDict source_refs; форма показывает все варианты и подставляет IPA. Текст уходит DeepL,
-а при fallback также OpenRouter. POST /dictionary/example отдельно генерирует через DeepSeek EN-пример и RU-перевод
+Если словарные совпадения есть, но ни у одного нет транскрипции, либо внешний перевод пришёл
+без IPA, отдельный запрос OpenRouter возвращает американскую IPA целиком для фразы.
+Ответ добавляет machine_translation {provider,text,alternatives,transcription} и
+machine_transcription. Сгенерированная IPA не становится FreeDict source_ref; словарные
+переводы остаются, а форма подставляет IPA. Текст уходит DeepL, а при fallback также OpenRouter.
+Сбой генерации IPA не отменяет уже найденный словарь или перевод. POST /dictionary/example отдельно генерирует через DeepSeek EN-пример и RU-перевод
 с теми же auth/CSRF, transport limits и strict JSON; запись происходит только при submit слова.
 Таймауты дают безопасный 504 dictionary_timeout/examples_timeout, прочие ошибки — прежний503;
 ключ LEXICONA_OPENROUTER_API_KEY хранится только на сервере, Gemini удалён из активного кода.

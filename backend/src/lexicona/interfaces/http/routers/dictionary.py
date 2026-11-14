@@ -21,6 +21,24 @@ class ExampleIn(LookupIn):
     ] = Field(default_factory=list, max_length=20)
 
 
+def _machine_payload(machine: translation.MachineTranslation | None) -> dict[str, Any] | None:
+    if machine is None:
+        return None
+    return {
+        "provider": machine.provider,
+        "text": machine.text,
+        "alternatives": list(machine.alternatives),
+        "transcription": machine.transcription,
+    }
+
+
+async def _generated_transcription(settings: AppSettings, headword: str) -> str | None:
+    try:
+        return await asyncio.to_thread(translation.transcribe, settings, headword)
+    except translation.TranslationError:
+        return None
+
+
 @router.post("/lookup")
 async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
     try:
@@ -28,7 +46,10 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
     except OSError, sqlite3.Error, ValueError, TypeError, KeyError:
         result = None
     if result is not None and result["matches"]:
-        return {**result, "machine_translation": None}
+        generated = None
+        if not any(match["transcriptions"] for match in result["matches"]):
+            generated = await _generated_transcription(settings, body.headword)
+        return {**result, "machine_translation": None, "machine_transcription": generated}
     try:
         machine = await asyncio.to_thread(translation.translate, settings, body.headword)
     except translation.TranslationTimeout:
@@ -37,18 +58,16 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
         raise HTTPException(503, "dictionary_unavailable") from None
     if result is None and machine is None:
         raise HTTPException(503, "dictionary_unavailable")
+    if machine is not None and not machine.transcription:
+        generated = await _generated_transcription(settings, body.headword)
+        if generated:
+            machine = translation.MachineTranslation(
+                machine.provider, machine.text, machine.alternatives, generated
+            )
     return {
         **(result or {"source": dictionary.SOURCE, "matches": [], "spelling_suggestions": []}),
-        "machine_translation": (
-            {
-                "provider": machine.provider,
-                "text": machine.text,
-                "alternatives": list(machine.alternatives),
-                "transcription": machine.transcription,
-            }
-            if machine
-            else None
-        ),
+        "machine_translation": _machine_payload(machine),
+        "machine_transcription": None,
     }
 
 

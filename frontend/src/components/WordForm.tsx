@@ -160,6 +160,8 @@ export function WordForm({
       }
       setLookup({ ...result, matches, machine_translation: machineTranslation })
       const preferred = preferredTranscription(matches)
+      const generated =
+        machineTranslation?.transcription?.trim() || result.machine_transcription?.trim() || ''
       if (preferred) {
         setTranscription(preferred.value)
         setRefs((current) =>
@@ -173,8 +175,8 @@ export function WordForm({
             },
           ].slice(0, 20),
         )
-      } else if (machineTranslation?.transcription) {
-        setTranscription(machineTranslation.transcription)
+      } else if (generated) {
+        setTranscription(generated)
         setRefs((current) => current.filter((ref) => ref.field !== 'transcription'))
       }
       setLookupState('idle')
@@ -440,6 +442,9 @@ export function WordForm({
         {lookup && lookup.matches.length > 0 && (
           <div>
             <p>Варианты из словаря в порядке источника.</p>
+            {lookup.machine_transcription && !preferredTranscription(lookup.matches) && (
+              <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
+            )}
             {lookup.matches.map((match) => (
               <section
                 key={match.entry_id}

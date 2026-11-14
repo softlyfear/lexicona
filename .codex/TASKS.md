@@ -1,5 +1,11 @@
 # Активные задачи
 
+TRANSLATE-003 accepted (2026-11-14): a dictionary hit with no pronunciation, and a
+DeepL translation without IPA, now receive US IPA for the whole phrase.
+Dictionary translations stay; the generated IPA is not a FreeDict source ref.
+Independent Ship. make check exit 0: tooling 38 / backend 457 / frontend 203.
+No deployment.
+
 BUG-001 accepted and archived (2026-11-14), attempt 2: reject malformed CSRF
 headers, preserve the current login after obsolete 401 errors, and recover
 matching candidates across complete groups while preserving due-before-new.
