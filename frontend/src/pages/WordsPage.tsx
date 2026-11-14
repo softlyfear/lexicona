@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 import {
   api,
   errorMessage,
@@ -43,6 +43,7 @@ const TRAINING_OPTIONS: { value: WordTrainingFilter; label: string }[] = [
 
 export function WordsPage({ userId }: { userId: string }) {
   const queryClient = useQueryClient()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [stored, setStored] = useState(() => readWordFilters(userId))
   const [settled, setSettled] = useState(false)
@@ -71,6 +72,13 @@ export function WordsPage({ userId }: { userId: string }) {
     return stored?.tagIds ?? []
   }, [settled, specifiesTags, stored, urlTagKey])
   const [editing, setEditing] = useState<Editing>(null)
+  const [editingLocationKey, setEditingLocationKey] = useState(location.key)
+  // A link can navigate to the same URL. Drafts belong to the previous visit,
+  // not to the dictionary location reached by that navigation.
+  if (editingLocationKey !== location.key) {
+    setEditingLocationKey(location.key)
+    setEditing(null)
+  }
   const pageRef = useRef<HTMLElement>(null)
   useLayoutEffect(() => {
     const main = pageRef.current?.closest('main')

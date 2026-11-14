@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type Word } from '../api'
+import { Layout } from '../components/Layout'
 import { WordsPage } from './WordsPage'
 
 vi.mock('../api', async (original) => {
@@ -68,6 +69,29 @@ function params() {
   return new URLSearchParams(screen.getByTestId('url').textContent ?? '')
 }
 
+function renderDictionary(url = '/') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[url]}>
+        <Navigation />
+        <Routes>
+          <Route
+            element={
+              <Layout
+                user={{ id: 'alice', login: 'alice', is_admin: false, difficulty: 'medium' }}
+              />
+            }
+          >
+            <Route index element={<WordsPage userId="alice" />} />
+            <Route path="training" element={<h1>Тренировка</h1>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
 describe('сортировка словаря', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -75,6 +99,118 @@ describe('сортировка словаря', () => {
     vi.mocked(api.listTags).mockResolvedValue([])
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
   })
+
+  it.each([
+    ['Lexicona', 'new', '/'],
+    ['Lexicona', 'edit', '/?q=cat&sort=progress_desc&training=all&tag_id=home&tag_id=work'],
+    ['Словарь', 'new', '/?q=cat&sort=progress_desc&training=all&tag_id=home&tag_id=work'],
+    ['Словарь', 'edit', '/'],
+  ])('%s возвращает из формы %s на список по тому же URL %s', async (link, kind, url) => {
+    vi.mocked(api.listTags).mockResolvedValue([
+      { id: 'home', name: 'Дом' },
+      { id: 'work', name: 'Работа' },
+    ])
+    const user = userEvent.setup()
+    renderDictionary(url)
+    await screen.findByText('cat')
+    if (kind === 'edit') {
+      await user.click(screen.getByLabelText('Действия со словом «cat»'))
+      await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
+    } else {
+      await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    }
+    const headword = screen.getByRole('textbox', { name: /Слово или выражение/ })
+    await user.clear(headword)
+    await user.type(headword, 'unsaved draft')
+    const returnLink = screen.getByRole('link', { name: link })
+    expect(returnLink).toHaveAttribute('href', url)
+    await user.click(returnLink)
+    expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Слово или выражение/ })).not.toBeInTheDocument()
+    expect(params().toString()).toBe(url.split('?')[1] ?? '')
+    expect(api.createWord).not.toHaveBeenCalled()
+    expect(api.updateWord).not.toHaveBeenCalled()
+    if (url !== '/') {
+      expect(screen.getByRole('searchbox', { name: 'Поиск' })).toHaveValue('cat')
+      expect(screen.getByRole('combobox', { name: 'Сортировка' })).toHaveValue('progress_desc')
+      expect(screen.getByRole('combobox', { name: 'Обучение' })).toHaveValue('all')
+      expect(screen.getByRole('checkbox', { name: 'Дом' })).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: 'Работа' })).toBeChecked()
+    }
+    // Repeated visits must not resurrect or retain the abandoned draft.
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    expect(screen.getByRole('textbox', { name: /Слово или выражение/ })).toHaveValue('')
+    await user.click(screen.getByRole('link', { name: link }))
+    expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+  })
+
+  it.each(['Lexicona', 'Словарь'])('%s возвращает на список клавишей Enter', async (name) => {
+    const user = userEvent.setup()
+    renderDictionary()
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    const link = screen.getByRole('link', { name })
+    link.focus()
+    expect(link).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+    expect(api.createWord).not.toHaveBeenCalled()
+  })
+
+  it.each(['Lexicona', 'Словарь'])('%s сохраняет нативные modified clicks', async (name) => {
+    const user = userEvent.setup()
+    renderDictionary('/?q=cat')
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    const link = screen.getByRole('link', { name })
+    expect(link).toHaveAttribute('href', '/?q=cat')
+    // Observe the router's decision, then suppress jsdom's unsupported document navigation.
+    const nativeClick = vi.fn((event: MouseEvent) => {
+      expect(event.defaultPrevented).toBe(false)
+      event.preventDefault()
+    })
+    document.addEventListener('click', nativeClick)
+    try {
+      for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
+        fireEvent.click(link, { [modifier]: true })
+        expect(screen.getByRole('heading', { name: 'Добавить слово' })).toBeInTheDocument()
+      }
+      fireEvent.click(link, { button: 1 })
+      expect(nativeClick).toHaveBeenCalledTimes(5)
+      expect(screen.getByRole('heading', { name: 'Добавить слово' })).toBeInTheDocument()
+    } finally {
+      document.removeEventListener('click', nativeClick)
+    }
+    expect(api.createWord).not.toHaveBeenCalled()
+    expect(api.updateWord).not.toHaveBeenCalled()
+  })
+
+  it.each(['Lexicona', 'Словарь'])('%s открывает словарь из другого раздела', async (name) => {
+    const user = userEvent.setup()
+    renderDictionary('/training?unrelated=value')
+    expect(screen.getByRole('heading', { name: 'Тренировка' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name })).toHaveAttribute('href', '/')
+    await user.click(screen.getByRole('link', { name }))
+    expect(await screen.findByText('cat')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+    expect(params().toString()).toBe('')
+    await user.click(screen.getByRole('link', { name: 'Тренировка' }))
+    expect(screen.getByRole('heading', { name: 'Тренировка' })).toBeInTheDocument()
+  })
+
+  it.each(['loading', 'error'])(
+    'возврат из формы не зависит от загрузки слов: %s',
+    async (state) => {
+      if (state === 'loading') vi.mocked(api.listWords).mockReturnValue(new Promise(() => {}))
+      else vi.mocked(api.listWords).mockRejectedValue(new Error('Список недоступен'))
+      const user = userEvent.setup()
+      renderDictionary()
+      if (state === 'error') await screen.findByRole('alert')
+      await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+      await user.click(screen.getByRole('link', { name: 'Lexicona' }))
+      expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+      expect(screen.getByRole(state === 'loading' ? 'status' : 'alert')).toBeInTheDocument()
+      expect(api.createWord).not.toHaveBeenCalled()
+    },
+  )
 
   it('раскрывает фильтры и действия, сохраняя видимую сводку', async () => {
     vi.mocked(api.listTags).mockResolvedValue([{ id: 'home', name: 'Дом' }])

@@ -4,6 +4,28 @@
 тикетов, не действующие настройки. Роли теперь в `.opencode/agents/`, настройки
 в `opencode.jsonc`, общий протокол в этом каталоге.
 
+## NAV-001 — brand returns to dictionary list (2026-11-14)
+
+- Status: accepted; attempt 1; orchestrator: primary session; independent
+  code-reviewer: Ship, no findings.
+- Outcome/AC: navigating with Lexicona or Dictionary closes new/edit word
+  forms even when the destination URL is unchanged, without saving drafts.
+  Existing dictionary search/sort/training/tag filters are preserved;
+  navigation from other sections still opens the dictionary normally.
+- Implementation: WordsPage resets its editor when the router location key
+  changes. Layout and native links remain unchanged, including Enter,
+  modified clicks and middle-click behavior.
+- Ownership/order: frontend-agent implemented WordPage and behavioral tests,
+  then ran the final gate; independent code-reviewer checked the whole diff.
+  Primary session handled protocol, acceptance and Git.
+- Verification: targeted 38 passed; `make check` exit 0 (tooling 20 / backend
+  463 / frontend 244), including formatting, lint, types and production build.
+  `git diff --check` passed. Reviewer reused evidence for identical code.
+  Twelve new integration cases cover drafts, filters, repeated actions, links,
+  keyboard, other sections, and list loading/errors.
+- Limitations: no browser visual check, deployment, server restart or database
+  operations performed. No backend or dependency changes.
+
 ## UNIQUE-002 — early duplicate warning (2026-11-14)
 
 - Status: accepted; attempt 1; orchestrator: primary session; independent

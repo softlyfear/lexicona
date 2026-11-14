@@ -1,5 +1,11 @@
 # Активные задачи
 
+NAV-001 accepted and archived (2026-11-14): Lexicona and Dictionary links
+return from add/edit forms to the dictionary list even on same-URL navigation,
+without saving drafts or dropping dictionary filters. Native link behavior
+is preserved. Independent Ship. `make check` exit 0: tooling 20 / backend 463 /
+frontend 244. No deployment or browser visual check.
+
 UNIQUE-002 accepted and archived (2026-11-14): requesting translation now
 shows an existing-word/phrase warning near the headword, without waiting for
 translation or Add. Exact normalized owner matches include learned/excluded
