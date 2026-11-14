@@ -111,7 +111,10 @@ export function TrainingPage({
     const props = {
       session: started.session,
       requestedSize: started.requestedSize,
-      onFinish: () => finish.mutate(started.session.id),
+      onFinish: () => {
+        cancelSpeech()
+        finish.mutate(started.session.id)
+      },
       finishing: finish.isPending,
     }
     return (
@@ -865,7 +868,7 @@ export function Run({
       if (
         event.target instanceof HTMLElement &&
         event.target.closest('button') &&
-        event.key === 'Enter'
+        (event.key === 'Enter' || event.key === ' ')
       )
         return
       const n = Number(event.key)
@@ -899,7 +902,9 @@ export function Run({
       'submitted_text' in result &&
       (!('correct' in result) || result.correct))
       ? result.expected_answers
-      : null
+      : result?.outcome === 'answered' && 'correct_option' in result && result.correct
+        ? [item.options[result.correct_option]].filter((answer) => answer !== undefined)
+        : null
   let label = ''
   if (result) {
     if (result.outcome === 'unavailable')
@@ -1071,7 +1076,7 @@ export function Run({
                   autoFocus
                 />
               </label>
-              <div className={css.actions}>
+              <div className={css.trainingActions}>
                 <button
                   className={ui.primary}
                   type="submit"
@@ -1111,7 +1116,7 @@ export function Run({
               </fieldset>
             </div>
           )}
-          <div className={css.actions}>
+          <div className={css.trainingActions}>
             {(session.mode !== 'cards' || !cardAnswer) && (
               <button
                 type="button"
@@ -1158,18 +1163,28 @@ export function Run({
                   {label} ({result.delta > 0 ? '+' : ''}
                   {result.delta}){result.progress !== null && <> · прогресс {result.progress}%</>}
                 </span>
+              </div>
+              {canRetry && <p>Попробуйте ещё раз. Повторного штрафа не будет.</p>}
+              <div className={css.trainingActions}>
+                {revealedAnswers && revealedAnswers.length > 0 && (
+                  <div className={css.revealedAnswer} role="group" aria-label="Ответ">
+                    <p className={css.answerText} lang={answerLang}>
+                      <span className={css.answerLabel}>Ответ: </span>
+                      {revealedAnswers.join(', ')}
+                    </p>
+                    <SpeakButton
+                      className={css.answerSpeak}
+                      text={revealedAnswers.join(', ')}
+                      lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
+                    />
+                  </div>
+                )}
                 {!canRetry && (
                   <button className={ui.primary} onClick={next} autoFocus>
                     Далее
                   </button>
                 )}
               </div>
-              {canRetry && <p>Попробуйте ещё раз. Повторного штрафа не будет.</p>}
-              {revealedAnswers && (
-                <p className={ui.muted} lang={answerLang}>
-                  Ответ: {revealedAnswers.join(', ')}
-                </p>
-              )}
             </div>
           )}
         </>

@@ -11,6 +11,7 @@ import {
   type TrainingSize,
 } from '../api'
 import { EditWordButton, TrainingWordEditor } from '../components/TrainingWordEdit'
+import { SpeakButton } from '../components/ui'
 import { wordEditOutcome } from '../wordEdit'
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
@@ -68,6 +69,15 @@ export function MatchingRun({
   const batch = batches[batchIndex] ?? []
   const selected = batch.find((item) => item.id === selectedId)
   const selectedResult = selected ? answers[selected.id] : undefined
+  const answerText =
+    selectedResult?.outcome === 'assisted'
+      ? selectedResult.expected_answers.join(', ')
+      : selectedResult?.outcome === 'answered' &&
+          'correct' in selectedResult &&
+          selectedResult.correct &&
+          'correct_option' in selectedResult
+        ? selected?.options[selectedResult.correct_option]
+        : undefined
   const batchDone = batch.every((item) => isTerminal(answers[item.id]))
 
   const action = useMutation({
@@ -138,7 +148,14 @@ export function MatchingRun({
         <span className={ui.muted}>
           Группа {batchIndex + 1} / {batchCount}
         </span>
-        <button className={ui.button} onClick={onFinish} disabled={busy}>
+        <button
+          className={ui.button}
+          onClick={() => {
+            cancelSpeech()
+            onFinish()
+          }}
+          disabled={busy}
+        >
           Завершить
         </button>
       </div>
@@ -238,7 +255,7 @@ export function MatchingRun({
               })}
             </div>
           </div>
-          <div className={css.actions}>
+          <div className={css.trainingActions}>
             <button
               type="button"
               className={ui.button}
@@ -299,15 +316,21 @@ export function MatchingRun({
                     !selectedResult.correct && (
                       <p>Выберите другой перевод. Повторного штрафа не будет.</p>
                     )}
-                  {selectedResult.outcome === 'assisted' && (
-                    <p className={ui.muted}>Ответ: {selectedResult.expected_answers.join(', ')}</p>
+                  {answerText && (
+                    <div className={css.revealedAnswer} role="group" aria-label="Ответ">
+                      <p className={css.answerText} lang="ru">
+                        <span className={css.answerLabel}>Ответ: </span>
+                        {answerText}
+                      </p>
+                      <SpeakButton className={css.answerSpeak} text={answerText} lang="ru-RU" />
+                    </div>
                   )}
                 </>
               )}
             </div>
           )}
           {batchDone && (
-            <div className={css.actions}>
+            <div className={css.trainingActions}>
               <button className={ui.primary} onClick={next} autoFocus>
                 {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
               </button>

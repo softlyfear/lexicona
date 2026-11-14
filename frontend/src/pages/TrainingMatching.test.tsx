@@ -7,6 +7,7 @@ import ui from '../components/ui.module.css'
 import { TrainingPage } from './TrainingPage'
 import css from './pages.module.css'
 import { summaryFixture } from './trainingSummaryFixture'
+import { speak } from '../speech'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -31,6 +32,11 @@ vi.mock('../api', async (original) => {
       updateWord: vi.fn(),
     },
   }
+})
+
+vi.mock('../speech', async (original) => {
+  const actual = await original<typeof import('../speech')>()
+  return { ...actual, speak: vi.fn() }
 })
 
 const twoItems: TrainingSession = {
@@ -157,6 +163,8 @@ describe('сопоставление пар', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4) · прогресс 46%')
     expect(screen.getByRole('status')).toHaveTextContent('Повторного штрафа не будет')
     expect(screen.queryByText('Ответ: кот')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Ответ' })).not.toBeInTheDocument()
+    expect(speak).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'cat' })).toHaveClass(css.wrong)
     expect(screen.getByRole('button', { name: 'cat' })).not.toHaveClass(css.selected)
 
@@ -166,6 +174,11 @@ describe('сопоставление пар', () => {
     expect(screen.getByRole('button', { name: 'cat' })).toHaveClass(css.right)
     expect(screen.getByRole('button', { name: 'cat' })).not.toHaveClass(css.selected)
     expect(translations.getByRole('button', { name: 'кот' })).toBeDisabled()
+    const acceptedAnswer = screen.getByRole('group', { name: 'Ответ' })
+    expect(acceptedAnswer).toHaveClass(css.revealedAnswer)
+    await user.click(within(acceptedAnswer).getByRole('button', { name: 'Произнести RU «кот»' }))
+    expect(speak).toHaveBeenCalledExactlyOnceWith('кот', 'ru')
+    expect(api.answer).toHaveBeenCalledTimes(2)
 
     await user.click(screen.getByRole('button', { name: 'dog' }))
     await user.click(translations.getByRole('button', { name: 'собака' }))
@@ -280,6 +293,14 @@ describe('сопоставление пар', () => {
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(api.revealAnswer).toHaveBeenCalledWith('cat')
     expect(await screen.findByRole('status')).toHaveTextContent('Ответ: кот')
+    const revealedAnswer = screen.getByRole('group', { name: 'Ответ' })
+    expect(revealedAnswer).toHaveClass(css.revealedAnswer)
+    const playback = within(revealedAnswer).getByRole('button', { name: 'Произнести RU «кот»' })
+    playback.focus()
+    await user.keyboard('{Enter}')
+    expect(speak).toHaveBeenCalledExactlyOnceWith('кот', 'ru')
+    expect(api.revealAnswer).toHaveBeenCalledOnce()
+    expect(api.answer).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'dog' }))
     await user.click(screen.getByRole('button', { name: 'Пропустить' }))
     expect(api.skipItem).toHaveBeenCalledWith('dog')

@@ -293,3 +293,7 @@ apostrophes may be omitted and single letter-to-letter hyphens may be spaces.
 Dictionary identity, search and semantic-change detection still use normalize.
 No fuzzy spelling or arbitrary whitespace removal is applied; negation letters
 remain significant.
+
+Authorized training answers are displayed in a prominent answer group, with
+language-aware manual playback and Next adjacent to the answer. Reveal does not
+require typed input; wrong open answers still withhold the expected answer.

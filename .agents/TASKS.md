@@ -30,15 +30,24 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   frontend 252), formatting/lint/types/build passed. Answer-only policy keeps
   storage normalization unchanged; lowlife is not low-life and can't is not can.
   Independent code-reviewer: Ship. Orchestrator accepted.
-- FEEDBACK-003 / prominent revealed answer, playback, nearby Next / implementation / attempt 1.
+- FEEDBACK-003 / prominent revealed answer, playback, nearby Next / accepted / attempt 1.
   AC: authorized answer only, correct speech language, cancellation and compact
   responsive keyboard-accessible controls; failures never affect progress.
   Owner/final gate: frontend-agent. Boundaries: TrainingPage, MatchingRun if needed,
   pages.module.css, focused speech/input/assistance tests. Existing speech
   controller reused; backend changes require a demonstrated missing field.
   Checks: focused behavioral tests, make check, independent review.
-- FEEDBACK-004 / filtered dictionary count / planned.
+  Evidence: targeted 69 passed; final make check exit 0 (tooling 20 / backend
+  523 / frontend 267), format/lint/types/build passed. Orca browser fixture
+  inspected at desktop 1323x937 and mobile 390x844: answer, playback and adjacent
+  Next visible without overflow. No real provider/audio verification.
+  Independent code-reviewer: Ship. Orchestrator accepted.
+- FEEDBACK-004 / filtered dictionary count / implementation / attempt 1.
   AC: right-aligned count reflects search/scope/OR-tags, zero, loading and mutations.
+  Owner/final gate: frontend-agent. Files: WordsPage.tsx, pages.module.css,
+  WordsPage tests. Use full response length only after verifying no pagination.
+  Hide stale counts for deferred search, placeholder data, fetching and errors.
+  Check focused tests, make check and independent review.
 - FEEDBACK-005 / persisted optional automatic next / planned.
   AC: default off; confirmed correct including retry advances once after feedback;
   speech coordination and timer cancellation; no auto-next on reveal/error/skip;
