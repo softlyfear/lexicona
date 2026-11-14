@@ -1,4 +1,4 @@
-.PHONY: install dictionary voices fmt check check-backend check-frontend check-tooling codex-models codex grok
+.PHONY: install dictionary voices kokoro-install kokoro-voices fmt check check-backend check-frontend check-tooling codex-models codex grok
 
 install:
 	cd backend && uv sync --locked
@@ -9,6 +9,12 @@ dictionary:
 
 voices:
 	cd backend && uv run --locked python -m lexicona.infrastructure.tts download
+
+kokoro-install:
+	UV_PYTHON_DOWNLOADS=never uv sync --locked --project runtime/kokoro --python 3.13
+
+kokoro-voices:
+	cd backend && uv run --locked python -m lexicona.infrastructure.kokoro download
 
 fmt:
 	cd backend && uv run --locked ruff check --fix ../.codex/hooks ../.grok/hooks ../tests ../scripts && uv run --locked ruff format ../.codex/hooks ../.grok/hooks ../tests ../scripts

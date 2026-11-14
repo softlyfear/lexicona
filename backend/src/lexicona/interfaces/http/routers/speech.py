@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from lexicona.infrastructure import tts
+from lexicona.infrastructure import kokoro, tts
 from lexicona.interfaces.http.deps import AppSettings, CurrentAuth
 
 router = APIRouter(prefix="/speech", tags=["speech"])
@@ -33,7 +33,7 @@ class SpeechIn(BaseModel):
     @field_validator("voice_id")
     @classmethod
     def known_voice(cls, value: str) -> str:
-        if value not in tts.VOICES:
+        if value not in tts.VOICES and value not in kokoro.VOICES:
             raise HTTPException(422, "invalid_voice")
         return value
 
@@ -47,6 +47,15 @@ class SpeechIn(BaseModel):
 
 @router.get("/voices")
 async def list_voices(auth: CurrentAuth, settings: AppSettings) -> dict[str, object]:
+    if settings.tts_engine == "kokoro":
+        available_voices = kokoro.voices(settings.tts_dir)
+        available = bool(available_voices) and await asyncio.to_thread(
+            kokoro.runtime_available, settings.kokoro_python
+        )
+        return {
+            "voices": available_voices,
+            "available": available,
+        }
     available_voices = tts.voices(settings.tts_dir)
     return {
         "voices": available_voices,
@@ -57,9 +66,23 @@ async def list_voices(auth: CurrentAuth, settings: AppSettings) -> dict[str, obj
 @router.post("/synthesize")
 async def synthesize(body: SpeechIn, auth: CurrentAuth, settings: AppSettings) -> Response:
     try:
-        data = await asyncio.to_thread(
-            tts.synthesize, settings.tts_dir, body.voice_id, body.text, float(body.rate)
-        )
+        if settings.tts_engine == "kokoro":
+            if body.voice_id not in kokoro.VOICES:
+                raise HTTPException(422, "invalid_voice")
+            data = await asyncio.to_thread(
+                kokoro.synthesize,
+                settings.tts_dir,
+                settings.kokoro_python,
+                body.voice_id,
+                body.text,
+                float(body.rate),
+            )
+        else:
+            if body.voice_id not in tts.VOICES:
+                raise HTTPException(422, "invalid_voice")
+            data = await asyncio.to_thread(
+                tts.synthesize, settings.tts_dir, body.voice_id, body.text, float(body.rate)
+            )
     except tts.SpeechBusy:
         raise HTTPException(503, "speech_busy") from None
     except tts.SpeechTimeout:

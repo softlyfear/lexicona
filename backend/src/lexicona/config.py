@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     dictionary_path: Path = Path("data/dictionaries/eng-rus-2025.11.23.sqlite3")
     tts_dir: Path = Path("data/tts")
+    tts_engine: Literal["piper", "kokoro"] = "piper"
+    kokoro_python: Path = Path(__file__).resolve().parents[3] / "runtime/kokoro/.venv/bin/python"
     database_url: str = "sqlite+aiosqlite:///./data/lexicona.db"
     translation_provider: Literal["deepl", "openrouter"] = "deepl"
     deepl_api_key: SecretStr | None = None

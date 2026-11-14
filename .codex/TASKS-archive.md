@@ -1,5 +1,29 @@
 # Закрытые задачи
 
+## SPEECH-004 — optional local Kokoro trial (2026-11-14)
+
+- Status: accepted; attempt 1; orchestrator root; independent code-reviewer: Ship.
+- User chose the local computer and requested a test server/account. Added an
+  opt-in Kokoro provider while preserving the Piper default and browser Russian.
+- Backend owner implemented config/API dispatch, persistent isolated CPU worker,
+  framing/cache/concurrency, timeout/crash cleanup and pinned SHA-256 downloads.
+  Devops owner added the Python 3.13 lockfile, setup targets and README guidance.
+- AC verified: four US/GB voices, all five speech rates, auth/CSRF/no-store,
+  bounded WAV, cancelled requests, worker restart and no synthesis downloads.
+- Final make check exit 0: tooling 38, backend 467, frontend 211; formatting,
+  lint, mypy and production build passed. Independent targeted tests: 39 passed.
+- Actual localhost API smoke produced mono PCM16/24 kHz WAV for all four voices,
+  verified cache reuse and served the SPA. An isolated migrated database/account
+  and six demonstration entries live under ignored `.local/kokoro-test`.
+  Credentials are access-restricted and were not added to Git or printed.
+- A 625-character sample succeeded; a 1680-character sample hit the 30-second
+  timeout and the following request succeeded with a restarted worker. Subjective
+  listening quality and physical-device audio remain unverified. Docker/VPS were
+  not changed. Original unrelated preference-sync changes remain uncommitted.
+- Reviewer P2 (runtime probe blocked the event loop) was fixed with to_thread
+  and a regression proving the health endpoint responds during a slow probe.
+
+
 ## SPEECH-003 — выбор языка озвучки (2026-11-05)
 
 - Статус: done; приёмка: ПРИНЯТО; попытка: 1.

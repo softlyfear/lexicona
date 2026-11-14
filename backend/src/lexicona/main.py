@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException
 from starlette.types import Scope
 
 from lexicona.config import Settings
+from lexicona.infrastructure import kokoro
 from lexicona.infrastructure.db import Database
 from lexicona.infrastructure.tts import prune_removed
 from lexicona.interfaces.http.deps import Db
@@ -40,8 +41,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        await asyncio.to_thread(prune_removed, settings.tts_dir)
+        if settings.tts_engine == "piper":
+            await asyncio.to_thread(prune_removed, settings.tts_dir)
         yield
+        if settings.tts_engine == "kokoro":
+            await asyncio.to_thread(kokoro.close_worker)
         await database.dispose()
 
     app = FastAPI(

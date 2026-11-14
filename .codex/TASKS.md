@@ -1,5 +1,11 @@
 # Активные задачи
 
+SPEECH-004 accepted and archived (2026-11-14), attempt 1: optional local
+Kokoro-82M CPU runtime with isolated Python 3.13, four US/GB voices and an
+isolated test account/database. Independent Ship. Final make check exit 0:
+tooling 38 / backend 467 / frontend 211. Real WAV/API and timeout recovery passed.
+No VPS or Docker changes; listening quality remains a user assessment.
+
 TRANSLATE-003 accepted (2026-11-14): a dictionary hit with no pronunciation, and a
 DeepL translation without IPA, now receive US IPA for the whole phrase.
 Dictionary translations stay; the generated IPA is not a FreeDict source ref.

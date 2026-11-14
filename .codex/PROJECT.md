@@ -242,3 +242,15 @@ Runtime не скачивает модели. Отдельный CLI download и
 status/Stop остаются в Settings, на остальных страницах видны только actionable ошибки.
 В auto неподдерживаемый сервером locale (например старый en-AU) использует браузерный
 голос строго того же locale; явный server или недоступный сохранённый server ID не подменяются.
+
+SPEECH-004 adds an opt-in local Kokoro provider (`LEXICONA_TTS_ENGINE=kokoro`),
+keeping Piper as the default. `runtime/kokoro` locks an isolated Python 3.13
+environment; the backend stays on Python 3.14. `infrastructure/kokoro.py` manages
+one CPU worker over stdin/stdout, bounded by a semaphore, 30-second timeout and
+16 MiB WAV limit; failure kills/reaps the worker and permits a fresh start.
+Heart/Michael use en-US; Emma/Isabella use en-GB; Russian uses the browser.
+Explicit `make kokoro-voices` downloads pinned SHA-256 models into `tts/kokoro`;
+synthesis does not download models. The optional runtime is not in the Docker
+image. A local test database/account are isolated under ignored `.local/`.
+Long text may reach the synthesis timeout; listening quality remains a manual
+assessment. The existing authenticated speech API and frontend catalog are reused.

@@ -44,6 +44,32 @@ docker compose --profile lexicona exec app python -m lexicona.infrastructure.tts
 начинаются быстрее: модель остаётся в памяти. Голос браузера зависит от устройства;
 сетевой голос может отправлять текст своему сервису, это видно при выборе.
 
+Для локального запуска можно выбрать Kokoro вместо Piper. В нём доступны Heart и
+Michael с американским произношением, Emma и Isabella — с британским. Русский текст
+по-прежнему произносит браузер. Kokoro синтезирует речь на CPU, без внешнего сервиса;
+при первой фразе модель загружается в память.
+
+Для Kokoro нужен установленный Python 3.13: его отдельное окружение находится в
+`runtime/kokoro/.venv`, а основной сервер использует Python 3.14. Из корня проекта:
+
+```sh
+make kokoro-install
+make kokoro-voices
+```
+
+Вторая команда один раз скачивает около 354 МБ моделей в `backend/data/tts/kokoro`
+при настройках по умолчанию.
+Запустите сервер с переменной `LEXICONA_TTS_ENGINE=kokoro`, например:
+
+```sh
+cd backend
+LEXICONA_TTS_ENGINE=kokoro uv run uvicorn lexicona.main:create_app --factory --reload
+```
+
+В настройках озвучки выберите серверный источник и английский голос. Чтобы снова
+использовать Piper, запустите сервер с `LEXICONA_TTS_ENGINE=piper`. Образ Docker пока содержит
+только окружение Piper; установка Kokoro выше предназначена для локального запуска.
+
 ## Установка на телефон, планшет или компьютер
 
 Откройте сайт по HTTPS и в настройках нажмите «Установка». На iPhone и iPad в Safari:
@@ -154,3 +180,5 @@ f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39
 ```
 
 Голоса Piper распространяются на своих условиях. Карточка каждого голоса сохраняется рядом с моделью. [Лицензия Piper](https://github.com/OHF-Voice/piper1-gpl/blob/main/COPYING), [каталог моделей](https://huggingface.co/rhasspy/piper-voices).
+
+Модель [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) распространяется по лицензии Apache 2.0; [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) — по лицензии MIT.
