@@ -1,13 +1,15 @@
 import asyncio
+from datetime import timedelta
 from typing import Any
 
 from fastapi import FastAPI
 from sqlalchemy import select
 
 from lexicona.domain.normalize import normalize
-from lexicona.infrastructure.db import Database
+from lexicona.infrastructure.db import Database, utcnow
 from lexicona.infrastructure.models import TrainingItem, WordProgress
 from tests.conftest import Client, add_word
+from tests.test_srs import set_progress_state
 from tests.test_words import set_progress
 
 PAIRS = [("cat", "кот"), ("dog", "собака"), ("fox", "лиса"), ("owl", "сова")]
@@ -116,6 +118,65 @@ async def test_matching_skips_ambiguous_pairs_within_a_batch(alice: Client) -> N
     for offset in range(0, len(session["items"]), 8):
         prompts = {item["prompt"] for item in session["items"][offset : offset + 8]}
         assert not {"cat", "kitty"} <= prompts
+
+
+async def test_matching_reconsiders_conflicts_after_filling_a_batch(alice: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    await add_word(alice, "kitty", "котёнок", "кот")
+    for index in range(7):
+        await add_word(alice, f"word{index}", f"перевод{index}")
+
+    body = {"mode": "matching", "size": "all", "order": "created_asc"}
+    preview = (await alice.post("/api/training/sessions/preview", json=body)).json()
+    session = await start(alice, size="all", order="created_asc")
+    items = session["items"]
+    assert preview["count"] == len(items) == 9
+    assert items[0]["prompt"] == "cat"
+    assert items[8]["prompt"] == "kitty"
+    assert len(items[0]["options"]) == 8
+    assert len(items[8]["options"]) == 1
+
+
+async def test_scheduled_matching_never_moves_due_words_behind_new_words(
+    app: FastAPI, alice: Client
+) -> None:
+    cat = await add_word(alice, "cat", "кот")
+    kitty = await add_word(alice, "kitty", "котёнок", "кот")
+    for word in (cat, kitty):
+        await set_progress_state(
+            app, word["id"], has_review=True, due_at=utcnow() - timedelta(days=1)
+        )
+    for index in range(7):
+        await add_word(alice, f"new{index}", f"перевод{index}")
+
+    body = {"mode": "matching", "purpose": "scheduled", "size": "all", "order": "created_asc"}
+    preview = (await alice.post("/api/training/sessions/preview", json=body)).json()
+    items = (await start(alice, purpose="scheduled", size="all", order="created_asc"))["items"]
+    assert preview["count"] == len(items) == 8
+    assert [item["prompt"] for item in items] == ["cat", *[f"new{i}" for i in range(7)]]
+
+
+async def test_scheduled_matching_reconsiders_due_conflicts_before_new_words(
+    app: FastAPI, alice: Client
+) -> None:
+    cat = await add_word(alice, "cat", "кот")
+    kitty = await add_word(alice, "kitty", "котёнок", "кот")
+    due = [cat, kitty]
+    for index in range(7):
+        due.append(await add_word(alice, f"due{index}", f"перевод{index}"))
+    await add_word(alice, "new", "новое")
+    for word in due:
+        await set_progress_state(
+            app, word["id"], has_review=True, due_at=utcnow() - timedelta(days=1)
+        )
+
+    items = (await start(alice, purpose="scheduled", size="all", order="created_asc"))["items"]
+    assert [item["prompt"] for item in items] == [
+        "cat",
+        *[f"due{i}" for i in range(7)],
+        "kitty",
+        "new",
+    ]
 
 
 async def test_matching_concurrent_answers_apply_once(app: FastAPI, alice: Client) -> None:

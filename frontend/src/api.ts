@@ -236,10 +236,12 @@ export type RevealResult = CardRevealResult | TerminalResult
 
 export class ApiError extends Error {
   readonly status: number
+  readonly sessionGeneration: number | undefined
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, sessionGeneration?: number) {
     super(detail)
     this.status = status
+    this.sessionGeneration = sessionGeneration
   }
 }
 
@@ -252,9 +254,15 @@ export interface ServerVoice {
 
 // Kept in memory only: never persisted to browser storage.
 let csrfToken = ''
+let sessionGeneration = 0
 
 export function setCsrfToken(token: string) {
+  if (csrfToken !== token) sessionGeneration += 1
   csrfToken = token
+}
+
+export function isCurrentApiError(error: ApiError) {
+  return error.sessionGeneration === undefined || error.sessionGeneration === sessionGeneration
 }
 
 async function request<T>(
@@ -265,6 +273,7 @@ async function request<T>(
   signal?: AbortSignal,
   binary = false,
 ): Promise<T> {
+  const requestGeneration = sessionGeneration
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (method !== 'GET') headers['X-CSRF-Token'] = csrfOverride ?? csrfToken
@@ -282,7 +291,7 @@ async function request<T>(
       if (data && typeof data === 'object' && 'detail' in data && typeof data.detail === 'string')
         detail = data.detail
     } catch {}
-    throw new ApiError(response.status, detail)
+    throw new ApiError(response.status, detail, requestGeneration)
   }
   return (
     response.status === 204 ? undefined : binary ? await response.blob() : await response.json()

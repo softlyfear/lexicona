@@ -1976,3 +1976,40 @@ absent in the final image. No full post-change vulnerability scan is claimed.
 Other OS advisories from old local images need individual applicability review;
 no unsupported system-library patches were introduced. Next external step:
 deploy only after authorization, then verify the deployed image separately.
+
+
+## BUG-001 — Adversarial regression audit (2026-11-14)
+
+Status: done; attempt 2. Owners: backend-agent (backend code/tests),
+frontend-agent (frontend code/tests), root (gate/Git/acceptance), code-reviewer
+(independent read-only review).
+
+Outcome and AC: fix concrete reproduced defects without changing the API,
+schema or approved training contracts. Each of the three original regressions
+failed on the pre-audit commit in an isolated archive and passed after the fixes.
+
+- Malformed non-ASCII X-CSRF-Token caused TypeError/500; it now returns 403 and
+  leaves the dictionary unchanged.
+- A late mutation 401 from an obsolete session logged out a newly authenticated
+  account. API errors now capture their request session generation; current
+  session 401 errors still clear authentication.
+- Matching discarded conflicts even when a later group could accept them.
+  Candidates are reconsidered after a full group of eight. Scheduled due words
+  remain ahead of new words; conflicts from a partial due group stay excluded
+  when introducing new words to preserve the existing snapshot group format.
+
+Files: backend deps.py/training.py and auth/matching/preview tests;
+frontend api.ts/session.ts and session.test.tsx; shared task records.
+No schema migration or dependency changes.
+
+Review attempt 1 found a due/new ordering regression in candidate recovery.
+It was corrected and covered by two scheduled matching regressions. Final
+independent review: Ship, no blocking findings.
+
+Validation: final make check exit 0 — tooling 38, backend 447, frontend 202;
+formatting, Ruff, mypy, frontend lint, TypeScript/build passed. git diff --check
+passed. Root independently reproduced the original three failures against the pre-audit commit
+in a temporary copy; no mutation experiments touched the working tree.
+
+Limitations: bounded source/test audit; physical devices, deployment, live data
+and paid providers were not exercised. No claim of exhaustive defect absence.

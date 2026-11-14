@@ -48,10 +48,10 @@ async def current_auth(request: Request, db: Db) -> Auth:
             )
         )
         if session is not None:
-            if request.method not in _SAFE_METHODS and not secrets.compare_digest(
-                request.headers.get(CSRF_HEADER, ""), session.csrf_token
-            ):
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf_failed")
+            if request.method not in _SAFE_METHODS:
+                csrf = request.headers.get(CSRF_HEADER, "")
+                if not csrf.isascii() or not secrets.compare_digest(csrf, session.csrf_token):
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf_failed")
             return Auth(user=session.user, session=session)
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_authenticated")
 

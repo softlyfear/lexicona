@@ -414,22 +414,34 @@ async def _select_targets(
 
     if body.mode == "matching":
         matching_targets: list[Word] = []
-        current_batch: list[Word] = []
-        for target in targets:
-            if body.size != "all" and len(matching_targets) == body.size:
+        remaining = targets
+        while remaining and (body.size == "all" or len(matching_targets) < body.size):
+            current_batch: list[Word] = []
+            deferred: list[Word] = []
+            for index, target in enumerate(remaining):
+                if body.purpose == "scheduled" and not schedules[target.id].has_review:
+                    # A partial due batch cannot be split without changing the snapshot
+                    # format; do not carry its conflicts past newly introduced words.
+                    deferred = [word for word in deferred if not schedules[word.id].has_review]
+                _label, answer_key = _answer_side(target, "en_ru")
+                if any(
+                    _choice_key(other.normalized_headword)
+                    == _choice_key(target.normalized_headword)
+                    or _meanings(other) & _meanings(target)
+                    or _answer_side(other, "en_ru")[1] == answer_key
+                    for other in current_batch
+                ):
+                    deferred.append(target)
+                    continue
+                matching_targets.append(target)
+                current_batch.append(target)
+                if len(current_batch) == 8 or (
+                    body.size != "all" and len(matching_targets) == body.size
+                ):
+                    remaining = deferred + remaining[index + 1 :]
+                    break
+            else:
                 break
-            _label, answer_key = _answer_side(target, "en_ru")
-            if any(
-                _choice_key(other.normalized_headword) == _choice_key(target.normalized_headword)
-                or _meanings(other) & _meanings(target)
-                or _answer_side(other, "en_ru")[1] == answer_key
-                for other in current_batch
-            ):
-                continue
-            matching_targets.append(target)
-            current_batch.append(target)
-            if len(current_batch) == 8:
-                current_batch = []
         targets = matching_targets
     else:
         eligible: list[Word] = []

@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Session } from './api'
+import { api, type Session } from './api'
 import {
   changePasswordSession,
   forgetSession,
@@ -235,6 +235,43 @@ describe('последовательность auth и cookie', () => {
     expect(events).toEqual(['login-alice', 'logout-alice-new-csrf', 'login-bob'])
     expect(cookie).toBe('bob')
     expect(queryClient.getQueryData(['session'])).toEqual(bob)
+  })
+
+  it('поздний 401 старой мутации не завершает новую сессию', async () => {
+    const gate = deferred()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string) => {
+        if (path === '/api/words/word-a/learned') {
+          await gate.promise
+          return response(401, { detail: 'not_authenticated' })
+        }
+        if (path === '/api/auth/login') return response(200, bob)
+        throw new Error(`unexpected path ${path}`)
+      }),
+    )
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => api.setWordLearned('word-a', true),
+    })
+    const oldRequest = mutation.execute(undefined).catch(() => undefined)
+    expect((await loginSession('bob', 'password')).kind).toBe('success')
+    gate.release()
+    await oldRequest
+    expect(queryClient.getQueryData(['session'])).toEqual(bob)
+    expect(sessionStorage.getItem('require-explicit-login')).toBeNull()
+  })
+
+  it('401 текущей сессии по-прежнему завершает вход', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(401, { detail: 'not_authenticated' })),
+    )
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => api.setWordLearned('word-a', true),
+    })
+    await mutation.execute(undefined).catch(() => undefined)
+    expect(queryClient.getQueryData(['session'])).toBeNull()
+    expect(sessionStorage.getItem('require-explicit-login')).toBe('1')
   })
 
   it('поздний ответ /me после выхода не обходит guard после повторного открытия', async () => {

@@ -122,8 +122,8 @@ async def test_matching_preview_shuffle_keeps_ordered_prefix_at_batch_boundary(
 ) -> None:
     for i in range(8):
         await add_word(alice, f"word{i}", f"значение{i}")
-    # The ninth word conflicts with every word in the first batch; the tenth
-    # could be used only if selection improperly looked beyond the prefix.
+    # The ninth word conflicts with the first batch and must be deferred;
+    # the tenth lies outside the selected prefix.
     await add_word(alice, "conflict", *[f"значение{i}" for i in range(8)])
     await add_word(alice, "outside", "другое")
     body = {
@@ -139,5 +139,7 @@ async def test_matching_preview_shuffle_keeps_ordered_prefix_at_batch_boundary(
     items = started.json()["items"]
     assert preview["count"] == len(items)
     assert all(item["prompt"] != "outside" for item in items)
-    assert len(items) < 9
-    assert len(items[0]["options"]) == len(items)
+    assert len(items) == 9
+    assert items[-1]["prompt"] == "conflict"
+    assert len(items[0]["options"]) == 8
+    assert len(items[-1]["options"]) == 1

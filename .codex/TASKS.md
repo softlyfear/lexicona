@@ -1,5 +1,11 @@
 # Активные задачи
 
+BUG-001 accepted and archived (2026-11-14), attempt 2: reject malformed CSRF
+headers, preserve the current login after obsolete 401 errors, and recover
+matching candidates across complete groups while preserving due-before-new.
+Independent Ship; final make check exit 0: tooling 38 / backend 447 / frontend 202.
+No deployment or live data changes. Audit is bounded, not proof of no other bugs.
+
 Instruction maintenance (2026-11-13): translated the six native role prompts while retaining models, file ownership and the ticket pipeline; restricted shared-record updates to change-authorizing requests. Native metadata, TOML and 38 tooling tests passed. Independent static review passed under the user-approved verification scope; no product or deployment changes.
 
 

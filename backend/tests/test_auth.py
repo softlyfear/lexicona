@@ -65,6 +65,18 @@ async def test_mutation_without_csrf_header_is_rejected(alice: Client) -> None:
     assert response.status_code == 403
 
 
+async def test_non_ascii_csrf_header_is_rejected(alice: Client) -> None:
+    del alice.headers["X-CSRF-Token"]
+    response = await alice.post(
+        "/api/words",
+        json={"headword": "cat", "translations": ["кот"]},
+        headers=[(b"X-CSRF-Token", b"\xff")],
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "csrf_failed"
+    assert (await alice.get("/api/words")).json() == []
+
+
 async def test_logout_ends_session(alice: Client) -> None:
     assert (await alice.post("/api/auth/logout")).status_code == 204
     assert (await alice.get("/api/auth/me")).status_code == 401
