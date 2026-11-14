@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import {
   api,
   ApiError,
@@ -99,6 +99,9 @@ export function WordForm({
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+  const [duplicateWarning, setDuplicateWarning] = useState(false)
+  const duplicateWarningId = useId()
+  const duplicateRequestId = useRef(0)
   const submitLock = useRef(false)
   const submitGeneration = useRef(0)
   const [choiceError, setChoiceError] = useState<string | null>(null)
@@ -113,6 +116,7 @@ export function WordForm({
       lookupRequestId.current++
       exampleRequestId.current++
       submitGeneration.current++
+      duplicateRequestId.current++
     },
     [],
   )
@@ -120,6 +124,8 @@ export function WordForm({
   function changeHeadword(value: string) {
     lookupRequestId.current++
     exampleRequestId.current++
+    duplicateRequestId.current++
+    setDuplicateWarning(false)
     setHeadword(value)
     setLookup(null)
     setLookupState('idle')
@@ -130,7 +136,25 @@ export function WordForm({
     setChoiceError(null)
   }
 
+  async function checkEarlyDuplicate(value: string) {
+    const id = ++duplicateRequestId.current
+    const currentRevision = getSessionRevision()
+    const key = normalizedAnswer(value)
+    setDuplicateWarning(false)
+    if (!key || (word && normalizedAnswer(word.headword) === key)) return
+    try {
+      const existing = await api.listWords(value.trim(), 'created_desc', 'all')
+      if (id !== duplicateRequestId.current || currentRevision !== getSessionRevision()) return
+      setDuplicateWarning(
+        existing.some((item) => item.id !== word?.id && normalizedAnswer(item.headword) === key),
+      )
+    } catch {
+      // This advisory check must not block lookup or manual entry; submit checks again.
+    }
+  }
+
   async function findSuggestions(value = headword) {
+    void checkEarlyDuplicate(value)
     const id = ++lookupRequestId.current
     const currentRevision = getSessionRevision()
     revision.current = currentRevision
@@ -292,6 +316,10 @@ export function WordForm({
   }
 
   function cancel() {
+    duplicateRequestId.current++
+    lookupRequestId.current++
+    exampleRequestId.current++
+    setDuplicateWarning(false)
     submitGeneration.current++
     submitLock.current = false
     setCheckingDuplicate(false)
@@ -402,6 +430,7 @@ export function WordForm({
               <input
                 className={ui.input}
                 value={headword}
+                aria-describedby={duplicateWarning ? duplicateWarningId : undefined}
                 onChange={(e) => changeHeadword(e.target.value)}
                 maxLength={200}
                 lang="en"
@@ -429,6 +458,11 @@ export function WordForm({
             />
           </label>
         </div>
+        {duplicateWarning && (
+          <p id={duplicateWarningId} role="status" className={ui.error}>
+            {errorMessage(new ApiError(409, 'word_exists'))}
+          </p>
+        )}
         <div className={formCss.dictionary}>
           <button
             type="button"

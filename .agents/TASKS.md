@@ -1,5 +1,12 @@
 # Активные задачи
 
+UNIQUE-002 accepted and archived (2026-11-14): requesting translation now
+shows an existing-word/phrase warning near the headword, without waiting for
+translation or Add. Exact normalized owner matches include learned/excluded
+rows; stale responses are ignored and unchanged edited words stay editable.
+Independent Ship. `make check` exit 0: tooling 20 / backend 463 / frontend 232.
+No deployment or browser visual check.
+
 SPEECH-006 accepted (2026-11-14): server speech is Kokoro only. Piper is
 removed from the app, image, and client. The Kokoro interpreter is installed
 under /opt/uv-python so the container user can run it. Russian stays in the

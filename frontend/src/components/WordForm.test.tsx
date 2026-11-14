@@ -63,6 +63,145 @@ beforeEach(() => {
   vi.spyOn(api, 'listWords').mockResolvedValue([])
 })
 
+const duplicateMessage = 'Такое слово или выражение уже есть в словаре.'
+
+function newForm(initial?: Word) {
+  const submit = vi.fn()
+  const cancel = vi.fn()
+  const view = render(
+    <WordForm
+      word={initial}
+      pending={false}
+      error={null}
+      onSubmit={submit}
+      onCancel={cancel}
+      availableTags={[]}
+      tagsLoading={false}
+      tagsError={null}
+    />,
+  )
+  return { submit, cancel, ...view }
+}
+
+it.each([
+  { headword: '  BOOK. ', existing: word },
+  {
+    headword: '  FAKE   it till you make it. ',
+    existing: { ...word, headword: 'fake it till you make it', is_learned: true },
+  },
+  { headword: 'Book', existing: { ...word, is_excluded: true } },
+])(
+  'предупреждает о дубле $headword над ещё загружающимся переводом',
+  async ({ headword, existing }) => {
+    vi.spyOn(api, 'listWords').mockResolvedValue([existing])
+    vi.spyOn(api, 'lookupDictionary').mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    newForm()
+    fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: headword } })
+    const lookupButton = screen.getByRole('button', { name: /Подобрать перевод/ })
+    lookupButton.focus()
+    await user.keyboard('{Enter}')
+    const warning = await screen.findByText(duplicateMessage)
+    expect(warning).toHaveAttribute('role', 'status')
+    expect(
+      warning.compareDocumentPosition(lookupButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0)
+    expect(screen.getByLabelText(/Слово или выражение/)).toHaveAccessibleDescription(
+      duplicateMessage,
+    )
+    expect(screen.getByText('Ищем в словаре…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Добавить' })).toBeEnabled()
+    expect(api.listWords).toHaveBeenCalledWith(headword.trim(), 'created_desc', 'all')
+    fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'new' } })
+    expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument()
+  },
+)
+
+it('не считает подстроку дублем и повторяет раннюю проверку после ошибки перевода', async () => {
+  vi.spyOn(api, 'listWords')
+    .mockResolvedValueOnce([{ ...word, headword: 'book shop' }])
+    .mockResolvedValueOnce([word])
+  vi.spyOn(api, 'lookupDictionary').mockRejectedValue(new Error('offline'))
+  const user = userEvent.setup()
+  newForm()
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Словарь недоступен')
+  expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByText(duplicateMessage)).toBeInTheDocument()
+  expect(api.listWords).toHaveBeenCalledTimes(2)
+})
+
+it('ошибка ранней проверки не мешает ручному вводу и новой проверке при сохранении', async () => {
+  vi.spyOn(api, 'listWords').mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([])
+  vi.spyOn(api, 'lookupDictionary').mockRejectedValue(new Error('offline'))
+  const user = userEvent.setup()
+  const { submit } = newForm()
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  await screen.findByRole('alert')
+  await user.type(screen.getByLabelText(/Переводы/), 'книга')
+  await user.click(screen.getByRole('button', { name: 'Добавить' }))
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ headword: 'book' }))
+  expect(api.listWords).toHaveBeenCalledTimes(2)
+})
+
+it.each(['change', 'cancel', 'unmount', 'session', 'retry'] as const)(
+  'игнорирует устаревший ранний ответ после %s',
+  async (action) => {
+    let resolveList: (words: Word[]) => void = () => {}
+    vi.spyOn(api, 'listWords')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveList = resolve
+          }),
+      )
+      .mockResolvedValue([])
+    vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
+    const user = userEvent.setup()
+    const { unmount, cancel, submit } = newForm()
+    await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+    await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+    await screen.findByRole('button', { name: 'книга' })
+    if (action === 'change') {
+      fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'new' } })
+    } else if (action === 'cancel') {
+      await user.click(screen.getByRole('button', { name: 'Отмена' }))
+      expect(cancel).toHaveBeenCalledTimes(1)
+    } else if (action === 'unmount') {
+      unmount()
+    } else if (action === 'session') {
+      act(() => forgetSession())
+    } else {
+      await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+    }
+    await act(async () => resolveList([word]))
+    expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument()
+    expect(submit).not.toHaveBeenCalled()
+  },
+)
+
+it('не предупреждает при неизменённом заголовке дубля, но проверяет изменённый при поиске', async () => {
+  vi.spyOn(api, 'listWords').mockResolvedValue([{ ...word, id: 'other' }])
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
+  const user = userEvent.setup()
+  const { submit } = newForm(word)
+  fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: ' BOOK. ' } })
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  await screen.findByRole('button', { name: 'книга' })
+  expect(api.listWords).not.toHaveBeenCalled()
+  expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument()
+  await user.type(screen.getByLabelText('Заметка'), 'уточнение')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ note: 'уточнение' }))
+  fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'other' } })
+  vi.mocked(api.listWords).mockResolvedValue([{ ...word, id: 'other', headword: 'other' }])
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByText(duplicateMessage)).toBeInTheDocument()
+})
+
 it('отклоняет повтор слова и фразы, в том числе выученной, и пропускает более короткое слово', async () => {
   const phrase: Word = {
     ...word,

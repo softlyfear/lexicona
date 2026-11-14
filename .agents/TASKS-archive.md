@@ -4,6 +4,26 @@
 тикетов, не действующие настройки. Роли теперь в `.opencode/agents/`, настройки
 в `opencode.jsonc`, общий протокол в этом каталоге.
 
+## UNIQUE-002 — early duplicate warning (2026-11-14)
+
+- Status: accepted; attempt 1; orchestrator: primary session; independent
+  code-reviewer: Ship, no findings.
+- Outcome/AC: translation lookup concurrently checks the owner's full dictionary
+  for normalized exact word/phrase matches, including learned/excluded rows.
+  The warning appears near the headword before translation results or Add,
+  is associated with the input for accessibility, and clears on headword change.
+- Stale results after change/cancel/unmount/session change/repeated lookup are
+  ignored. Unchanged edited words, including legacy duplicates, remain editable.
+  Failed early checks do not block manual entry; submit/server checks remain.
+- Ownership: frontend-agent changed only WordForm and its regressions;
+  primary session handled protocol, acceptance and Git. No API/schema/dependency
+  changes. Sequence: implementation/tests → final gate → independent review.
+- Verification: WordForm 41 passed; `make check` exit 0 (tooling 20 / backend
+  463 / frontend 232), including format/lint/types/build. `git diff --check`
+  passed. Reviewer reused evidence for identical code and checked the whole diff.
+- Limitations: no browser visual check, deployment, server restart or database
+  operations performed.
+
 ## SPEECH-005 — complete English Kokoro catalog (2026-11-14)
 
 - Status: accepted; attempt 1; orchestrator root; independent review: Ship for the
