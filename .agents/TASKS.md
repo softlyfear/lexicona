@@ -4,6 +4,9 @@
 
 Source: user screenshots 1–13 and the implementation plan in the current session.
 No deployment or historical data fabrication is authorized.
+User follow-up: after this queue is complete, remove closed-ticket records and
+TASKS-archive.md, keeping history in Git and only current engineering decisions
+in PROJECT.md. Preserve active-ticket workflow/template without stale archive links.
 
 - FEEDBACK-001 / accurate first-attempt session summary / accepted / attempt 1.
   AC: corrected retries retain their first error; errors survive reveal/skip;
@@ -17,15 +20,23 @@ No deployment or historical data fabrication is authorized.
   No browser visual check. GET /training/sessions/{id}/summary supplies authoritative
   completion and first-attempt counts; hints may precede the first submission.
   Independent code-reviewer: Ship. Orchestrator accepted; no historical data repair.
-- FEEDBACK-002 / answer-specific apostrophe and hyphen-space tolerance / implementation / attempt 1.
+- FEEDBACK-002 / answer-specific apostrophe and hyphen-space tolerance / accepted / attempt 1.
   AC: accept youre/you're and low life/low-life without fuzzy spelling or changing
   headword uniqueness; preserve hints, one-time scoring and meaningful negations.
   Owner: backend-agent; files: domain/normalize.py, training router and related
   backend tests only. Gate owner: backend-agent. Check: focused domain/API tests,
   make check and independent code-reviewer.
-- FEEDBACK-003 / prominent revealed answer, playback, nearby Next / planned.
+  Evidence: targeted 155 passed; make check exit 0 (tooling 20 / backend 523 /
+  frontend 252), formatting/lint/types/build passed. Answer-only policy keeps
+  storage normalization unchanged; lowlife is not low-life and can't is not can.
+  Independent code-reviewer: Ship. Orchestrator accepted.
+- FEEDBACK-003 / prominent revealed answer, playback, nearby Next / implementation / attempt 1.
   AC: authorized answer only, correct speech language, cancellation and compact
   responsive keyboard-accessible controls; failures never affect progress.
+  Owner/final gate: frontend-agent. Boundaries: TrainingPage, MatchingRun if needed,
+  pages.module.css, focused speech/input/assistance tests. Existing speech
+  controller reused; backend changes require a demonstrated missing field.
+  Checks: focused behavioral tests, make check, independent review.
 - FEEDBACK-004 / filtered dictionary count / planned.
   AC: right-aligned count reflects search/scope/OR-tags, zero, loading and mutations.
 - FEEDBACK-005 / persisted optional automatic next / planned.

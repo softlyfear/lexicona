@@ -287,3 +287,9 @@ AnswerEvent supplies correct/incorrect even after correction, reveal or skip.
 Missing historical evidence is unknown rather than reconstructed from terminal
 correctness; accuracy_percent is null when evidence is incomplete. Letter hints
 may precede a first submission, so this is not an unassisted-knowledge metric.
+
+Typed answers and letter hints use a separate normalize_answer policy: internal
+apostrophes may be omitted and single letter-to-letter hyphens may be spaces.
+Dictionary identity, search and semantic-change detection still use normalize.
+No fuzzy spelling or arbitrary whitespace removal is applied; negation letters
+remain significant.

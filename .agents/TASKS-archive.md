@@ -4,6 +4,22 @@
 тикетов, не действующие настройки. Роли теперь в `.opencode/agents/`, настройки
 в `opencode.jsonc`, общий протокол в этом каталоге.
 
+## FEEDBACK-001 — first-attempt training accuracy (2026-11-14)
+
+- Status: accepted, attempt 1; independent code-reviewer: Ship.
+- Owner-scoped read-only session summary separates terminal completion categories
+  from immutable AnswerEvent first-submission correctness. Corrections, reveals
+  and skips never erase the first error. Missing legacy evidence stays unknown.
+- The shared frontend summary supports ordinary and matching sessions, resume,
+  loading/error/retry and finishing without a loaded summary. Letter-hinted first
+  submissions are explicitly not described as unassisted answers.
+- Owners: backend-agent, then frontend-agent as final gate owner; orchestrator
+  handled acceptance and Git. No migration or scoring changes.
+- Verification: backend targeted 121, frontend targeted 68; make check exit 0
+  (tooling 20 / backend 480 / frontend 252), format/lint/types/build passed.
+- Limitations: no browser visual check, deployment, historical data repair or
+  server restart. Commit 2c4696f pushed to the existing upstream.
+
 ## NAV-001 — brand returns to dictionary list (2026-11-14)
 
 - Status: accepted; attempt 1; orchestrator: primary session; independent

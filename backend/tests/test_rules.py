@@ -1,6 +1,6 @@
 import pytest
 
-from lexicona.domain.normalize import hinted_text, normalize
+from lexicona.domain.normalize import hinted_text, normalize, normalize_answer
 from lexicona.domain.progress import AnswerKind, Difficulty, apply, delta, with_letter_hint
 
 D = Difficulty
@@ -55,6 +55,11 @@ def test_letter_hint_halves_only_a_positive_reward() -> None:
         ("", ["кошка", "к"], "к", False),
         ("ко", ["кот", "кошка"], "кот", True),
         ("", ["я", "меня"], "я", True),
+        ("youre all s", ["you're all set"], "you're all se", False),
+        ("youre all set", ["you're all set"], "youre all set", True),
+        ("low l", ["low-life"], "low-li", False),
+        ("low‑l", ["low life"], "low li", False),
+        ("low life", ["low-life"], "low life", True),
     ],
 )
 def test_hinted_text_adds_one_character(
@@ -90,3 +95,55 @@ def test_normalize(raw: str, expected: str) -> None:
 
 def test_normalize_keeps_negation() -> None:
     assert normalize("can't") != normalize("can")
+
+
+@pytest.mark.parametrize(
+    ("canonical", "variant"),
+    [
+        ("you're all set", "youre all set"),
+        ("you're all set", " YOU’RE ALL SET. "),
+        ("you're all set", "youʼre all set"),
+        ("can't", "cant"),
+        ("low-life", "low life"),
+        ("low-life", "low‐life"),
+        ("low-life", "low‑life"),
+        ("low-life", "low﹣life"),
+        ("low-life", "low－life"),
+    ],
+)
+def test_answer_specific_variants(canonical: str, variant: str) -> None:
+    assert normalize_answer(canonical) == normalize_answer(variant)
+    assert normalize_answer(variant) == normalize_answer(normalize_answer(variant))
+
+
+@pytest.mark.parametrize(
+    ("canonical", "wrong"),
+    [
+        ("can't", "can"),
+        ("you're all set", "your all set"),
+        ("you're all set", "youreallset"),
+        ("low-life", "lowlife"),
+        ("low-life", "low--life"),
+        ("low-life", "low—life"),
+        ("low-life", "low–life"),
+        ("low-life", "low/life"),
+        ("low-life", "low, life"),
+        ("low-life", "low - life"),
+        ("'cat'", "cat"),
+        ("dogs'", "dogs"),
+        ("1-2", "1 2"),
+        ("x-ray", "x ray!"),
+    ],
+)
+def test_answer_tolerance_is_not_fuzzy_or_general_punctuation_stripping(
+    canonical: str, wrong: str
+) -> None:
+    assert normalize_answer(canonical) != normalize_answer(wrong)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("you're all set", "youre all set"), ("low-life", "low life"), ("low-life", "low‑life")],
+)
+def test_answer_tolerance_does_not_change_dictionary_identity(first: str, second: str) -> None:
+    assert normalize(first) != normalize(second)

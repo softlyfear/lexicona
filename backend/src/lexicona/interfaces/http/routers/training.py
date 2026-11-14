@@ -16,7 +16,7 @@ from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
 from lexicona.domain import distractors, progress, srs
-from lexicona.domain.normalize import hinted_text, normalize
+from lexicona.domain.normalize import hinted_text, normalize, normalize_answer
 from lexicona.domain.progress import AnswerKind
 from lexicona.domain.srs import Grade
 from lexicona.infrastructure import dictionary
@@ -980,8 +980,8 @@ async def hint_item(item_id: str, body: LetterHintIn, auth: CurrentAuth, db: Db)
     if word is None or item.outcome is not None or item.session.status != "active":
         raise HTTPException(409, "item_closed")
     shown, complete = hinted_text(body.text, item.expected_answers)
-    if normalize(body.text) and normalize(body.text) in {
-        normalize(answer) for answer in item.expected_answers
+    if normalize_answer(body.text) and normalize_answer(body.text) in {
+        normalize_answer(answer) for answer in item.expected_answers
     }:
         return LetterHintOut(text=body.text, complete=True)
     claimed = await db.execute(
@@ -1034,7 +1034,9 @@ async def answer_item(
         grade = "good" if correct else "again"
     elif isinstance(body, TextAnswerIn):
         assert item.expected_answers is not None
-        correct = normalize(body.text) in {normalize(answer) for answer in item.expected_answers}
+        correct = normalize_answer(body.text) in {
+            normalize_answer(answer) for answer in item.expected_answers
+        }
         kind = AnswerKind.TYPED
         chosen_option = None
         submitted_text = body.text
