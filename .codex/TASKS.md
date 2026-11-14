@@ -1,5 +1,11 @@
 # Активные задачи
 
+PREFS-001 accepted (2026-11-14): training setup and speech choices are stored
+on the account and restored on the next visit. Overlapping section writes merge
+through preferences_revision and do not write a difficulty the request did not
+set. Independent Ship. make check exit 0: tooling 38 / backend 469 / frontend 212.
+No deployment. Dictionary filters and the PWA install prompt stay on the device.
+
 SPEECH-005 accepted and archived (2026-11-14), attempt 1: all 28 English Kokoro
 voices exposed with stable IDs and defaults. Task-only snapshot make check exit 0:
 tooling 38 / backend 465 / frontend 203. All 28 real API WAV checks passed.

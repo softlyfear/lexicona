@@ -165,6 +165,52 @@ def test_learned_mark_survives_upgrade_and_blocks_downgrade(tmp_path: Path) -> N
         assert "is_learned" not in columns
 
 
+def test_user_preferences_migration_refuses_data_loss(tmp_path: Path) -> None:
+    import json
+    import sqlite3
+
+    path = tmp_path / "preferences.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "a4c7e2b91d08")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2026-01-01')"
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as db:
+        columns = [row[1] for row in db.execute("PRAGMA table_info(users)")]
+        assert "preferences" in columns
+        assert "preferences_revision" in columns
+        assert db.execute(
+            "SELECT login, preferences, preferences_revision FROM users"
+        ).fetchone() == ("alice", None, 0)
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u2', 'bob', 'hash', 0, 'easy', '2026-01-02')"
+        )
+        assert db.execute(
+            "SELECT preferences, preferences_revision FROM users WHERE id = 'u2'"
+        ).fetchone() == (None, 0)
+        db.execute("UPDATE users SET preferences = ?", (json.dumps({"speech": {"rate": 1}}),))
+    with pytest.raises(RuntimeError, match="user preferences"):
+        command.downgrade(config, "a4c7e2b91d08")
+    with sqlite3.connect(path) as db:
+        assert json.loads(db.execute("SELECT preferences FROM users").fetchone()[0])["speech"] == {
+            "rate": 1
+        }
+        db.execute("UPDATE users SET preferences = '{}'")
+    command.downgrade(config, "a4c7e2b91d08")
+    with sqlite3.connect(path) as db:
+        columns = [row[1] for row in db.execute("PRAGMA table_info(users)")]
+        assert "preferences" not in columns
+        assert "preferences_revision" not in columns
+        assert db.execute("SELECT login, difficulty FROM users WHERE id = 'u'").fetchone() == (
+            "alice",
+            "medium",
+        )
+
+
 def test_source_refs_migration_refuses_data_loss(tmp_path: Path) -> None:
     import json
     import sqlite3

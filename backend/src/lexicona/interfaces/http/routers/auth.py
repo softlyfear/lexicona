@@ -1,9 +1,12 @@
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from typing import Self
 
 from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import delete, insert, literal, select, update
+from sqlalchemy.exc import OperationalError
 
 from lexicona.domain.progress import Difficulty
 from lexicona.infrastructure.db import utcnow
@@ -16,10 +19,20 @@ from lexicona.infrastructure.security import (
     verify_password,
 )
 from lexicona.interfaces.http.deps import SESSION_COOKIE, AppSettings, CurrentAuth, Db
+from lexicona.interfaces.http.preferences import (
+    AccountPreferences,
+    SpeechPreferences,
+    TrainingPreferences,
+    preference_document,
+    public_preferences,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 throttle = LoginThrottle()
 password_throttle = LoginThrottle()
+# Tests hold this after a settings read and before the conditional write.
+preference_write_gate: Callable[[], Awaitable[None]] | None = None
+_PREFERENCE_ATTEMPTS = 8
 
 
 class LoginIn(BaseModel):
@@ -32,6 +45,7 @@ class UserOut(BaseModel):
     login: str
     is_admin: bool
     difficulty: Difficulty
+    preferences: AccountPreferences
 
 
 class SessionOut(BaseModel):
@@ -40,7 +54,18 @@ class SessionOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    difficulty: Difficulty
+    model_config = ConfigDict(extra="forbid")
+    difficulty: Difficulty | None = None
+    training: TrainingPreferences | None = None
+    speech: SpeechPreferences | None = None
+
+    @model_validator(mode="after")
+    def has_change(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("nothing to update")
+        if "difficulty" in self.model_fields_set and self.difficulty is None:
+            raise ValueError("invalid difficulty")
+        return self
 
 
 class ChangePasswordIn(BaseModel):
@@ -49,13 +74,18 @@ class ChangePasswordIn(BaseModel):
     new_password: str = Field(strict=True, min_length=12, max_length=128)
 
 
-def _session_out(user: User, csrf_token: str) -> SessionOut:
-    return SessionOut(
-        user=UserOut(
-            id=user.id, login=user.login, is_admin=user.is_admin, difficulty=user.difficulty
-        ),
-        csrf_token=csrf_token,
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        login=user.login,
+        is_admin=user.is_admin,
+        difficulty=user.difficulty,
+        preferences=public_preferences(user.preferences),
     )
+
+
+def _session_out(user: User, csrf_token: str) -> SessionOut:
+    return SessionOut(user=_user_out(user), csrf_token=csrf_token)
 
 
 def _set_session_cookie(response: Response, token: str, settings: AppSettings) -> None:
@@ -178,6 +208,47 @@ async def me(auth: CurrentAuth) -> SessionOut:
 
 @router.put("/settings")
 async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOut:
-    auth.user.difficulty = body.difficulty
-    await db.commit()
-    return _session_out(auth.user, auth.session.csrf_token).user
+    fields = body.model_fields_set
+    section_write = "training" in fields or "speech" in fields
+    for _attempt in range(_PREFERENCE_ATTEMPTS):
+        await db.rollback()
+        await db.refresh(auth.user)
+        user_id = auth.user.id
+        revision = auth.user.preferences_revision
+        document = preference_document(auth.user.preferences)
+        if "training" in fields:
+            if body.training is None:
+                document.pop("training", None)
+            else:
+                document["training"] = body.training.model_dump(mode="json")
+        if "speech" in fields:
+            if body.speech is None:
+                document.pop("speech", None)
+            else:
+                document["speech"] = body.speech.model_dump(mode="json")
+        # Release the read snapshot before waiting, then write only if it is unchanged.
+        await db.rollback()
+        gate = preference_write_gate
+        if gate is not None:
+            await gate()
+        # A section write must not store the difficulty it happened to read.
+        # Difficulty-only saves do not bump preferences_revision.
+        values: dict[str, object] = {}
+        conditions = [User.id == user_id]
+        if "difficulty" in fields and body.difficulty is not None:
+            values["difficulty"] = body.difficulty
+        if section_write:
+            values["preferences"] = document or None
+            values["preferences_revision"] = revision + 1
+            conditions.append(User.preferences_revision == revision)
+        try:
+            result = await db.execute(update(User).where(*conditions).values(**values))
+        except OperationalError:
+            await db.rollback()
+            continue
+        if result.rowcount == 1:  # type: ignore[attr-defined]
+            await db.commit()
+            await db.refresh(auth.user)
+            return _user_out(auth.user)
+        await db.rollback()
+    raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "preference_conflict")

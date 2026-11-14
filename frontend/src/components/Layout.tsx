@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { cancelSpeech, setSpeechOwner, useSpeech } from '../speech'
+import { bindSpeechSync, cancelTrainingSync, speechFromAccount } from '../accountPreferences'
+import { cancelSpeech, setSpeechAccountPublisher, setSpeechOwner, useSpeech } from '../speech'
 import { type User } from '../api'
 import { logoutSession } from '../session'
 import css from './Layout.module.css'
@@ -24,17 +25,27 @@ export function Layout({ user }: { user: User }) {
   // keep the current filters instead of dropping them.
   const dictionaryTo = pathname === '/' ? `/${location.search}` : '/'
   const { notice } = useSpeech()
+  // The router remounts this tree per account. Keep the first speech document so a
+  // later save cannot reload the controls from a response that is already stale.
+  const [accountSpeech] = useState(() => speechFromAccount(user.preferences?.speech))
   useEffect(() => {
-    setSpeechOwner(user.id)
+    const sync = bindSpeechSync(user.id)
+    setSpeechAccountPublisher((ownerId, preferences) => {
+      if (ownerId === user.id) sync.publish(preferences)
+    })
+    setSpeechOwner(user.id, { speech: accountSpeech })
     const hide = () => {
       if (document.hidden) cancelSpeech()
     }
     document.addEventListener('visibilitychange', hide)
     return () => {
       document.removeEventListener('visibilitychange', hide)
+      sync.stop()
+      cancelTrainingSync()
+      setSpeechAccountPublisher(null)
       setSpeechOwner(null)
     }
-  }, [user.id])
+  }, [user.id, accountSpeech])
   useEffect(() => () => cancelSpeech(), [pathname])
   return (
     <div className={css.shell}>

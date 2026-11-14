@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import {
+  loadStoredTraining,
+  scheduleTrainingSave,
+  useTrainingSyncError,
+} from '../accountPreferences'
 import {
   ApiError,
   api,
@@ -11,6 +16,7 @@ import {
   type ResumedItem,
   type TrainingFilters,
   type TrainingOrder,
+  type TrainingPreferences,
   type TrainingPurpose,
   type TrainingSession,
   type TrainingSize,
@@ -59,7 +65,13 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'easy', label: 'Легко' },
 ]
 
-export function TrainingPage() {
+export function TrainingPage({
+  userId,
+  accountTraining,
+}: {
+  userId?: string
+  accountTraining?: unknown
+} = {}) {
   const { preferences } = useSpeech()
   const queryClient = useQueryClient()
   const latest = useQuery({
@@ -168,6 +180,8 @@ export function TrainingPage() {
     )
   return (
     <Setup
+      userId={userId}
+      accountTraining={accountTraining}
       onStart={(session, requestedSize) => {
         if (!active.current) return
         setStarted({ session, requestedSize })
@@ -186,21 +200,45 @@ export function TrainingPage() {
 
 function Setup({
   onStart,
+  userId,
+  accountTraining,
 }: {
   onStart: (session: TrainingSession, requestedSize: TrainingSize) => void
+  userId?: string
+  accountTraining?: unknown
 }) {
-  const [direction, setDirection] = useState<Direction>('en_ru')
-  const [mode, setMode] = useState<NewTrainingMode>('choice')
-  const [purpose, setPurpose] = useState<TrainingPurpose>('free')
-  const [includeNew, setIncludeNew] = useState(true)
-  const [sizeText, setSizeText] = useState('10')
-  const [sizeMode, setSizeMode] = useState<'number' | 'all'>('number')
-  const [tagIds, setTagIds] = useState<string[]>([])
-  const [minimum, setMinimum] = useState('')
-  const [maximum, setMaximum] = useState('')
-  const [order, setOrder] = useState<TrainingOrder>('random')
-  const [shuffle, setShuffle] = useState(false)
+  const [draft] = useState(() => loadStoredTraining(userId, accountTraining))
+  const [direction, setDirection] = useState<Direction>(draft.training.direction)
+  const [mode, setMode] = useState<NewTrainingMode>(draft.training.mode)
+  const [purpose, setPurpose] = useState<TrainingPurpose>(draft.training.purpose)
+  const [includeNew, setIncludeNew] = useState(draft.training.include_new)
+  const [sizeText, setSizeText] = useState(
+    draft.training.size === 'all' ? '10' : String(draft.training.size),
+  )
+  const [sizeMode, setSizeMode] = useState<'number' | 'all'>(
+    draft.training.size === 'all' ? 'all' : 'number',
+  )
+  const [tagIds, setTagIds] = useState<string[]>(draft.training.tag_ids)
+  const [minimum, setMinimum] = useState(
+    draft.training.progress_min === null ? '' : String(draft.training.progress_min),
+  )
+  const [maximum, setMaximum] = useState(
+    draft.training.progress_max === null ? '' : String(draft.training.progress_max),
+  )
+  const [order, setOrder] = useState<TrainingOrder>(draft.training.order)
+  const [shuffle, setShuffle] = useState(draft.training.shuffle)
+  // Opening the page must not upload defaults. A local copy is sent once when the
+  // account has no training section yet. The flag stays set until that send starts:
+  // StrictMode clears the module timer during its extra effect pass and must schedule it again.
+  const loadedTraining = useRef(JSON.stringify(draft.training))
+  const pendingSeed = useRef(draft.source === 'local')
+  const syncError = useTrainingSyncError()
   const tags = useQuery({ queryKey: ['tags'], queryFn: api.listTags })
+  const selectedTagIds = useMemo(() => {
+    if (!tags.data) return tagIds
+    const known = new Set(tags.data.map((tag) => tag.id))
+    return tagIds.filter((id) => known.has(id))
+  }, [tags.data, tagIds])
   const parseBound = (value: string) =>
     value === ''
       ? null
@@ -214,10 +252,53 @@ function Setup({
   const size = Number(sizeText)
   const validSize = /^\d+$/u.test(sizeText) && Number.isSafeInteger(size) && size >= 1
   const validSetup = (sizeMode === 'all' || validSize) && validBounds
+  const persisted = useMemo(() => {
+    if (!userId || !validSetup || min === undefined || max === undefined) return null
+    if (sizeMode === 'number' && size > 1_000_000) return null
+    if ((min ?? 0) > 1_000_000_000 || (max ?? 0) > 1_000_000_000) return null
+    const training: TrainingPreferences = {
+      mode,
+      direction: direction === 'ru_en' ? 'ru_en' : 'en_ru',
+      purpose,
+      include_new: includeNew,
+      size: sizeMode === 'all' ? 'all' : size,
+      tag_ids: [...new Set(selectedTagIds)].sort(),
+      progress_min: min,
+      progress_max: max,
+      order,
+      shuffle,
+    }
+    return training
+  }, [
+    userId,
+    validSetup,
+    min,
+    max,
+    sizeMode,
+    size,
+    mode,
+    direction,
+    purpose,
+    includeNew,
+    selectedTagIds,
+    order,
+    shuffle,
+  ])
+  useEffect(() => {
+    if (!userId || !persisted) return
+    const serialized = JSON.stringify(persisted)
+    if (serialized === loadedTraining.current && !pendingSeed.current) return
+    // The timer lives outside this effect so leaving the page still saves. It is cleared
+    // only when the account changes. Mark the draft sent when the timer fires, not before.
+    scheduleTrainingSave(userId, persisted, pendingSeed.current ? 0 : 350, () => {
+      pendingSeed.current = false
+      loadedTraining.current = serialized
+    })
+  }, [userId, persisted])
   const requestedSize = sizeMode === 'all' ? 'all' : size
   const filters: TrainingFilters = {}
-  if (tagIds.length || min !== null || max !== null) {
-    filters.tag_ids = [...tagIds].sort()
+  if (selectedTagIds.length || min !== null || max !== null) {
+    filters.tag_ids = [...selectedTagIds].sort()
     filters.progress_min = min
     filters.progress_max = max
   }
@@ -320,6 +401,12 @@ function Setup({
             </button>
           </div>
         </div>
+        {syncError && (
+          <p role="alert" className={ui.error}>
+            Не удалось сохранить настройки тренировки для других устройств. На этом устройстве они
+            сохранены.
+          </p>
+        )}
         <div className={`${ui.card} ${css.form}`}>
           <div className={css.group}>
             <h2 className={css.sectionTitle} id="training-purpose-title">
@@ -525,13 +612,13 @@ function Setup({
                   <label className={css.tag} key={tag.id}>
                     <input
                       type="checkbox"
-                      checked={tagIds.includes(tag.id)}
-                      disabled={!tagIds.includes(tag.id) && tagIds.length >= 20}
+                      checked={selectedTagIds.includes(tag.id)}
+                      disabled={!selectedTagIds.includes(tag.id) && selectedTagIds.length >= 20}
                       onChange={(event) =>
-                        setTagIds((ids) =>
+                        setTagIds(
                           event.target.checked
-                            ? [...ids, tag.id]
-                            : ids.filter((id) => id !== tag.id),
+                            ? [...selectedTagIds, tag.id]
+                            : selectedTagIds.filter((id) => id !== tag.id),
                         )
                       }
                     />

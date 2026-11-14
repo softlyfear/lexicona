@@ -35,11 +35,51 @@ export interface TrainingPreview {
   unavailable_reason: 'no_matching_words' | 'no_scheduled_words' | 'not_enough_words' | null
 }
 
+export interface TrainingPreferences {
+  mode: NewTrainingMode
+  direction: 'en_ru' | 'ru_en'
+  purpose: TrainingPurpose
+  include_new: boolean
+  size: number | 'all'
+  tag_ids: string[]
+  progress_min: number | null
+  progress_max: number | null
+  order: TrainingOrder
+  shuffle: boolean
+}
+
+export interface SpeechPreferencesDto {
+  en_locale: string
+  en_voice_uri: string | null
+  ru_voice_uri: string | null
+  rate: 0.5 | 0.75 | 1 | 1.25 | 1.5
+  auto_prompt: boolean
+  speak_en: boolean
+  speak_ru: boolean
+  engine_en: 'auto' | 'server' | 'browser'
+  engine_ru: 'auto' | 'server' | 'browser'
+  server_en_us: string | null
+  server_en_gb: string | null
+  server_ru: string | null
+}
+
+export interface AccountPreferences {
+  training?: TrainingPreferences | null
+  speech?: SpeechPreferencesDto | null
+}
+
+export interface SettingsUpdate {
+  difficulty?: Difficulty
+  training?: TrainingPreferences | null
+  speech?: SpeechPreferencesDto | null
+}
+
 export interface User {
   id: string
   login: string
   is_admin: boolean
   difficulty: Difficulty
+  preferences?: AccountPreferences | null
 }
 
 export interface Session {
@@ -358,8 +398,7 @@ export const api = {
       current_password: currentPassword,
       new_password: newPassword,
     }),
-  updateSettings: (difficulty: Difficulty) =>
-    request<User>('PUT', '/auth/settings', { difficulty }),
+  updateSettings: (body: SettingsUpdate) => request<User>('PUT', '/auth/settings', body),
 
   listWords: (
     q: string,

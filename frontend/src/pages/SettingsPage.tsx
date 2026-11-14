@@ -49,7 +49,7 @@ export function SettingsPage({ user }: { user: User }) {
       revision: number
     }): Promise<Result<User>> => {
       try {
-        return { data: await api.updateSettings(difficulty) }
+        return { data: await api.updateSettings({ difficulty }) }
       } catch (error) {
         return { error }
       }
@@ -63,7 +63,9 @@ export function SettingsPage({ user }: { user: User }) {
       }
       if (result.data.id !== user.id) return
       queryClient.setQueryData(['session'], (prev: Session | null) =>
-        prev?.user.id === user.id ? { ...prev, user: result.data } : prev,
+        prev?.user.id === user.id
+          ? { ...prev, user: { ...prev.user, difficulty: result.data.difficulty } }
+          : prev,
       )
     },
     onSettled: () => {
@@ -136,7 +138,8 @@ export function SettingsPage({ user }: { user: User }) {
 }
 
 function SpeechSettings() {
-  const { preferences, voices, voiceState, storageError, serverVoices, serverState } = useSpeech()
+  const { preferences, voices, voiceState, storageError, syncError, serverVoices, serverState } =
+    useSpeech()
   const serverReady = serverState === 'ready'
   const locales = [
     ...new Set([
@@ -193,6 +196,12 @@ function SpeechSettings() {
         <p role="alert" className={ui.error}>
           Не удалось прочитать или сохранить настройки браузера; они действуют только до закрытия
           страницы.
+        </p>
+      )}
+      {syncError && (
+        <p role="alert" className={ui.error}>
+          Не удалось сохранить озвучивание для других устройств. На этом устройстве настройки
+          сохранены.
         </p>
       )}
       {(['en', 'ru'] as const).map((lang) => {

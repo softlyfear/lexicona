@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -35,6 +36,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(default=False)
     difficulty: Mapped[Difficulty] = mapped_column(String(16), default=Difficulty.MEDIUM)
+    # Training setup and speech. Null means the account still uses defaults.
+    preferences: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Increments when a preference section is saved so overlapping writes can merge.
+    preferences_revision: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     statistics_started_at: Mapped[datetime] = mapped_column(
         default=utcnow, server_default=text("CURRENT_TIMESTAMP")

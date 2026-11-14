@@ -5,6 +5,7 @@ import {
   cancelSpeech,
   languageEngine,
   selectServerVoice,
+  setSpeechAccountPublisher,
   setSpeechOwner,
   speak,
   updateSpeechPreferences,
@@ -274,6 +275,76 @@ describe('браузерная речь', () => {
     expect(result.current.status).toContain('не найден')
     expect(engine.speak).not.toHaveBeenCalled()
     getVoices.mockRestore()
+  })
+})
+
+describe('синхронизация озвучивания', () => {
+  const account: SpeechPreferences = {
+    enLocale: 'en-GB',
+    enVoiceURI: null,
+    ruVoiceURI: null,
+    rate: 1.25,
+    autoPrompt: false,
+    speakEn: true,
+    speakRu: false,
+    engineEn: 'browser',
+    engineRu: 'browser',
+    serverEnUS: null,
+    serverEnGB: null,
+    serverRu: null,
+  }
+
+  it('настройки аккаунта заменяют локальные и не отправляются повторно', () => {
+    const publish = vi.fn()
+    setSpeechAccountPublisher(publish)
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-US',
+        enVoiceURI: null,
+        ruVoiceURI: null,
+        rate: 0.75,
+        autoPrompt: true,
+      }),
+    )
+    setSpeechOwner('a', { speech: account })
+    const { result } = renderHook(() => useSpeech())
+    expect(result.current.preferences.rate).toBe(1.25)
+    expect(result.current.preferences.enLocale).toBe('en-GB')
+    expect(result.current.preferences.speakRu).toBe(false)
+    expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).rate).toBe(1.25)
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('локальная копия один раз уходит на аккаунт, если серверного раздела нет', () => {
+    const publish = vi.fn()
+    setSpeechAccountPublisher(publish)
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-US',
+        enVoiceURI: null,
+        ruVoiceURI: null,
+        rate: 0.75,
+        autoPrompt: true,
+      }),
+    )
+    setSpeechOwner('a', { speech: null })
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish.mock.calls[0]?.[1].rate).toBe(0.75)
+  })
+
+  it('без локальной копии пустой аккаунт не отправляет значения по умолчанию', () => {
+    const publish = vi.fn()
+    setSpeechAccountPublisher(publish)
+    setSpeechOwner('a', { speech: null })
+    const { result } = renderHook(() => useSpeech())
+    expect(publish).not.toHaveBeenCalled()
+    expect(result.current.preferences.rate).toBe(1)
+    act(() => updateSpeechPreferences({ speakRu: false }))
+    expect(publish).toHaveBeenCalledWith('a', expect.objectContaining({ speakRu: false }))
   })
 })
 

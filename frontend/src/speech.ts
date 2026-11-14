@@ -45,6 +45,7 @@ type Snapshot = {
   status: string
   notice: string
   storageError: boolean
+  syncError: boolean
   serverVoices: ServerVoice[]
   serverState: 'loading' | 'ready' | 'unavailable'
 }
@@ -55,12 +56,15 @@ const initial: Snapshot = {
   status: '',
   notice: '',
   storageError: false,
+  syncError: false,
   serverVoices: [],
   serverState: 'loading',
 }
 let snapshot = initial
 const listeners = new Set<() => void>()
 let owner: string | null = null
+type SpeechPublisher = (ownerId: string, preferences: SpeechPreferences) => void
+let publisher: SpeechPublisher | null = null
 let generation = 0
 let utterance: SpeechSynthesisUtterance | null = null
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -196,7 +200,76 @@ export function cancelSpeech() {
   }
   if (snapshot.status || snapshot.notice) notify({ status: '', notice: '' })
 }
-export function setSpeechOwner(id: string | null) {
+function speechStorageKey(id: string) {
+  return `lexicona:speech:v1:${id}`
+}
+
+function writeSpeechLocal(id: string, preferences: SpeechPreferences) {
+  localStorage.setItem(speechStorageKey(id), JSON.stringify({ version: 1, ...preferences }))
+}
+
+function readStoredSpeech(
+  id: string,
+): { present: false } | { present: true; preferences: SpeechPreferences | null } {
+  const raw = localStorage.getItem(speechStorageKey(id))
+  if (!raw) return { present: false }
+  const v: unknown = JSON.parse(raw)
+  if (typeof v !== 'object' || v === null) throw new Error('invalid')
+  const p = v as Record<string, unknown>
+  if (
+    p.version !== 1 ||
+    typeof p.enLocale !== 'string' ||
+    !/^en(?:-[a-z0-9]+)*$/iu.test(p.enLocale) ||
+    !(p.enVoiceURI === null || typeof p.enVoiceURI === 'string') ||
+    !(p.ruVoiceURI === null || typeof p.ruVoiceURI === 'string') ||
+    !isSpeechRate(p.rate) ||
+    typeof p.autoPrompt !== 'boolean' ||
+    (p.speakEn !== undefined && typeof p.speakEn !== 'boolean') ||
+    (p.speakRu !== undefined && typeof p.speakRu !== 'boolean') ||
+    (p.engine !== undefined && !isSpeechEngine(p.engine)) ||
+    (p.engineEn !== undefined && !isSpeechEngine(p.engineEn)) ||
+    (p.engineRu !== undefined && !isSpeechEngine(p.engineRu)) ||
+    [p.serverEnUS, p.serverEnGB, p.serverRu].some(
+      (value) => value !== undefined && value !== null && typeof value !== 'string',
+    )
+  )
+    throw new Error('invalid')
+  return {
+    present: true,
+    preferences: {
+      enLocale: p.enLocale,
+      enVoiceURI: p.enVoiceURI,
+      ruVoiceURI: p.ruVoiceURI,
+      rate: p.rate,
+      autoPrompt: p.autoPrompt,
+      speakEn: typeof p.speakEn === 'boolean' ? p.speakEn : true,
+      speakRu: typeof p.speakRu === 'boolean' ? p.speakRu : true,
+      engineEn: isSpeechEngine(p.engineEn)
+        ? p.engineEn
+        : isSpeechEngine(p.engine)
+          ? p.engine
+          : 'auto',
+      engineRu: isSpeechEngine(p.engineRu)
+        ? p.engineRu
+        : isSpeechEngine(p.engine)
+          ? p.engine
+          : 'auto',
+      serverEnUS: typeof p.serverEnUS === 'string' ? p.serverEnUS : null,
+      serverEnGB: typeof p.serverEnGB === 'string' ? p.serverEnGB : null,
+      serverRu: typeof p.serverRu === 'string' ? p.serverRu : null,
+    },
+  }
+}
+
+export function setSpeechAccountPublisher(next: SpeechPublisher | null) {
+  publisher = next
+}
+
+export function reportSpeechSyncError(failed: boolean) {
+  notify({ syncError: failed })
+}
+
+export function setSpeechOwner(id: string | null, account?: { speech: SpeechPreferences | null }) {
   cancelSpeech()
   metadataRequest?.abort()
   metadataRequest = null
@@ -204,58 +277,31 @@ export function setSpeechOwner(id: string | null) {
   metadataTimer = null
   if (voiceTimer) clearTimeout(voiceTimer)
   synthesis()?.removeEventListener('voiceschanged', refreshVoices)
+  if (!id) publisher = null
   owner = id
   let preferences = defaults
   let storageError = false
+  let seed: SpeechPreferences | null = null
   if (id) {
+    let stored: ReturnType<typeof readStoredSpeech> = { present: false }
+    let unreadable = false
     try {
-      const raw = localStorage.getItem(`lexicona:speech:v1:${id}`)
-      if (raw) {
-        const v: unknown = JSON.parse(raw)
-        if (typeof v !== 'object' || v === null) throw new Error('invalid')
-        const p = v as Record<string, unknown>
-        if (
-          p.version !== 1 ||
-          typeof p.enLocale !== 'string' ||
-          !/^en(?:-[a-z0-9]+)*$/iu.test(p.enLocale) ||
-          !(p.enVoiceURI === null || typeof p.enVoiceURI === 'string') ||
-          !(p.ruVoiceURI === null || typeof p.ruVoiceURI === 'string') ||
-          !isSpeechRate(p.rate) ||
-          typeof p.autoPrompt !== 'boolean' ||
-          (p.speakEn !== undefined && typeof p.speakEn !== 'boolean') ||
-          (p.speakRu !== undefined && typeof p.speakRu !== 'boolean') ||
-          (p.engine !== undefined && !isSpeechEngine(p.engine)) ||
-          (p.engineEn !== undefined && !isSpeechEngine(p.engineEn)) ||
-          (p.engineRu !== undefined && !isSpeechEngine(p.engineRu)) ||
-          [p.serverEnUS, p.serverEnGB, p.serverRu].some(
-            (value) => value !== undefined && value !== null && typeof value !== 'string',
-          )
-        )
-          throw new Error('invalid')
-        preferences = {
-          enLocale: p.enLocale,
-          enVoiceURI: p.enVoiceURI,
-          ruVoiceURI: p.ruVoiceURI,
-          rate: p.rate,
-          autoPrompt: p.autoPrompt,
-          speakEn: typeof p.speakEn === 'boolean' ? p.speakEn : true,
-          speakRu: typeof p.speakRu === 'boolean' ? p.speakRu : true,
-          engineEn: isSpeechEngine(p.engineEn)
-            ? p.engineEn
-            : isSpeechEngine(p.engine)
-              ? p.engine
-              : 'auto',
-          engineRu: isSpeechEngine(p.engineRu)
-            ? p.engineRu
-            : isSpeechEngine(p.engine)
-              ? p.engine
-              : 'auto',
-          serverEnUS: typeof p.serverEnUS === 'string' ? p.serverEnUS : null,
-          serverEnGB: typeof p.serverEnGB === 'string' ? p.serverEnGB : null,
-          serverRu: typeof p.serverRu === 'string' ? p.serverRu : null,
-        }
-      }
+      stored = readStoredSpeech(id)
     } catch {
+      unreadable = true
+    }
+    const local = stored.present ? stored.preferences : null
+    if (account?.speech) {
+      preferences = account.speech
+      try {
+        writeSpeechLocal(id, preferences)
+      } catch {
+        storageError = true
+      }
+    } else if (local) {
+      preferences = local
+      if (account) seed = local
+    } else if (unreadable) {
       storageError = true
     }
   }
@@ -265,6 +311,7 @@ export function setSpeechOwner(id: string | null) {
     storageError,
     voiceState: synthesis() ? 'loading' : 'unavailable',
   })
+  if (seed && id) publisher?.(id, seed)
   if (id) refreshServerVoices()
   if (!id || !synthesis()) return
   synthesis()?.addEventListener('voiceschanged', refreshVoices)
@@ -312,15 +359,13 @@ export function updateSpeechPreferences(patch: Partial<SpeechPreferences>) {
   cancelSpeech()
   const preferences = { ...snapshot.preferences, ...patch }
   notify({ preferences })
+  const currentOwner = owner
   try {
-    if (owner)
-      localStorage.setItem(
-        `lexicona:speech:v1:${owner}`,
-        JSON.stringify({ version: 1, ...preferences }),
-      )
+    if (currentOwner) writeSpeechLocal(currentOwner, preferences)
   } catch {
     notify({ storageError: true })
   }
+  if (currentOwner) publisher?.(currentOwner, preferences)
 }
 export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boolean }) {
   if (!options?.force && !speechEnabled(lang)) return

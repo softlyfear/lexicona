@@ -29,7 +29,10 @@ export function App() {
       <Routes>
         <Route element={<Layout user={user} />}>
           <Route index element={<WordsPage userId={user.id} />} />
-          <Route path="training" element={<TrainingPage />} />
+          <Route
+            path="training"
+            element={<TrainingPage userId={user.id} accountTraining={user.preferences?.training} />}
+          />
           <Route path="statistics" element={<StatisticsPage />} />
           <Route path="account" element={<AccountPage user={user} />} />
           <Route path="settings" element={<SettingsPage user={user} />} />
