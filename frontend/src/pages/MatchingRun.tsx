@@ -18,6 +18,7 @@ import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
 import { resumedResult } from './resume'
 import { TrainingSummary } from './TrainingSummary'
+import { useAutoAdvance } from './useAutoAdvance'
 
 function isTerminal(result: TerminalResult | undefined): result is TerminalResult {
   return !!result && (result.outcome !== 'answered' || !('correct' in result) || result.correct)
@@ -32,11 +33,13 @@ export function MatchingRun({
   requestedSize,
   onFinish,
   finishing = false,
+  autoAdvance = false,
 }: {
   session: TrainingSession
   requestedSize: TrainingSize
   onFinish: () => void
   finishing?: boolean
+  autoAdvance?: boolean
 }) {
   const queryClient = useQueryClient()
   const batches: TrainingItem[][] = []
@@ -65,6 +68,8 @@ export function MatchingRun({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState('')
   const locked = useRef(false)
+  const [autoCandidate, setAutoCandidate] = useState<string | null>(null)
+  const advancedBatch = useRef<string | null>(null)
   const batchCount = batches.length
   const batch = batches[batchIndex] ?? []
   const selected = batch.find((item) => item.id === selectedId)
@@ -79,6 +84,19 @@ export function MatchingRun({
         ? selected?.options[selectedResult.correct_option]
         : undefined
   const batchDone = batch.every((item) => isTerminal(answers[item.id]))
+  const batchKey = `${session.id}:${batchIndex}`
+  const batchCorrect =
+    batch.length > 0 &&
+    batch.every((item) => {
+      const result = answers[item.id]
+      return result?.outcome === 'answered' && 'correct' in result && result.correct
+    })
+  const cancelAuto = useAutoAdvance(
+    !done && batchCorrect && autoCandidate === batchKey ? batchKey : null,
+    autoAdvance,
+    finishing || editingId !== null,
+    next,
+  )
 
   const action = useMutation({
     mutationFn: (value: MatchingAction) => {
@@ -88,6 +106,11 @@ export function MatchingRun({
     },
     onSuccess: (data, value) => {
       setAnswers((previous) => ({ ...previous, [value.item.id]: data }))
+      setAutoCandidate(
+        autoAdvance && data.outcome === 'answered' && 'correct' in data && data.correct
+          ? batchKey
+          : null,
+      )
       setNotice('')
       locked.current = false
     },
@@ -117,6 +140,10 @@ export function MatchingRun({
   }
 
   function next() {
+    if (!batchDone || advancedBatch.current === batchKey || finishing || editingId) return
+    advancedBatch.current = batchKey
+    cancelAuto()
+    setAutoCandidate(null)
     cancelSpeech()
     action.reset()
     setSelectedId(null)
@@ -151,6 +178,7 @@ export function MatchingRun({
         <button
           className={ui.button}
           onClick={() => {
+            cancelAuto()
             cancelSpeech()
             onFinish()
           }}
@@ -223,6 +251,7 @@ export function MatchingRun({
                       name={item.prompt}
                       disabled={busy}
                       onEdit={() => {
+                        cancelAuto()
                         cancelSpeech()
                         setEditingId(item.word_id ?? null)
                       }}

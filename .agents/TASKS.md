@@ -52,7 +52,7 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   frontend 282), format/lint/types/build passed. Backend list is unpaginated.
   Browser fixture smoke: desktop/mobile long tags, native Enter/Space, count
   2→1→0 passed. Independent code-reviewer: Ship; orchestrator accepted.
-- FEEDBACK-005 / persisted optional automatic next / implementation / attempt 1.
+- FEEDBACK-005 / persisted optional automatic next / accepted / attempt 1.
   AC: default off; confirmed correct including retry advances once after feedback;
   speech coordination and timer cancellation; no auto-next on reveal/error/skip;
   matching retains group completion semantics; older preferences remain valid.
@@ -63,9 +63,21 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   Owners: backend-agent for preferences/auth/tests, then frontend-agent for DTO,
   account preference write, Settings/App/Run/MatchingRun/speech and regressions.
   Frontend final gate owner; focused tests, make check and independent review.
-- FEEDBACK-006 / independent transcription draft / planned.
+  Evidence: backend focused 42 and frontend focused 93 passed; final make check
+  exit 0 (tooling 20 / backend 553 / frontend 318), format/lint/types/build passed.
+  No real audio verification.
+  Independent review: Ship. Browser fixture smoke: checkbox default-off→on,
+  resume input session, correct answer→exactly next item (2/3), no-voice status
+  does not block the flow. Orchestrator accepted; no real API/audio claims.
+- FEEDBACK-006 / independent transcription draft / implementation / attempt 1.
   AC: compact IPA-only button; existing translations untouched; explicit Save;
   stale-response protection, provenance, auth/CSRF/no-store and failure tests.
+  Owners: backend-agent (dictionary router + transcription/provider tests), then
+  frontend-agent (api/WordForm/CSS/tests, final gate owner). Reuse transcribe
+  provider operation; explicit IPA-only endpoint, no translation side effects.
+  Protect late responses after headword/manual IPA changes, navigation and owner
+  changes; no auto-save or generated FreeDict attribution.
+  Checks: focused tests, make check, independent review and fixture UI smoke.
 - FEEDBACK-007 / AI translation drafts in add/edit / planned.
   AC: explicit existing OpenRouter provider; request 3–5 common distinct meanings
   but allow fewer; no verified-frequency claim; preserve manual translations;

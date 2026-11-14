@@ -2,7 +2,14 @@ import { act, render, renderHook, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, ApiError, type ServerVoice } from './api'
-import { cancelSpeech, setSpeechOwner, speak, updateSpeechPreferences, useSpeech } from './speech'
+import {
+  cancelSpeech,
+  isSpeechBusy,
+  setSpeechOwner,
+  speak,
+  updateSpeechPreferences,
+  useSpeech,
+} from './speech'
 import { Layout } from './components/Layout'
 import { createElement } from 'react'
 
@@ -64,10 +71,12 @@ describe('серверная речь', () => {
     expect(synthesize).toHaveBeenCalledWith('hello', 'gb', 0.75, expect.any(AbortSignal))
     const instance = FakeAudio.instances[0]
     expect(instance.play).toHaveBeenCalledOnce()
+    expect(result.current.busy).toBe(true)
     act(() => instance.onended?.())
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
     expect(instance.pause).toHaveBeenCalledOnce()
     expect(result.current.status).toContain('завершено')
+    expect(result.current.busy).toBe(false)
     await owner('b')
     expect(result.current.preferences.enLocale).toBe('en-US')
     await owner('a')
@@ -83,8 +92,10 @@ describe('серверная речь', () => {
     )
     await owner()
     act(() => speak('hello', 'en'))
+    expect(isSpeechBusy()).toBe(true)
     const signal = synthesize.mock.calls[0][3]
     act(() => cancelSpeech())
+    expect(isSpeechBusy()).toBe(false)
     expect(signal.aborted).toBe(true)
     await act(async () => resolve(new Blob(['wav'])))
     expect(URL.createObjectURL).not.toHaveBeenCalled()
@@ -102,6 +113,7 @@ describe('серверная речь', () => {
       await Promise.resolve()
     })
     expect(result.current.status).toContain('занят')
+    expect(result.current.busy).toBe(false)
     vi.stubGlobal(
       'Audio',
       class extends FakeAudio {
@@ -118,6 +130,7 @@ describe('серверная речь', () => {
     })
     expect(synthesize).toHaveBeenCalledTimes(2)
     expect(result.current.status).toContain('Попробуйте ещё раз')
+    expect(result.current.busy).toBe(false)
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
   })
 
@@ -140,6 +153,7 @@ describe('серверная речь', () => {
       await Promise.resolve()
     })
     expect(result.current.status).toContain('Аудио готово')
+    expect(result.current.busy).toBe(false)
     expect(URL.revokeObjectURL).not.toHaveBeenCalled()
     const current = FakeAudio.instances[0]
     act(() => {
@@ -147,7 +161,9 @@ describe('серверная речь', () => {
       expect(current.play).toHaveBeenCalledTimes(2)
     })
     expect(synthesize).toHaveBeenCalledOnce()
+    expect(result.current.busy).toBe(true)
     act(() => cancelSpeech())
+    expect(result.current.busy).toBe(false)
     expect(current.pause).toHaveBeenCalledOnce()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
   })

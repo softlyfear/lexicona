@@ -39,6 +39,7 @@ function isSpeechEngine(value: unknown): value is SpeechEngine {
   return value === 'auto' || value === 'server' || value === 'browser'
 }
 type Snapshot = {
+  busy: boolean
   preferences: SpeechPreferences
   voices: SpeechSynthesisVoice[]
   voiceState: 'loading' | 'ready' | 'unavailable'
@@ -50,6 +51,7 @@ type Snapshot = {
   serverState: 'loading' | 'ready' | 'unavailable'
 }
 const initial: Snapshot = {
+  busy: false,
   preferences: defaults,
   voices: [],
   voiceState: 'loading',
@@ -80,7 +82,7 @@ const notify = (patch: Partial<Snapshot>) => {
   snapshot = { ...snapshot, ...patch }
   listeners.forEach((listener) => listener())
 }
-const problem = (message: string) => notify({ status: message, notice: message })
+const problem = (message: string) => notify({ status: message, notice: message, busy: false })
 const synthesis = () =>
   typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null
 const primary = (lang: string) => lang.toLowerCase().split('-')[0]
@@ -169,6 +171,9 @@ function refreshVoices() {
 export function speechGeneration() {
   return generation
 }
+export function isSpeechBusy() {
+  return snapshot.busy
+}
 export function cancelSpeech() {
   generation++
   pending = null
@@ -193,7 +198,8 @@ export function cancelSpeech() {
   } catch {
     /* Browser implementation failed to cancel. */
   }
-  if (snapshot.status || snapshot.notice) notify({ status: '', notice: '' })
+  if (snapshot.status || snapshot.notice || snapshot.busy)
+    notify({ status: '', notice: '', busy: false })
 }
 function speechStorageKey(id: string) {
   return `lexicona:speech:v1:${id}`
@@ -378,6 +384,7 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
   }
   cancelSpeech()
   const token = generation
+  notify({ busy: true })
   if (choice !== 'browser') {
     if (snapshot.serverState === 'loading') {
       problem('Загружаем серверные голоса. Попробуйте ещё раз.')
@@ -434,7 +441,7 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
           timer = null
           utterance = null
           generation++
-          notify({ status: 'Воспроизведение завершено.' })
+          notify({ status: 'Воспроизведение завершено.', busy: false })
         }
       }
       current.onerror = () => {
@@ -544,6 +551,7 @@ function speakServer(text: string, lang: 'en' | 'ru', token: number) {
 }
 
 function startAudio(current: HTMLAudioElement, token: number, fingerprint: string) {
+  notify({ busy: true })
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => {
     if (generation !== token) return

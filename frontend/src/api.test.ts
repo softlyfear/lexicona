@@ -17,6 +17,16 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('saves automatic next as an independent scalar with CSRF without sending preference sections', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, {})
+    await api.updateSettings({ training_auto_advance: true })
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/auth/settings')
+    expect(init.method).toBe('PUT')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(JSON.parse(init.body as string)).toEqual({ training_auto_advance: true })
+  })
   it('requests session summary read-only through the shared request entry point', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { id: 'session' })

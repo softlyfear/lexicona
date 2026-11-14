@@ -8,7 +8,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { StatisticsPage } from './pages/StatisticsPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { WordsPage } from './pages/WordsPage'
-import { useSession } from './session'
+import { getSessionRevision, useSession } from './session'
 
 export function App() {
   const session = useSession()
@@ -31,7 +31,14 @@ export function App() {
           <Route index element={<WordsPage userId={user.id} />} />
           <Route
             path="training"
-            element={<TrainingPage userId={user.id} accountTraining={user.preferences?.training} />}
+            element={
+              <TrainingPage
+                key={getSessionRevision()}
+                userId={user.id}
+                accountTraining={user.preferences?.training}
+                autoAdvance={user.preferences?.training_auto_advance === true}
+              />
+            }
           />
           <Route path="statistics" element={<StatisticsPage />} />
           <Route path="account" element={<AccountPage user={user} />} />

@@ -17,6 +17,7 @@ import {
 } from '../speech'
 import { forgetSession, getSessionRevision, isCurrentSession, queryClient } from '../session'
 import css from './pages.module.css'
+import { putTrainingAutoAdvance } from '../accountPreferences'
 
 const LEVELS: { value: Difficulty; label: string; choice: number; typed: number }[] = [
   { value: 'very_easy', label: 'Очень легко', choice: 10, typed: 20 },
@@ -40,6 +41,22 @@ type Result<T> = { data: T } | { error: unknown }
 export function SettingsPage({ user }: { user: User }) {
   const [difficultyError, setDifficultyError] = useState('')
   const locked = useRef(false)
+  const autoLocked = useRef(false)
+  const [autoError, setAutoError] = useState('')
+  const autoUpdate = useMutation({
+    mutationFn: ({ enabled, revision }: { enabled: boolean; revision: number }) =>
+      putTrainingAutoAdvance(user.id, enabled, revision),
+    onSuccess: (result, { revision }) => {
+      if (!isCurrentSession(revision, user.id)) return
+      if (result.status === 'error') {
+        if (result.error instanceof ApiError && result.error.status === 401) forgetSession()
+        else setAutoError(errorMessage(result.error))
+      }
+    },
+    onSettled: () => {
+      autoLocked.current = false
+    },
+  })
 
   const update = useMutation({
     mutationFn: async ({
@@ -132,6 +149,33 @@ export function SettingsPage({ user }: { user: User }) {
           </tbody>
         </table>
       </div>
+      <section className={`${ui.card} ${css.stack}`} aria-label="Переход между заданиями">
+        <label className={css.choice}>
+          <input
+            type="checkbox"
+            checked={user.preferences?.training_auto_advance === true}
+            aria-describedby="auto-advance-help"
+            disabled={autoUpdate.isPending}
+            onChange={(event) => {
+              if (autoLocked.current) return
+              autoLocked.current = true
+              setAutoError('')
+              autoUpdate.mutate({ enabled: event.target.checked, revision: getSessionRevision() })
+            }}
+          />
+          Автоматически переходить после верного ответа
+        </label>
+        <p id="auto-advance-help" className={ui.muted}>
+          Через 1,5 секунды после верного ответа и окончания озвучивания. В сопоставлении — после
+          всех верных пар группы. Показ ответа и пропуск не включают переход.
+        </p>
+        {autoUpdate.isPending && <p role="status">Сохраняем автоматический переход…</p>}
+        {autoError && (
+          <p className={ui.error} role="alert">
+            {autoError} Повторите действие.
+          </p>
+        )}
+      </section>
       <SpeechSettings />
     </section>
   )

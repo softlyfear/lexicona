@@ -136,6 +136,7 @@ async def test_preferences_merge_per_account(alice: Client, bob: Client, app: ob
     assert (await bob.get("/api/auth/me")).json()["user"]["preferences"] == {
         "training": None,
         "speech": None,
+        "training_auto_advance": False,
     }
 
     trained = await alice.put("/api/auth/settings", json={"training": TRAINING})

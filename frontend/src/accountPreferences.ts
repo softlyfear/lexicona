@@ -5,8 +5,9 @@ import {
   type Session,
   type SpeechPreferencesDto,
   type TrainingPreferences,
+  type AccountPreferences,
 } from './api'
-import { forgetSession, queryClient } from './session'
+import { forgetSession, getSessionRevision, isCurrentSession, queryClient } from './session'
 import { reportSpeechSyncError, type SpeechPreferences } from './speech'
 
 const TAG_ID = /^[A-Za-z0-9_-]{1,32}$/
@@ -235,10 +236,10 @@ export function cancelTrainingSync() {
   setTrainingSyncError(false)
 }
 
-function patchPreference(
+function patchPreference<K extends keyof AccountPreferences>(
   userId: string,
-  section: 'training' | 'speech',
-  value: TrainingPreferences | SpeechPreferencesDto | null,
+  section: K,
+  value: AccountPreferences[K],
 ) {
   queryClient.setQueryData<Session | null>(['session'], (prev) => {
     if (!prev || prev.user.id !== userId) return prev
@@ -250,6 +251,29 @@ function patchPreference(
       },
     }
   })
+}
+
+let autoAdvanceEpoch = 0
+export async function putTrainingAutoAdvance(
+  userId: string,
+  enabled: boolean,
+  revision = getSessionRevision(),
+): Promise<{ status: 'saved' | 'stale' } | { status: 'error'; error: unknown }> {
+  if (!isCurrentSession(revision, userId)) return { status: 'stale' }
+  const epoch = ++autoAdvanceEpoch
+  const current = () => epoch === autoAdvanceEpoch && isCurrentSession(revision, userId)
+  try {
+    const user = await api.updateSettings({ training_auto_advance: enabled })
+    if (!current() || user.id !== userId) return { status: 'stale' }
+    patchPreference(
+      userId,
+      'training_auto_advance',
+      user.preferences?.training_auto_advance === true,
+    )
+    return { status: 'saved' }
+  } catch (error) {
+    return current() ? { status: 'error', error } : { status: 'stale' }
+  }
 }
 
 export function scheduleTrainingSave(

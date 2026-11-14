@@ -15,6 +15,15 @@ import {
 } from '../session'
 import { AccountPage } from './AccountPage'
 import { SettingsPage } from './SettingsPage'
+import {
+  bindSpeechSync,
+  cancelTrainingSync,
+  DEFAULT_TRAINING,
+  putTrainingPreferences,
+  putTrainingAutoAdvance,
+} from '../accountPreferences'
+import { useSpeech } from '../speech'
+import { renderHook } from '@testing-library/react'
 
 const initial: Session = {
   user: { id: 'a', login: 'alice', is_admin: false, difficulty: 'medium' },
@@ -62,10 +71,178 @@ describe('профиль и смена пароля', () => {
     rememberSession(initial)
   })
   afterEach(() => {
+    cancelTrainingSync()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     forgetSession()
     queryClient.clear()
+  })
+
+  it('defaults automatic next off, saves only the independent scalar, and restores server preference', async () => {
+    let resolve!: (user: Session['user']) => void
+    const update = vi.spyOn(api, 'updateSettings').mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const storage = vi.spyOn(Storage.prototype, 'setItem')
+    const user = userEvent.setup()
+    const view = renderSettings()
+    const toggle = screen.getByRole('checkbox', {
+      name: 'Автоматически переходить после верного ответа',
+    })
+    expect(toggle).not.toBeChecked()
+    toggle.focus()
+    await user.keyboard(' ')
+    expect(toggle).toBeDisabled()
+    expect(toggle).not.toBeChecked()
+    await user.click(toggle)
+    expect(update).toHaveBeenCalledExactlyOnceWith({ training_auto_advance: true })
+    await act(async () =>
+      resolve({ ...initial.user, preferences: { training_auto_advance: true } }),
+    )
+    await waitFor(() => expect(toggle).toBeChecked())
+    expect(storage).not.toHaveBeenCalled()
+    view.unmount()
+    renderSettings()
+    expect(
+      screen.getByRole('checkbox', { name: 'Автоматически переходить после верного ответа' }),
+    ).toBeChecked()
+  })
+
+  it('keeps the confirmed automatic-next flag on save failure and allows retry', async () => {
+    rememberSession({
+      ...initial,
+      user: { ...initial.user, preferences: { training_auto_advance: true } },
+    })
+    const update = vi
+      .spyOn(api, 'updateSettings')
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce({ ...initial.user, preferences: { training_auto_advance: false } })
+    const user = userEvent.setup()
+    renderSettings()
+    const toggle = screen.getByRole('checkbox', {
+      name: 'Автоматически переходить после верного ответа',
+    })
+    await user.click(toggle)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи')
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeEnabled()
+    await user.click(toggle)
+    await waitFor(() => expect(toggle).not.toBeChecked())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(update).toHaveBeenNthCalledWith(2, { training_auto_advance: false })
+  })
+
+  it.each(['success', 'error', '401'] as const)(
+    'ignores automatic-next save %s after a session revision change',
+    async (ending) => {
+      let resolve!: (user: Session['user']) => void
+      let reject!: (error: unknown) => void
+      vi.spyOn(api, 'updateSettings').mockReturnValue(
+        new Promise((done, fail) => {
+          resolve = done
+          reject = fail
+        }),
+      )
+      const user = userEvent.setup()
+      renderSettings()
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Автоматически переходить после верного ответа' }),
+      )
+      act(() => rememberSession(rotated))
+      await act(async () => {
+        if (ending === 'success')
+          resolve({ ...initial.user, preferences: { training_auto_advance: true } })
+        else reject(ending === '401' ? new ApiError(401, 'expired') : new TypeError('offline'))
+      })
+      expect(queryClient.getQueryData(['session'])).toEqual(rotated)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
+  it('merges automatic next with concurrent training and speech writes without applying stale aggregate responses', async () => {
+    const completions = new Map<string, (user: Session['user']) => void>()
+    const update = vi.spyOn(api, 'updateSettings').mockImplementation(
+      (body) =>
+        new Promise((done) => {
+          completions.set(Object.keys(body)[0], done)
+        }),
+    )
+    const user = userEvent.setup()
+    renderSettings()
+    const speech = renderHook(() => useSpeech()).result.current.preferences
+    const sync = bindSpeechSync('a')
+    await act(async () => {
+      putTrainingPreferences('a', DEFAULT_TRAINING)
+      sync.publish(speech)
+    })
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Автоматически переходить после верного ответа' }),
+    )
+    await act(async () =>
+      completions.get('training_auto_advance')!({
+        ...initial.user,
+        preferences: { training_auto_advance: true },
+      }),
+    )
+    await act(async () => {
+      completions.get('training')!({
+        ...initial.user,
+        preferences: { training: DEFAULT_TRAINING, training_auto_advance: false },
+      })
+      completions.get('speech')!({ ...initial.user, preferences: { training_auto_advance: false } })
+    })
+    const stored = queryClient.getQueryData<Session>(['session'])
+    expect(stored?.user.preferences?.training_auto_advance).toBe(true)
+    expect(stored?.user.preferences?.training).toEqual(DEFAULT_TRAINING)
+    expect(stored?.user.preferences?.speech).toBeDefined()
+    expect(update.mock.calls.map(([body]) => Object.keys(body))).toEqual([
+      ['training'],
+      ['speech'],
+      ['training_auto_advance'],
+    ])
+    sync.stop()
+  })
+
+  it.each(['success', '401'] as const)(
+    'ignores an older independent flag write %s after a newer write',
+    async (ending) => {
+      let resolveOld!: (user: Session['user']) => void
+      let rejectOld!: (error: unknown) => void
+      vi.spyOn(api, 'updateSettings')
+        .mockReturnValueOnce(
+          new Promise((resolve, reject) => {
+            resolveOld = resolve
+            rejectOld = reject
+          }),
+        )
+        .mockResolvedValueOnce({ ...initial.user, preferences: { training_auto_advance: false } })
+      const old = putTrainingAutoAdvance('a', true)
+      expect(await putTrainingAutoAdvance('a', false)).toEqual({ status: 'saved' })
+      if (ending === 'success')
+        resolveOld({ ...initial.user, preferences: { training_auto_advance: true } })
+      else rejectOld(new ApiError(401, 'expired'))
+      expect(await old).toEqual({ status: 'stale' })
+      expect(
+        queryClient.getQueryData<Session>(['session'])?.user.preferences?.training_auto_advance,
+      ).toBe(false)
+    },
+  )
+
+  it('does not apply an old auto-next response or error to a different account', async () => {
+    let reject!: (error: unknown) => void
+    vi.spyOn(api, 'updateSettings').mockReturnValue(
+      new Promise((_, fail) => {
+        reject = fail
+      }),
+    )
+    const pending = putTrainingAutoAdvance('a', true)
+    const bob = { ...initial, user: { ...initial.user, id: 'b' } }
+    rememberSession(bob)
+    reject(new ApiError(401, 'expired'))
+    expect(await pending).toEqual({ status: 'stale' })
+    expect(queryClient.getQueryData(['session'])).toEqual(bob)
   })
 
   it('логин в шапке — ссылка на профиль, сложность показывает сохранённые значения', async () => {

@@ -30,6 +30,7 @@ import { MatchingRun } from './MatchingRun'
 import { TrainingSummary } from './TrainingSummary'
 import { resumedResult } from './resume'
 import css from './pages.module.css'
+import { useAutoAdvance } from './useAutoAdvance'
 
 const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'en_ru', label: 'Поиск перевода: EN → RU' },
@@ -71,9 +72,11 @@ const CARD_GRADES: { value: CardGrade; label: string }[] = [
 export function TrainingPage({
   userId,
   accountTraining,
+  autoAdvance = false,
 }: {
   userId?: string
   accountTraining?: unknown
+  autoAdvance?: boolean
 } = {}) {
   const { preferences } = useSpeech()
   const queryClient = useQueryClient()
@@ -116,6 +119,7 @@ export function TrainingPage({
         finish.mutate(started.session.id)
       },
       finishing: finish.isPending,
+      autoAdvance,
     }
     return (
       <>
@@ -126,7 +130,11 @@ export function TrainingPage({
         )}
         {finish.isPending && <p role="status">Завершаем занятие…</p>}
         <div inert={finish.isPending}>
-          {started.session.mode === 'matching' ? <MatchingRun {...props} /> : <Run {...props} />}
+          {started.session.mode === 'matching' ? (
+            <MatchingRun key={started.session.id} {...props} />
+          ) : (
+            <Run key={started.session.id} {...props} />
+          )}
         </div>
       </>
     )
@@ -730,11 +738,13 @@ export function Run({
   requestedSize,
   onFinish,
   finishing = false,
+  autoAdvance = false,
 }: {
   session: TrainingSession
   requestedSize: TrainingSize
   onFinish: () => void
   finishing?: boolean
+  autoAdvance?: boolean
 }) {
   const queryClient = useQueryClient()
   const { preferences } = useSpeech()
@@ -756,11 +766,20 @@ export function Run({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState('')
   const [transcriptions, setTranscriptions] = useState<Record<string, string | null>>({})
+  const [autoCandidate, setAutoCandidate] = useState<string | null>(null)
+  const advancedItem = useRef<string | null>(null)
   const locked = useRef(false)
   const item = session.items[index]
   const result = attempt ?? undefined
   const done = index >= session.items.length
   const canRetry = result?.outcome === 'answered' && 'correct' in result && !result.correct
+  const itemKey = item ? `${session.id}:${item.id}` : null
+  const cancelAuto = useAutoAdvance(
+    itemKey && autoCandidate === itemKey ? itemKey : null,
+    autoAdvance,
+    finishing || editingId !== null,
+    next,
+  )
   const action = useMutation({
     mutationFn: (value: Action) => {
       switch (value.kind) {
@@ -784,6 +803,11 @@ export function Run({
       }
       if (data.outcome === 'answered' && 'submitted_text' in data) setText(data.submitted_text)
       setAttempt(data)
+      setAutoCandidate(
+        autoAdvance && data.outcome === 'answered' && 'correct' in data && data.correct
+          ? `${session.id}:${item.id}`
+          : null,
+      )
       if (data.outcome === 'answered' && 'correct' in data && !data.correct) {
         locked.current = false
       }
@@ -814,6 +838,18 @@ export function Run({
   }
 
   function next() {
+    if (
+      !itemKey ||
+      advancedItem.current === itemKey ||
+      !result ||
+      canRetry ||
+      finishing ||
+      editingId
+    )
+      return
+    advancedItem.current = itemKey
+    cancelAuto()
+    setAutoCandidate(null)
     cancelSpeech()
     const following = snapshots.findIndex(
       (candidate, position) => position > index && candidate?.state !== 'done',
@@ -928,6 +964,7 @@ export function Run({
         <button
           className={ui.button}
           onClick={() => {
+            cancelAuto()
             cancelSpeech()
             onFinish()
           }}
@@ -996,6 +1033,7 @@ export function Run({
                 name={item.prompt}
                 disabled={busy || hintPending}
                 onEdit={() => {
+                  cancelAuto()
                   cancelSpeech()
                   setEditingId(item.word_id ?? null)
                 }}

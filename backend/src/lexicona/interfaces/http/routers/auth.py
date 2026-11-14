@@ -4,7 +4,7 @@ from typing import Self
 
 from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 from sqlalchemy import delete, insert, literal, select, update
 from sqlalchemy.exc import OperationalError
 
@@ -58,6 +58,7 @@ class SettingsIn(BaseModel):
     difficulty: Difficulty | None = None
     training: TrainingPreferences | None = None
     speech: SpeechPreferences | None = None
+    training_auto_advance: StrictBool = False
 
     @model_validator(mode="after")
     def has_change(self) -> Self:
@@ -209,7 +210,7 @@ async def me(auth: CurrentAuth) -> SessionOut:
 @router.put("/settings")
 async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOut:
     fields = body.model_fields_set
-    section_write = "training" in fields or "speech" in fields
+    preference_write = bool(fields & {"training", "speech", "training_auto_advance"})
     for _attempt in range(_PREFERENCE_ATTEMPTS):
         await db.rollback()
         await db.refresh(auth.user)
@@ -226,18 +227,20 @@ async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOu
                 document.pop("speech", None)
             else:
                 document["speech"] = body.speech.model_dump(mode="json")
+        if "training_auto_advance" in fields:
+            document["training_auto_advance"] = body.training_auto_advance
         # Release the read snapshot before waiting, then write only if it is unchanged.
         await db.rollback()
         gate = preference_write_gate
         if gate is not None:
             await gate()
-        # A section write must not store the difficulty it happened to read.
+        # A preference write must not store the difficulty it happened to read.
         # Difficulty-only saves do not bump preferences_revision.
         values: dict[str, object] = {}
         conditions = [User.id == user_id]
         if "difficulty" in fields and body.difficulty is not None:
             values["difficulty"] = body.difficulty
-        if section_write:
+        if preference_write:
             values["preferences"] = document or None
             values["preferences_revision"] = revision + 1
             conditions.append(User.preferences_revision == revision)

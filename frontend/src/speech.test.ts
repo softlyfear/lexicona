@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './api'
 import {
   cancelSpeech,
+  isSpeechBusy,
   languageEngine,
   selectServerVoice,
   setSpeechAccountPublisher,
@@ -69,8 +70,10 @@ describe('браузерная речь', () => {
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
     act(() => browserSpeak('hello', 'en'))
+    expect(result.current.busy).toBe(true)
     expect(result.current.status).toContain('Ожидание')
     act(() => vi.advanceTimersByTime(2000))
+    expect(result.current.busy).toBe(false)
     expect(result.current.status).toContain('не найден')
     voices = [voice('en-US', 'english')]
     act(() => changed())
@@ -86,6 +89,7 @@ describe('браузерная речь', () => {
     const { result } = renderHook(() => useSpeech())
     act(() => updateSpeechPreferences({ enVoiceURI: 'ru', enLocale: 'en-GB' }))
     act(() => browserSpeak('first', 'en'))
+    expect(isSpeechBusy()).toBe(true)
     const old = current
     expect(old.voice?.voiceURI).toBe('gb')
     act(() => browserSpeak('второй', 'ru'))
@@ -93,6 +97,7 @@ describe('браузерная речь', () => {
     act(() => old.onerror?.({} as SpeechSynthesisErrorEvent))
     expect(result.current.status).toContain('Ожидание')
     act(() => cancelSpeech())
+    expect(isSpeechBusy()).toBe(false)
     act(() => current.onend?.({} as SpeechSynthesisEvent))
     expect(result.current.status).toBe('')
   })
@@ -131,8 +136,10 @@ describe('браузерная речь', () => {
     expect(current.rate).toBe(0.75)
     act(() => vi.advanceTimersByTime(20000))
     expect(result.current.status).not.toContain('не завершилось')
+    expect(result.current.busy).toBe(true)
     act(() => vi.advanceTimersByTime(295000))
     expect(result.current.status).toContain('не завершилось')
+    expect(result.current.busy).toBe(false)
     act(() => browserSpeak('retry', 'en'))
     expect(engine.speak).toHaveBeenCalledTimes(2)
   })
@@ -145,6 +152,7 @@ describe('браузерная речь', () => {
     act(() => speak('кот', 'ru'))
     expect(engine.speak).not.toHaveBeenCalled()
     expect(result.current.status).toBe('')
+    expect(result.current.busy).toBe(false)
     act(() => speak('кот', 'ru', { force: true }))
     expect(engine.speak).toHaveBeenCalledOnce()
     expect(current.text).toBe('кот')

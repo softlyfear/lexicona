@@ -301,3 +301,10 @@ require typed input; wrong open answers still withhold the expected answer.
 The dictionary filter summary displays the full unpaginated matching word count.
 Deferred searches, placeholder data, active/paused requests and errors do not
 present a stale number as the current count.
+
+preferences.training_auto_advance is an independent strict boolean (default
+false), updated through the existing settings CAS without replacing training or
+speech sections. After a fresh server-confirmed correct answer, auto-next waits
+for 1.5 seconds of feedback and speech.busy=false. Matching advances only an
+all-correct completed group. Manual and timed transitions share a one-shot guard;
+editor, finish, disable and lifecycle changes cancel pending transitions.
