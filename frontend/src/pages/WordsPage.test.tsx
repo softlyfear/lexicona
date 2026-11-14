@@ -542,7 +542,9 @@ describe('сортировка словаря', () => {
     expect(screen.getByLabelText('Переводы — по одному в строке, первый основной')).toHaveValue(
       'кошки',
     )
-    vi.mocked(api.listWords).mockResolvedValue([word('3', 'cats')])
+    vi.mocked(api.listWords).mockImplementation(async (q) =>
+      q === 'cats' ? [] : [word('3', 'cats')],
+    )
     await user.click(screen.getByRole('button', { name: 'Добавить' }))
     expect(await screen.findByText('cats')).toBeInTheDocument()
     expect(params().toString()).toBe('q=cat&sort=progress_desc&training=all')

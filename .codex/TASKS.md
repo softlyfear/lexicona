@@ -1,5 +1,12 @@
 # Активные задачи
 
+UNIQUE-001 accepted (2026-11-14): the word form rejects a duplicate normalized
+headword for a single word and a multi-word phrase, including a learned or
+excluded row. A shorter word stays allowed. A note on an existing duplicate
+still saves, and cancel during the check does not save. Independent Ship.
+Combined make check exit 0: tooling 38 / backend 463 / frontend 221.
+No deployment. The screen was not opened in a browser.
+
 TRAIN-LEARNED accepted (2026-11-14): the training filter «Перемешать» is smaller
 and sits beside «Выученные». When that toggle is on, words marked learned join
 the same sample; tags, progress bounds, order, size, purpose, and shuffle still

@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ApiError, api, type DictionaryLookup, type Word } from '../api'
@@ -60,6 +60,138 @@ function form(initial = word) {
 }
 beforeEach(() => {
   vi.restoreAllMocks()
+  vi.spyOn(api, 'listWords').mockResolvedValue([])
+})
+
+it('отклоняет повтор слова и фразы, в том числе выученной, и пропускает более короткое слово', async () => {
+  const phrase: Word = {
+    ...word,
+    id: 'phrase',
+    headword: 'fake it till you make it',
+    translations: ['притворяйся, пока это не станет правдой'],
+    is_learned: true,
+  }
+  vi.spyOn(api, 'listWords').mockResolvedValue([word, phrase])
+  const user = userEvent.setup()
+  const submit = vi.fn()
+  const props = {
+    pending: false,
+    error: null,
+    onSubmit: submit,
+    onCancel: () => {},
+    availableTags: [],
+    tagsLoading: false,
+    tagsError: null,
+  }
+  render(<WordForm {...props} />)
+  await user.type(screen.getByLabelText(/Слово или выражение/), '  BOOK. ')
+  await user.type(screen.getByLabelText(/Переводы/), 'книга')
+  await user.click(screen.getByRole('button', { name: 'Добавить' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Такое слово или выражение уже есть в словаре.',
+  )
+  expect(api.listWords).toHaveBeenCalledWith('BOOK.', 'created_desc', 'all')
+  expect(submit).not.toHaveBeenCalled()
+  cleanup()
+
+  render(<WordForm {...props} />)
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'Fake it till you make it.')
+  await user.type(screen.getByLabelText(/Переводы/), 'другой перевод')
+  await user.click(screen.getByRole('button', { name: 'Добавить' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Такое слово или выражение уже есть в словаре.',
+  )
+  expect(submit).not.toHaveBeenCalled()
+  cleanup()
+
+  render(<WordForm {...props} />)
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'fake')
+  await user.type(screen.getByLabelText(/Переводы/), 'подделка')
+  await user.click(screen.getByRole('button', { name: 'Добавить' }))
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ headword: 'fake' }))
+  cleanup()
+
+  submit.mockClear()
+  render(<WordForm {...props} word={phrase} />)
+  await user.clear(screen.getByLabelText(/Слово или выражение/))
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'FAKE IT TILL YOU MAKE IT')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({ headword: 'FAKE IT TILL YOU MAKE IT' }),
+  )
+})
+
+it('сохраняет заметку у уже существующего дубликата и отклоняет чужой заголовок', async () => {
+  const other: Word = { ...word, id: '2', headword: 'Book.' }
+  vi.spyOn(api, 'listWords').mockResolvedValue([word, other])
+  const user = userEvent.setup()
+  const submit = vi.fn()
+  const props = {
+    pending: false,
+    error: null,
+    onSubmit: submit,
+    onCancel: () => {},
+    availableTags: [],
+    tagsLoading: false,
+    tagsError: null,
+  }
+  render(<WordForm {...props} word={word} />)
+  await user.type(screen.getByLabelText('Заметка'), 'уточнение')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({ headword: 'book', note: 'уточнение' }),
+  )
+  expect(api.listWords).not.toHaveBeenCalled()
+  cleanup()
+
+  const mine: Word = { ...word, id: 'mine', headword: 'fake', translations: ['подделка'] }
+  submit.mockClear()
+  render(<WordForm {...props} word={mine} />)
+  await user.clear(screen.getByLabelText(/Слово или выражение/))
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'BOOK')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Такое слово или выражение уже есть в словаре.',
+  )
+  expect(submit).not.toHaveBeenCalled()
+  expect(api.listWords).toHaveBeenCalledWith('BOOK', 'created_desc', 'all')
+})
+
+it('отмена во время проверки не сохраняет слово и не шлёт второй запрос', async () => {
+  let resolveList: (words: Word[]) => void = () => {}
+  vi.spyOn(api, 'listWords').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        resolveList = resolve
+      }),
+  )
+  const user = userEvent.setup()
+  const submit = vi.fn()
+  const onCancel = vi.fn()
+  render(
+    <WordForm
+      pending={false}
+      error={null}
+      onSubmit={submit}
+      onCancel={onCancel}
+      availableTags={[]}
+      tagsLoading={false}
+      tagsError={null}
+    />,
+  )
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+  await user.type(screen.getByLabelText(/Переводы/), 'книга')
+  const form = screen.getByRole('form', { name: 'Слово' })
+  fireEvent.submit(form)
+  fireEvent.submit(form)
+  expect(screen.getByLabelText(/Слово или выражение/)).toBeDisabled()
+  expect(api.listWords).toHaveBeenCalledTimes(1)
+  await user.click(screen.getByRole('button', { name: 'Отмена' }))
+  expect(onCancel).toHaveBeenCalledTimes(1)
+  await act(async () => {
+    resolveList([word])
+  })
+  expect(submit).not.toHaveBeenCalled()
 })
 
 it('сообщает о тайм-ауте поиска и позволяет повторить без потери введённого', async () => {

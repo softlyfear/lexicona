@@ -98,6 +98,9 @@ export function WordForm({
   const [lookup, setLookup] = useState<DictionaryLookup | null>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
+  const submitLock = useRef(false)
+  const submitGeneration = useRef(0)
   const [choiceError, setChoiceError] = useState<string | null>(null)
   const [exampleState, setExampleState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [exampleGenerated, setExampleGenerated] = useState(false)
@@ -109,6 +112,7 @@ export function WordForm({
     () => () => {
       lookupRequestId.current++
       exampleRequestId.current++
+      submitGeneration.current++
     },
     [],
   )
@@ -287,8 +291,18 @@ export function WordForm({
     setTagError(null)
   }
 
-  function submit(event: FormEvent) {
+  function cancel() {
+    submitGeneration.current++
+    submitLock.current = false
+    setCheckingDuplicate(false)
+    onCancel()
+  }
+
+  async function submit(event: FormEvent) {
     event.preventDefault()
+    if (submitLock.current || pending) return
+    submitLock.current = true
+    const requestId = ++submitGeneration.current
     const head = headword.trim()
     const lines = translations
       .split('\n')
@@ -296,22 +310,51 @@ export function WordForm({
       .filter(Boolean)
     if (!head || lines.length === 0) {
       setLocalError('Нужно слово и хотя бы один перевод.')
+      submitLock.current = false
       return
     }
     if (!normalizedAnswer(head) || lines.some((line) => !normalizedAnswer(line))) {
       setLocalError('Слово и переводы не могут состоять только из точки.')
+      submitLock.current = false
       return
     }
     const parsed = parseTranslations(translations)
     if (parsed.length === 0) {
       setLocalError('Нужно слово и хотя бы один перевод.')
+      submitLock.current = false
       return
     }
     if (parsed.length > 10) {
       setLocalError('Не больше 10 переводов.')
+      submitLock.current = false
       return
     }
     setLocalError(null)
+    const key = normalizedAnswer(head)
+    // The server skips this check when the normalized headword stays the same,
+    // so a note on an already duplicated row can still be saved.
+    const headwordUnchanged = word !== undefined && normalizedAnswer(word.headword) === key
+    if (!headwordUnchanged) {
+      setCheckingDuplicate(true)
+      try {
+        // Learned and excluded rows stay in this list. The open dictionary view does not.
+        const existing = await api.listWords(head, 'created_desc', 'all')
+        if (requestId !== submitGeneration.current) return
+        if (
+          existing.some((item) => item.id !== word?.id && normalizedAnswer(item.headword) === key)
+        ) {
+          setLocalError(errorMessage(new ApiError(409, 'word_exists')))
+          submitLock.current = false
+          return
+        }
+      } catch {
+        // The server still rejects a duplicate when this lookup fails.
+        if (requestId !== submitGeneration.current) return
+      } finally {
+        if (requestId === submitGeneration.current) setCheckingDuplicate(false)
+      }
+    }
+    if (requestId !== submitGeneration.current) return
     onSubmit({
       headword: head,
       translations: parsed,
@@ -326,6 +369,7 @@ export function WordForm({
           : optional(transcription) === ref.value,
       ),
     })
+    if (requestId === submitGeneration.current) submitLock.current = false
   }
 
   const selectedTranslations = new Set(parseTranslations(translations).map(normalizedAnswer))
@@ -350,296 +394,305 @@ export function WordForm({
   const message = localError ?? error
   return (
     <form className={`${ui.card} ${css.form}`} onSubmit={submit} aria-label="Слово">
-      <div className={css.formRow}>
-        <div className={formCss.headword}>
+      <fieldset className={formCss.fields} disabled={checkingDuplicate}>
+        <div className={css.formRow}>
+          <div className={formCss.headword}>
+            <label className={ui.field}>
+              <span className={ui.label}>Слово или выражение (EN)</span>
+              <input
+                className={ui.input}
+                value={headword}
+                onChange={(e) => changeHeadword(e.target.value)}
+                maxLength={200}
+                lang="en"
+                autoCapitalize="none"
+                autoFocus
+                required
+              />
+            </label>
+            <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
+          </div>
           <label className={ui.field}>
-            <span className={ui.label}>Слово или выражение (EN)</span>
+            <span className={ui.label}>Транскрипция</span>
             <input
               className={ui.input}
-              value={headword}
-              onChange={(e) => changeHeadword(e.target.value)}
-              maxLength={200}
-              lang="en"
-              autoCapitalize="none"
-              autoFocus
-              required
+              value={transcription}
+              onChange={(e) => {
+                setTranscription(e.target.value)
+                setRefs((current) =>
+                  current.filter(
+                    (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
+                  ),
+                )
+              }}
+              maxLength={300}
             />
           </label>
-          <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
         </div>
-        <label className={ui.field}>
-          <span className={ui.label}>Транскрипция</span>
-          <input
-            className={ui.input}
-            value={transcription}
-            onChange={(e) => {
-              setTranscription(e.target.value)
-              setRefs((current) =>
-                current.filter(
-                  (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
-                ),
-              )
-            }}
-            maxLength={300}
-          />
-        </label>
-      </div>
-      <div className={formCss.dictionary}>
-        <button
-          type="button"
-          className={`${ui.button} ${formCss.dictionaryButton}`}
-          disabled={!headword.trim() || lookupState === 'loading'}
-          onClick={() => findSuggestions()}
-        >
-          Подобрать перевод и транскрипцию
-        </button>
-        {lookupState === 'loading' && <p role="status">Ищем в словаре…</p>}
-        {lookupState === 'error' && (
-          <p role="alert">
-            {lookupError ?? 'Словарь недоступен. Попробуйте ещё раз или введите данные вручную.'}
-          </p>
-        )}
-        {lookup &&
-          lookup.matches.length === 0 &&
-          lookup.spelling_suggestions &&
-          lookup.spelling_suggestions.length > 0 && (
-            <section aria-label="Возможные исправления">
-              <p>Точного совпадения нет. Возможно, вы имели в виду:</p>
+        <div className={formCss.dictionary}>
+          <button
+            type="button"
+            className={`${ui.button} ${formCss.dictionaryButton}`}
+            disabled={!headword.trim() || lookupState === 'loading'}
+            onClick={() => findSuggestions()}
+          >
+            Подобрать перевод и транскрипцию
+          </button>
+          {lookupState === 'loading' && <p role="status">Ищем в словаре…</p>}
+          {lookupState === 'error' && (
+            <p role="alert">
+              {lookupError ?? 'Словарь недоступен. Попробуйте ещё раз или введите данные вручную.'}
+            </p>
+          )}
+          {lookup &&
+            lookup.matches.length === 0 &&
+            lookup.spelling_suggestions &&
+            lookup.spelling_suggestions.length > 0 && (
+              <section aria-label="Возможные исправления">
+                <p>Точного совпадения нет. Возможно, вы имели в виду:</p>
+                <div className={formCss.choices}>
+                  {lookup.spelling_suggestions.map((value) => (
+                    <button
+                      type="button"
+                      className={`${ui.button} ${formCss.dictionaryButton}`}
+                      key={value}
+                      onClick={() => selectSpelling(value)}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          {lookup &&
+            lookup.matches.length === 0 &&
+            !lookup.spelling_suggestions?.length &&
+            (lookup.machine_translation ? (
+              <p role="status">
+                Слова нет в локальном словаре. Проверьте написание или используйте машинный перевод.
+              </p>
+            ) : (
+              <p role="status">
+                Слово не найдено. Проверьте написание или введите перевод вручную.
+              </p>
+            ))}
+          {machine && machineChoices.length > 0 && (
+            <section aria-label="Машинный перевод">
+              <p>
+                Машинный перевод ·{' '}
+                {machine.provider === 'deepl' ? 'DeepL' : 'DeepSeek · OpenRouter'}
+              </p>
               <div className={formCss.choices}>
-                {lookup.spelling_suggestions.map((value) => (
-                  <button
-                    type="button"
-                    className={`${ui.button} ${formCss.dictionaryButton}`}
-                    key={value}
-                    onClick={() => selectSpelling(value)}
-                  >
-                    {value}
-                  </button>
-                ))}
+                {machineChoices.map((value) => translationChoice(value, null))}
               </div>
             </section>
           )}
-        {lookup &&
-          lookup.matches.length === 0 &&
-          !lookup.spelling_suggestions?.length &&
-          (lookup.machine_translation ? (
-            <p role="status">
-              Слова нет в локальном словаре. Проверьте написание или используйте машинный перевод.
-            </p>
-          ) : (
-            <p role="status">Слово не найдено. Проверьте написание или введите перевод вручную.</p>
-          ))}
-        {machine && machineChoices.length > 0 && (
-          <section aria-label="Машинный перевод">
-            <p>
-              Машинный перевод · {machine.provider === 'deepl' ? 'DeepL' : 'DeepSeek · OpenRouter'}
-            </p>
-            <div className={formCss.choices}>
-              {machineChoices.map((value) => translationChoice(value, null))}
+          {lookup && lookup.matches.length > 0 && (
+            <div>
+              <p>Варианты из словаря в порядке источника.</p>
+              {lookup.machine_transcription && !preferredTranscription(lookup.matches) && (
+                <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
+              )}
+              {lookup.matches.map((match) => (
+                <section
+                  key={match.entry_id}
+                  aria-label={`${match.headword}${match.part_of_speech ? `, ${partOfSpeech(match.part_of_speech)}` : ''}`}
+                >
+                  <p>
+                    <strong>{match.headword}</strong>
+                    {match.part_of_speech && ` — ${partOfSpeech(match.part_of_speech)}`}
+                    {match.match === 'normalized' && ' (нормализованное совпадение)'}
+                  </p>
+                  <div className={formCss.choices}>
+                    {match.translations.map((value) => translationChoice(value, match.entry_id))}
+                  </div>
+                </section>
+              ))}
             </div>
-          </section>
-        )}
-        {lookup && lookup.matches.length > 0 && (
-          <div>
-            <p>Варианты из словаря в порядке источника.</p>
-            {lookup.machine_transcription && !preferredTranscription(lookup.matches) && (
-              <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
-            )}
-            {lookup.matches.map((match) => (
-              <section
-                key={match.entry_id}
-                aria-label={`${match.headword}${match.part_of_speech ? `, ${partOfSpeech(match.part_of_speech)}` : ''}`}
-              >
-                <p>
-                  <strong>{match.headword}</strong>
-                  {match.part_of_speech && ` — ${partOfSpeech(match.part_of_speech)}`}
-                  {match.match === 'normalized' && ' (нормализованное совпадение)'}
-                </p>
-                <div className={formCss.choices}>
-                  {match.translations.map((value) => translationChoice(value, match.entry_id))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-        {choiceError && (
-          <p role="alert" className={ui.error}>
-            {choiceError}
-          </p>
-        )}
-      </div>
-      <label className={ui.field}>
-        <span className={ui.label}>Переводы — по одному в строке, первый основной</span>
-        <textarea
-          className={ui.input}
-          value={translations}
-          onChange={(e) => {
-            setTranslations(e.target.value)
-            const values = parseTranslations(e.target.value)
-            setRefs((current) =>
-              current.filter((ref) => ref.field !== 'translation' || values.includes(ref.value)),
-            )
-          }}
-          rows={3}
-          lang="ru"
-          required
-        />
-      </label>
-      <fieldset className={css.tagField}>
-        <legend className={ui.label}>Теги</legend>
-        <p className={ui.muted}>До 20 тегов, каждый — до 80 символов.</p>
-        {tagsLoading && (
-          <p role="status" className={ui.muted}>
-            Загружаем теги…
-          </p>
-        )}
-        {tagsError && (
-          <p role="alert" className={ui.error}>
-            {tagsError} Можно ввести тег вручную.
-          </p>
-        )}
-        {availableTags.length > 0 && (
-          <label className={ui.field}>
-            <span className={ui.label}>Выбрать существующий тег</span>
-            <select className={ui.input} value="" onChange={(event) => addTag(event.target.value)}>
-              <option value="">Выберите тег</option>
-              {availableTags
-                .filter((tag) => !tags.some((selected) => tagKey(selected) === tagKey(tag.name)))
-                .map((tag) => (
-                  <option key={tag.id} value={tag.name}>
-                    {tag.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-        )}
-        <div className={css.tagEntry}>
-          <label className={ui.field}>
-            <span className={ui.label}>Новый тег</span>
-            <input
-              className={ui.input}
-              value={tagInput}
-              onChange={(event) => setTagInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  addTag(tagInput)
-                }
-              }}
-            />
-          </label>
-          <button type="button" className={ui.button} onClick={() => addTag(tagInput)}>
-            Добавить тег
-          </button>
-        </div>
-        {tagError && (
-          <p role="alert" className={ui.error}>
-            {tagError}
-          </p>
-        )}
-        <div className={css.tagList}>
-          {tags.map((tag) => (
-            <span className={css.tag} key={tag}>
-              {tag}
-              <button
-                type="button"
-                className={ui.ghost}
-                aria-label={`Снять тег «${tag}»`}
-                onClick={() => {
-                  setTags((current) => current.filter((item) => item !== tag))
-                  setTagError(null)
-                }}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-        </div>
-      </fieldset>
-      <div>
-        <div className={css.actions}>
-          {exampleGenerated ? (
-            <>
-              <button
-                type="button"
-                className={ui.button}
-                disabled={!headword.trim() || exampleState === 'loading'}
-                onClick={() => addExample('append')}
-              >
-                Добавить ещё 1 пример
-              </button>
-              <button
-                type="button"
-                className={ui.button}
-                disabled={!headword.trim() || exampleState === 'loading'}
-                onClick={() => addExample('replace')}
-              >
-                Заменить все примеры
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className={ui.button}
-              disabled={!headword.trim() || exampleState === 'loading'}
-              onClick={() => addExample()}
-            >
-              Добавить пример
-            </button>
+          )}
+          {choiceError && (
+            <p role="alert" className={ui.error}>
+              {choiceError}
+            </p>
           )}
         </div>
-        {exampleState === 'loading' && <p role="status">DeepSeek составляет пример…</p>}
-        {exampleState === 'error' && (
-          <p role="alert" className={ui.error}>
-            {exampleError ??
-              'Не удалось составить пример. Попробуйте ещё раз или введите его вручную.'}
-          </p>
-        )}
-      </div>
-      <div className={css.formRow}>
         <label className={ui.field}>
-          <span className={ui.label}>Пример (EN)</span>
+          <span className={ui.label}>Переводы — по одному в строке, первый основной</span>
           <textarea
             className={ui.input}
-            value={exampleEn}
-            onChange={(e) => setExampleEn(e.target.value)}
-            rows={6}
-            maxLength={2000}
-            lang="en"
-          />
-        </label>
-        <label className={ui.field}>
-          <span className={ui.label}>Перевод примера</span>
-          <textarea
-            className={ui.input}
-            value={exampleRu}
-            onChange={(e) => setExampleRu(e.target.value)}
-            rows={6}
-            maxLength={2000}
+            value={translations}
+            onChange={(e) => {
+              setTranslations(e.target.value)
+              const values = parseTranslations(e.target.value)
+              setRefs((current) =>
+                current.filter((ref) => ref.field !== 'translation' || values.includes(ref.value)),
+              )
+            }}
+            rows={3}
             lang="ru"
+            required
           />
         </label>
-      </div>
-      <label className={ui.field}>
-        <span className={ui.label}>Заметка</span>
-        <textarea
-          className={ui.input}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          maxLength={4000}
-        />
-      </label>
+        <fieldset className={css.tagField}>
+          <legend className={ui.label}>Теги</legend>
+          <p className={ui.muted}>До 20 тегов, каждый — до 80 символов.</p>
+          {tagsLoading && (
+            <p role="status" className={ui.muted}>
+              Загружаем теги…
+            </p>
+          )}
+          {tagsError && (
+            <p role="alert" className={ui.error}>
+              {tagsError} Можно ввести тег вручную.
+            </p>
+          )}
+          {availableTags.length > 0 && (
+            <label className={ui.field}>
+              <span className={ui.label}>Выбрать существующий тег</span>
+              <select
+                className={ui.input}
+                value=""
+                onChange={(event) => addTag(event.target.value)}
+              >
+                <option value="">Выберите тег</option>
+                {availableTags
+                  .filter((tag) => !tags.some((selected) => tagKey(selected) === tagKey(tag.name)))
+                  .map((tag) => (
+                    <option key={tag.id} value={tag.name}>
+                      {tag.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          <div className={css.tagEntry}>
+            <label className={ui.field}>
+              <span className={ui.label}>Новый тег</span>
+              <input
+                className={ui.input}
+                value={tagInput}
+                onChange={(event) => setTagInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    addTag(tagInput)
+                  }
+                }}
+              />
+            </label>
+            <button type="button" className={ui.button} onClick={() => addTag(tagInput)}>
+              Добавить тег
+            </button>
+          </div>
+          {tagError && (
+            <p role="alert" className={ui.error}>
+              {tagError}
+            </p>
+          )}
+          <div className={css.tagList}>
+            {tags.map((tag) => (
+              <span className={css.tag} key={tag}>
+                {tag}
+                <button
+                  type="button"
+                  className={ui.ghost}
+                  aria-label={`Снять тег «${tag}»`}
+                  onClick={() => {
+                    setTags((current) => current.filter((item) => item !== tag))
+                    setTagError(null)
+                  }}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        </fieldset>
+        <div>
+          <div className={css.actions}>
+            {exampleGenerated ? (
+              <>
+                <button
+                  type="button"
+                  className={ui.button}
+                  disabled={!headword.trim() || exampleState === 'loading'}
+                  onClick={() => addExample('append')}
+                >
+                  Добавить ещё 1 пример
+                </button>
+                <button
+                  type="button"
+                  className={ui.button}
+                  disabled={!headword.trim() || exampleState === 'loading'}
+                  onClick={() => addExample('replace')}
+                >
+                  Заменить все примеры
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={ui.button}
+                disabled={!headword.trim() || exampleState === 'loading'}
+                onClick={() => addExample()}
+              >
+                Добавить пример
+              </button>
+            )}
+          </div>
+          {exampleState === 'loading' && <p role="status">DeepSeek составляет пример…</p>}
+          {exampleState === 'error' && (
+            <p role="alert" className={ui.error}>
+              {exampleError ??
+                'Не удалось составить пример. Попробуйте ещё раз или введите его вручную.'}
+            </p>
+          )}
+        </div>
+        <div className={css.formRow}>
+          <label className={ui.field}>
+            <span className={ui.label}>Пример (EN)</span>
+            <textarea
+              className={ui.input}
+              value={exampleEn}
+              onChange={(e) => setExampleEn(e.target.value)}
+              rows={6}
+              maxLength={2000}
+              lang="en"
+            />
+          </label>
+          <label className={ui.field}>
+            <span className={ui.label}>Перевод примера</span>
+            <textarea
+              className={ui.input}
+              value={exampleRu}
+              onChange={(e) => setExampleRu(e.target.value)}
+              rows={6}
+              maxLength={2000}
+              lang="ru"
+            />
+          </label>
+        </div>
+        <label className={ui.field}>
+          <span className={ui.label}>Заметка</span>
+          <textarea
+            className={ui.input}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={4000}
+          />
+        </label>
+      </fieldset>
       {message && (
         <p className={ui.error} role="alert">
           {message}
         </p>
       )}
       <div className={css.actions}>
-        <button className={ui.primary} disabled={pending}>
+        <button className={ui.primary} disabled={pending || checkingDuplicate}>
           {word ? 'Сохранить' : 'Добавить'}
         </button>
-        <button type="button" className={ui.button} onClick={onCancel}>
+        <button type="button" className={ui.button} onClick={cancel}>
           Отмена
         </button>
       </div>

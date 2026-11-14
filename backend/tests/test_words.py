@@ -160,6 +160,51 @@ async def test_duplicate_headword_is_rejected(alice: Client, bob: Client) -> Non
     assert "ёж" in visible
 
 
+async def test_duplicate_phrase_is_rejected_like_a_word(alice: Client) -> None:
+    await add_word(alice, "fake it till you make it", "притворяйся, пока это не станет правдой")
+    for headword in (
+        "fake it till you make it",
+        "Fake It Till You Make It",
+        "  fake   it till you make it ",
+        "fake it till you make it.",
+        "FAKE IT TILL YOU MAKE IT.",
+    ):
+        response = await alice.post(
+            "/api/words", json={"headword": headword, "translations": ["другой перевод"]}
+        )
+        assert response.status_code == 409, headword
+        assert response.json()["detail"] == "word_exists"
+    shorter = await add_word(alice, "fake", "подделка")
+    assert shorter["headword"] == "fake"
+    contained = await add_word(alice, "make it", "добьёмся")
+    assert contained["headword"] == "make it"
+    await add_word(alice, "don’t look back", "не оглядывайся")
+    apostrophe = await alice.post(
+        "/api/words", json={"headword": "don't look back", "translations": ["не смотри назад"]}
+    )
+    assert apostrophe.status_code == 409
+    learned = await add_word(alice, "cut to the chase", "перейти к делу")
+    assert (
+        await alice.patch(f"/api/words/{learned['id']}/learned", json={"is_learned": True})
+    ).status_code == 200
+    again = await alice.post(
+        "/api/words", json={"headword": "Cut to the chase.", "translations": ["к сути"]}
+    )
+    assert again.status_code == 409
+    renamed = await alice.put(
+        f"/api/words/{shorter['id']}",
+        json={"headword": "fake it till you make it", "translations": ["подделка"]},
+    )
+    assert renamed.status_code == 409
+    kept = (await alice.get(f"/api/words/{shorter['id']}")).json()
+    assert kept["headword"] == "fake"
+    assert kept["translations"] == ["подделка"]
+    saved = [word["headword"] for word in (await alice.get("/api/words?training=all")).json()]
+    assert saved.count("fake it till you make it") == 1
+    assert saved.count("fake") == 1
+    assert saved.count("cut to the chase") == 1
+
+
 async def test_rename_onto_existing_headword_is_rejected(app: FastAPI, alice: Client) -> None:
     original = await add_word(alice, "until", "до")
     other = await add_word(alice, "till", "пока")
