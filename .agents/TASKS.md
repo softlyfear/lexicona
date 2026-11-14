@@ -42,16 +42,27 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   inspected at desktop 1323x937 and mobile 390x844: answer, playback and adjacent
   Next visible without overflow. No real provider/audio verification.
   Independent code-reviewer: Ship. Orchestrator accepted.
-- FEEDBACK-004 / filtered dictionary count / implementation / attempt 1.
+- FEEDBACK-004 / filtered dictionary count / accepted / attempt 1.
   AC: right-aligned count reflects search/scope/OR-tags, zero, loading and mutations.
   Owner/final gate: frontend-agent. Files: WordsPage.tsx, pages.module.css,
   WordsPage tests. Use full response length only after verifying no pagination.
   Hide stale counts for deferred search, placeholder data, fetching and errors.
   Check focused tests, make check and independent review.
-- FEEDBACK-005 / persisted optional automatic next / planned.
+  Evidence: WordsPage 53 passed; make check exit 0 (tooling 20 / backend 523 /
+  frontend 282), format/lint/types/build passed. Backend list is unpaginated.
+  Browser fixture smoke: desktop/mobile long tags, native Enter/Space, count
+  2→1→0 passed. Independent code-reviewer: Ship; orchestrator accepted.
+- FEEDBACK-005 / persisted optional automatic next / implementation / attempt 1.
   AC: default off; confirmed correct including retry advances once after feedback;
   speech coordination and timer cancellation; no auto-next on reveal/error/skip;
   matching retains group completion semantics; older preferences remain valid.
+  Architect checkpoint: independent preferences.training_auto_advance boolean
+  (absent false) avoids full training-section overwrite from setup. Existing
+  settings endpoint/CAS, no migration. speech controller exposes busy rather
+  than parsing status; wait for 1.5s feedback and speech idle, retaining watchdog.
+  Owners: backend-agent for preferences/auth/tests, then frontend-agent for DTO,
+  account preference write, Settings/App/Run/MatchingRun/speech and regressions.
+  Frontend final gate owner; focused tests, make check and independent review.
 - FEEDBACK-006 / independent transcription draft / planned.
   AC: compact IPA-only button; existing translations untouched; explicit Save;
   stale-response protection, provenance, auth/CSRF/no-store and failure tests.

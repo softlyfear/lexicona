@@ -111,6 +111,11 @@ export function WordsPage({ userId }: { userId: string }) {
     queryFn: () => api.listWords(query, sort, training, tagIds),
     placeholderData: keepPreviousData,
   })
+  const countReady =
+    words.isSuccess &&
+    words.fetchStatus === 'idle' &&
+    !words.isPlaceholderData &&
+    query === search.trim()
 
   const save = useMutation({
     mutationFn: (input: WordInput) =>
@@ -223,12 +228,19 @@ export function WordsPage({ userId }: { userId: string }) {
 
         <details className={css.filterDisclosure}>
           <summary className={css.disclosureSummary}>
-            <strong>Фильтры</strong>
-            <span className={ui.muted}>
-              {SORT_SUMMARY[sort]} ·{' '}
-              {TRAINING_OPTIONS.find((option) => option.value === training)?.label}
-              {tagIds.length > 0 &&
-                ` · Теги: ${tagIds.map((id) => tags.data?.find((tag) => tag.id === id)?.name ?? id).join(', ')}`}
+            <span className={css.filterSummaryContent}>
+              <span className={css.filterSummaryText}>
+                <strong>Фильтры</strong>{' '}
+                <span className={ui.muted}>
+                  {SORT_SUMMARY[sort]} ·{' '}
+                  {TRAINING_OPTIONS.find((option) => option.value === training)?.label}
+                  {tagIds.length > 0 &&
+                    ` · Теги: ${tagIds.map((id) => tags.data?.find((tag) => tag.id === id)?.name ?? id).join(', ')}`}
+                </span>
+              </span>
+              <span className={css.wordCount} aria-label="Количество слов" aria-live="polite">
+                Слов: {countReady ? words.data.length : words.isError ? '—' : '…'}
+              </span>
             </span>
           </summary>
           <div className={css.filters}>

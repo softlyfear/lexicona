@@ -297,3 +297,7 @@ remain significant.
 Authorized training answers are displayed in a prominent answer group, with
 language-aware manual playback and Next adjacent to the answer. Reveal does not
 require typed input; wrong open answers still withhold the expected answer.
+
+The dictionary filter summary displays the full unpaginated matching word count.
+Deferred searches, placeholder data, active/paused requests and errors do not
+present a stale number as the current count.

@@ -1,6 +1,7 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Profiler, type ProfilerProps } from 'react'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type Word } from '../api'
@@ -51,18 +52,21 @@ function Navigation() {
   )
 }
 
-function renderPage(url = '/', userId = 'alice') {
+function renderPage(url = '/', userId = 'alice', onRender: ProfilerProps['onRender'] = () => {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
         <Navigation />
         <main>
-          <WordsPage userId={userId} />
+          <Profiler id="dictionary" onRender={onRender}>
+            <WordsPage userId={userId} />
+          </Profiler>
         </main>
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return { ...view, client }
 }
 
 function params() {
@@ -98,6 +102,256 @@ describe('сортировка словаря', () => {
     vi.resetAllMocks()
     vi.mocked(api.listTags).mockResolvedValue([])
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
+  })
+
+  it.each(['active', 'excluded', 'learned', 'all'] as const)(
+    'counts the full server search/scope/OR-tag result for %s including words with both tags only once',
+    async (training) => {
+      vi.mocked(api.listTags).mockResolvedValue([
+        { id: 'home', name: 'Дом' },
+        { id: 'work', name: 'Работа' },
+      ])
+      const rows = [word('1', 'cat'), word('2', 'cats'), word('3', 'catfish')]
+      rows[0].tags = [{ id: 'home', name: 'Дом' }]
+      rows[1].tags = [{ id: 'work', name: 'Работа' }]
+      rows[2].tags = [...rows[0].tags, ...rows[1].tags]
+      vi.mocked(api.listWords).mockResolvedValue(rows)
+      renderPage(`/?q=cat&training=${training}&tag_id=work&tag_id=home`)
+      await waitFor(() =>
+        expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 3'),
+      )
+      expect(api.listWords).toHaveBeenCalledWith('cat', 'created_desc', training, ['home', 'work'])
+      const summary = screen.getByText('Фильтры').closest('summary')!
+      expect(summary).toContainElement(screen.getByLabelText('Количество слов'))
+      expect(summary.parentElement).not.toHaveAttribute('open')
+      expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    },
+  )
+
+  it('shows zero and keeps the native summary focusable and keyboard-operable with long tags', async () => {
+    const user = userEvent.setup()
+    const longTag = 'ОченьДлинныйТег'.repeat(5)
+    vi.mocked(api.listTags).mockResolvedValue([{ id: 'home', name: longTag }])
+    vi.mocked(api.listWords).mockResolvedValue([])
+    renderPage('/?q=nothing&tag_id=home')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0'),
+    )
+    const summary = screen.getByText('Фильтры').closest('summary')!
+    expect(summary).toHaveTextContent(longTag)
+    expect(summary).not.toHaveAttribute('role')
+    summary.focus()
+    expect(summary).toHaveFocus()
+    // jsdom does not implement summary's native keyboard activation.
+    expect(fireEvent.keyDown(summary, { key: 'Enter' })).toBe(true)
+    expect(fireEvent.keyDown(summary, { key: ' ' })).toBe(true)
+    await user.click(summary)
+    expect(summary.parentElement).toHaveAttribute('open')
+    await user.click(summary)
+    expect(summary.parentElement).not.toHaveAttribute('open')
+  })
+
+  it('hides the count on the urgent search commit and placeholder results, ignoring late responses', async () => {
+    const pending = new Map<string, (rows: Word[]) => void>()
+    vi.mocked(api.listWords).mockImplementation((q) =>
+      q
+        ? new Promise((resolve) => {
+            pending.set(q, resolve)
+          })
+        : Promise.resolve([word('1', 'cat'), word('2', 'dog')]),
+    )
+    const frames: { search: string; count: string; calls: number }[] = []
+    renderPage('/', 'alice', () => {
+      const input = document.querySelector<HTMLInputElement>('input[type="search"]')
+      const count = document.querySelector('[aria-label="Количество слов"]')
+      if (input && count)
+        frames.push({
+          search: input.value,
+          count: count.textContent ?? '',
+          calls: vi.mocked(api.listWords).mock.calls.length,
+        })
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 2'),
+    )
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'cat' } })
+    expect(frames.find((frame) => frame.search === 'cat')).toMatchObject({
+      count: 'Слов: …',
+      calls: 1,
+    })
+    expect(screen.getByText('dog')).toBeInTheDocument()
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …')
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'nothing' } })
+    await act(async () => pending.get('nothing')!([]))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0'),
+    )
+    await act(async () => pending.get('cat')!([word('1', 'cat')]))
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0')
+  })
+
+  it('does not invent zero during initial loading or error', async () => {
+    let reject!: (error: Error) => void
+    vi.mocked(api.listWords).mockReturnValue(
+      new Promise((_, fail) => {
+        reject = fail
+      }),
+    )
+    renderPage()
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …')
+    await act(async () => reject(new TypeError('offline')))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: —'),
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Нет связи')
+  })
+
+  it('updates the count when training scope changes while keeping search and OR tags', async () => {
+    const user = userEvent.setup()
+    const rows = [word('1', 'cat'), word('2', 'cats'), word('3', 'catfish')]
+    vi.mocked(api.listWords).mockImplementation(async (_q, _sort, training) =>
+      training === 'all' ? rows : training === 'learned' ? rows.slice(0, 1) : [],
+    )
+    renderPage('/?q=cat&training=all&tag_id=home&tag_id=work')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 3'),
+    )
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'learned')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 1'),
+    )
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'excluded')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0'),
+    )
+    expect(api.listWords).toHaveBeenLastCalledWith('cat', 'created_desc', 'excluded', [
+      'home',
+      'work',
+    ])
+  })
+
+  it('hides cached count during a same-key refetch and after its failure, then restores on recovery', async () => {
+    const { client } = renderPage()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 2'),
+    )
+    let reject!: (error: Error) => void
+    vi.mocked(api.listWords).mockReturnValue(
+      new Promise((_, fail) => {
+        reject = fail
+      }),
+    )
+    act(() => {
+      void client.invalidateQueries({ queryKey: ['words'] })
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …'),
+    )
+    expect(screen.getByText('cat')).toBeInTheDocument()
+    await act(async () => reject(new TypeError('offline')))
+    expect(screen.getByText('cat')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: —'),
+    )
+    vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat')])
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['words'] })
+    })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 1'),
+    )
+  })
+
+  it.each(['create', 'edit', 'delete', 'learned', 'exclude'] as const)(
+    'refreshes the filtered count after %s and hides it while the invalidated list loads',
+    async (action) => {
+      const user = userEvent.setup()
+      const tagged = { ...word('1', 'cat'), tags: [{ id: 'home', name: 'Дом' }] }
+      vi.mocked(api.listTags).mockResolvedValue(tagged.tags)
+      let changed = false
+      let resolve!: (rows: Word[]) => void
+      vi.mocked(api.listWords).mockImplementation((_q, _sort, _training, ids) => {
+        if (!ids?.length) return Promise.resolve([])
+        return changed
+          ? new Promise((done) => {
+              resolve = done
+            })
+          : Promise.resolve([tagged])
+      })
+      const change = async () => {
+        changed = true
+        return tagged
+      }
+      vi.mocked(api.createWord).mockImplementation(change)
+      vi.mocked(api.updateWord).mockImplementation(change)
+      vi.mocked(api.deleteWord).mockImplementation(async () => {
+        changed = true
+      })
+      vi.mocked(api.setWordLearned).mockImplementation(change)
+      vi.mocked(api.setWordTraining).mockImplementation(change)
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderPage('/?q=cat&training=active&tag_id=home')
+      await waitFor(() =>
+        expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 1'),
+      )
+      if (action === 'create') {
+        await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+        await user.type(screen.getByLabelText('Слово или выражение (EN)'), 'cats')
+        await user.type(
+          screen.getByLabelText('Переводы — по одному в строке, первый основной'),
+          'кошки',
+        )
+        await user.selectOptions(
+          screen.getByRole('combobox', { name: 'Выбрать существующий тег' }),
+          'Дом',
+        )
+        await user.click(screen.getByRole('button', { name: 'Добавить' }))
+      } else if (action === 'edit') {
+        await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
+        await user.click(screen.getByRole('button', { name: 'Снять тег «Дом»' }))
+        await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+      } else {
+        const names = {
+          delete: 'Удалить «cat»',
+          learned: 'Отметить «cat» как выученное',
+          exclude: 'Исключить из обучения «cat»',
+        }
+        await user.click(screen.getByRole('button', { name: names[action] }))
+      }
+      await waitFor(() =>
+        expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …'),
+      )
+      expect(api.listWords).toHaveBeenLastCalledWith('cat', 'created_desc', 'active', ['home'])
+      await act(async () => resolve(action === 'create' ? [tagged, word('2', 'cats')] : []))
+      await waitFor(() =>
+        expect(screen.getByLabelText('Количество слов')).toHaveTextContent(
+          action === 'create' ? 'Слов: 2' : 'Слов: 0',
+        ),
+      )
+      confirm.mockRestore()
+    },
+  )
+
+  it('does not present a cached count as current while an offline refetch is paused', async () => {
+    const { client } = renderPage()
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 2'),
+    )
+    try {
+      act(() => onlineManager.setOnline(false))
+      act(() => {
+        void client.invalidateQueries({ queryKey: ['words'] })
+      })
+      await waitFor(() =>
+        expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …'),
+      )
+      expect(api.listWords).toHaveBeenCalledOnce()
+    } finally {
+      act(() => onlineManager.setOnline(true))
+    }
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 2'),
+    )
   })
 
   it.each([
@@ -412,11 +666,13 @@ describe('сортировка словаря', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Сортировка' }), 'created_asc')
     expect(await screen.findByRole('status')).toHaveTextContent('Обновляем список')
     expect(screen.getByText('cat')).toBeInTheDocument()
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: …')
     await act(async () => resolve([word('2', 'dog'), word('1', 'cat')]))
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
     expect(
       screen.getAllByRole('listitem').map((item) => within(item).getByRole('strong').textContent),
     ).toEqual(['dog', 'cat'])
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 2')
   })
 
   it('поздний ответ прежней сортировки не заменяет новый список', async () => {
@@ -699,6 +955,7 @@ describe('сортировка словаря', () => {
     renderPage('/?q=cat&sort=progress_desc&training=all')
     expect(screen.getByText('Теги: любой выбранный')).toBeInTheDocument()
     await screen.findByText('cat')
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 1')
     await user.click(await screen.findByRole('checkbox', { name: 'Работа' }))
     await user.click(screen.getByRole('checkbox', { name: 'Дом' }))
     expect(params().getAll('tag_id')).toEqual(['a', 'b'])
@@ -706,6 +963,7 @@ describe('сортировка словаря', () => {
       expect(api.listWords).toHaveBeenCalledWith('cat', 'progress_desc', 'all', ['a', 'b']),
     )
     expect(await screen.findByText('Ничего не найдено.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0')
     await user.click(screen.getByRole('button', { name: 'Назад' }))
     expect(screen.getByRole('checkbox', { name: 'Дом' })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Работа' })).toBeChecked()
@@ -716,6 +974,9 @@ describe('сортировка словаря', () => {
     expect(params().get('q')).toBe('cat')
     expect(params().get('sort')).toBe('progress_desc')
     expect(params().get('training')).toBe('all')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 1'),
+    )
   })
 
   it('выбирает, создаёт и снимает теги слова без дубликатов и обновляет справочник', async () => {
