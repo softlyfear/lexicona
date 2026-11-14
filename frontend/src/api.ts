@@ -166,6 +166,7 @@ export interface TrainingItem {
   prompt: string
   options: string[]
   transcription?: string | null
+  word_id?: string | null
 }
 
 export interface TrainingSession {
@@ -420,6 +421,7 @@ export const api = {
   dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
+  getWord: (id: string) => request<Word>('GET', `/words/${id}`),
   updateWord: (id: string, word: WordInput) => request<Word>('PUT', `/words/${id}`, word),
   deleteWord: (id: string) => request<void>('DELETE', `/words/${id}`),
   setWordTraining: (id: string, isExcluded: boolean) =>
@@ -498,6 +500,7 @@ const MESSAGES: Record<string, string> = {
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',
   word_exists: 'Такое слово уже есть в словаре.',
+  word_not_found: 'Слово уже удалено.',
   tag_not_found: 'Один из выбранных тегов недоступен. Снимите его и повторите поиск.',
   no_matching_words:
     'Нет подходящих слов. Измените или очистите фильтры либо добавьте слова в словарь.',

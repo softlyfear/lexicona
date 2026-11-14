@@ -89,6 +89,7 @@ class ItemOut(BaseModel):
     prompt: str
     options: list[str]
     transcription: str | None = None
+    word_id: str | None = None
 
 
 class SessionOut(BaseModel):
@@ -552,6 +553,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 prompt=i.prompt,
                 options=i.options,
                 transcription=shown_transcription.get(i.word_id) if i.word_id else None,
+                word_id=i.word_id,
             )
             for i in session.items
         ],
@@ -624,6 +626,7 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
         output.append(
             {
                 "id": item.id,
+                "word_id": item.word_id,
                 "prompt": item.prompt,
                 "options": item.options,
                 "transcription": _prompt_transcription(word, session.mode, session.direction),

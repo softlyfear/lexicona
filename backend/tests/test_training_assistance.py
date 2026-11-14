@@ -50,7 +50,7 @@ async def test_assistance_is_terminal_and_uses_snapshot(
     word = await seed(alice)
     await set_progress(app, word["id"], 53)
     item = await create_item(app, alice, mode, direction)
-    assert set(item) == {"id", "prompt", "options", "transcription"}
+    assert set(item) == {"id", "prompt", "options", "transcription", "word_id"}
 
     # Cosmetic edits and subsequent semantic edits cannot rewrite the private snapshot.
     edit = await alice.put(

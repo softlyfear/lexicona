@@ -60,7 +60,7 @@ async def test_session_has_six_unique_options_and_hides_answer(alice: Client) ->
     assert len(session["items"]) == 5
     translations = dict(ANIMALS)
     for item in session["items"]:
-        assert set(item) == {"id", "prompt", "options", "transcription"}
+        assert set(item) == {"id", "prompt", "options", "transcription", "word_id"}
         assert len(item["options"]) == 6
         assert len({normalize(o) for o in item["options"]}) == 6
         assert translations[item["prompt"]] in item["options"]
@@ -136,7 +136,7 @@ async def test_ru_en_direction(alice: Client, monkeypatch: pytest.MonkeyPatch) -
     session = await start(alice, direction="ru_en")
     english = {en for en, _ in ANIMALS}
     for item in session["items"]:
-        assert set(item) == {"id", "prompt", "options", "transcription"}
+        assert set(item) == {"id", "prompt", "options", "transcription", "word_id"}
         assert len(item["options"]) == len({normalize(o) for o in item["options"]}) == 6
         assert item["prompt"] not in english
         assert set(item["options"]) <= english
@@ -271,6 +271,23 @@ async def test_items_of_deleted_words_remain_unavailable(app: FastAPI, alice: Cl
     async with database.sessions() as db:
         saved = await db.scalar(select(TrainingItem).where(TrainingItem.id == item["id"]))
         assert saved is not None and saved.word_id is None
+
+
+async def test_public_item_names_the_owner_word(alice: Client, bob: Client) -> None:
+    words = await seed(alice)
+    session = await start(alice, size=5)
+    for item in session["items"]:
+        assert item["word_id"] == words[item["prompt"]]["id"]
+        assert item["word_id"] not in item["options"]
+        assert "correct_option" not in item
+        assert (await bob.get(f"/api/words/{item['word_id']}")).status_code == 404
+    removed = session["items"][0]
+    await alice.delete(f"/api/words/{removed['word_id']}")
+    resumed = (await alice.get("/api/training/sessions/latest")).json()
+    gone = next(row for row in resumed["items"] if row["id"] == removed["id"])
+    assert gone["word_id"] is None
+    kept = next(row for row in resumed["items"] if row["id"] != removed["id"])
+    assert kept["word_id"] == words[kept["prompt"]]["id"]
 
 
 async def test_cannot_answer_someone_elses_item(alice: Client, bob: Client) -> None:

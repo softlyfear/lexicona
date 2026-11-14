@@ -582,11 +582,62 @@ legend.settingLabel {
 }
 
 .question {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   min-height: 3.75rem;
+}
+
+.questionBody {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: calc(100% - 2.4rem);
+}
+
+.cardRevealed .questionBody {
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Smaller than the usual control on purpose: a corner edit on the prompt card. */
+.editWord {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.editWord:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.editWord:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .cardRevealed {
@@ -678,6 +729,19 @@ legend.settingLabel {
 
 .matchingCell:disabled {
   opacity: 1;
+}
+
+.matchingWord {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+
+.matchingWord > .matchingCell {
+  flex: 1 1 auto;
+  width: 100%;
+  padding-right: 1.6rem;
 }
 
 .selected {

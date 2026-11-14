@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '../api'
+import { ApiError, api, type Word } from '../api'
 import * as speech from '../speech'
 import { parseTranslations } from '../words'
 import { TrainingPage } from './TrainingPage'
@@ -23,9 +23,44 @@ vi.mock('../api', async (original) => {
       finishTraining: () => Promise.resolve({ id: 's', status: 'finished', finished_at: '' }),
       listTags: () => Promise.resolve([]),
       answer: vi.fn(),
+      revealAnswer: vi.fn(),
+      getWord: vi.fn(),
+      updateWord: vi.fn(),
     },
   }
 })
+
+const relevant: Word = {
+  id: 'w1',
+  headword: 'relevant',
+  translations: ['соответствующий'],
+  transcription: 'ˈrɛlɪvənt',
+  example_en: null,
+  example_ru: null,
+  note: null,
+  tags: [],
+  progress: 4,
+  is_excluded: false,
+  is_learned: false,
+  created_at: '',
+  updated_at: '',
+}
+
+const relevantSession = {
+  id: 's',
+  purpose: 'free' as const,
+  mode: 'choice' as const,
+  direction: 'en_ru' as const,
+  items: [
+    {
+      id: 'i1',
+      word_id: 'w1',
+      prompt: 'relevant',
+      transcription: 'ˈrɛlɪvənt',
+      options: ['слово', 'птица', 'сильный', 'соответствующий', 'соусник', 'утро'],
+    },
+  ],
+}
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -212,6 +247,96 @@ describe('TrainingPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0)')
     await user.keyboard('{Enter}')
     expect(await screen.findByText('2 из 2')).toBeInTheDocument()
+  })
+
+  it('не показывает кнопку правки без идентификатора слова', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(await screen.findByText('cat')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Редактировать слово/ })).not.toBeInTheDocument()
+  })
+
+  it('открывает редактор текущего слова и не раскрывает ответ', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getWord).mockResolvedValue(relevant)
+    vi.mocked(api.startTraining).mockResolvedValue(relevantSession)
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await user.click(await screen.findByRole('button', { name: 'Редактировать слово «relevant»' }))
+    expect(await screen.findByRole('heading', { name: 'Редактировать слово' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Показать ответ' })).not.toBeInTheDocument()
+    await user.keyboard('1')
+    expect(api.answer).not.toHaveBeenCalled()
+    expect(api.revealAnswer).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(screen.getByRole('button', { name: 'Показать ответ' })).toBeInTheDocument()
+    expect(screen.getByText('relevant')).toBeInTheDocument()
+    expect(screen.getByText('ˈrɛlɪvənt')).toBeInTheDocument()
+  })
+
+  it('сохраняет транскрипцию и оставляет прежний вопрос', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getWord).mockResolvedValue(relevant)
+    vi.mocked(api.updateWord).mockResolvedValue({ ...relevant, transcription: 'rel' })
+    vi.mocked(api.startTraining).mockResolvedValue(relevantSession)
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await user.click(await screen.findByRole('button', { name: 'Редактировать слово «relevant»' }))
+    const transcription = await screen.findByLabelText('Транскрипция')
+    await user.clear(transcription)
+    await user.type(transcription, 'rel')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(await screen.findByText('Правка сохранена в словаре.')).toBeInTheDocument()
+    expect(screen.queryByText(/прежним вопросом/)).not.toBeInTheDocument()
+    expect(screen.getByText('rel')).toBeInTheDocument()
+    expect(screen.getByText('relevant')).toBeInTheDocument()
+    expect(api.updateWord).toHaveBeenCalledWith(
+      'w1',
+      expect.objectContaining({ headword: 'relevant', transcription: 'rel' }),
+    )
+    expect(api.answer).not.toHaveBeenCalled()
+    expect(api.revealAnswer).not.toHaveBeenCalled()
+  })
+
+  it('после смены перевода оставляет выданное задание', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getWord).mockResolvedValue(relevant)
+    vi.mocked(api.updateWord).mockResolvedValue({
+      ...relevant,
+      headword: 'relevantly',
+      translations: ['актуальный'],
+      transcription: 'new',
+    })
+    vi.mocked(api.startTraining).mockResolvedValue(relevantSession)
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await user.click(await screen.findByRole('button', { name: 'Редактировать слово «relevant»' }))
+    const translations = await screen.findByRole('textbox', { name: /Переводы/ })
+    await user.clear(translations)
+    await user.type(translations, 'актуальный')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(await screen.findByText(/Это задание остаётся с прежним вопросом/)).toBeInTheDocument()
+    expect(screen.getByText('relevant')).toBeInTheDocument()
+    expect(screen.getByText('ˈrɛlɪvənt')).toBeInTheDocument()
+    expect(screen.queryByText('new')).not.toBeInTheDocument()
+    expect(screen.queryByText('relevantly')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'соответствующий' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'актуальный' })).not.toBeInTheDocument()
+    expect(api.revealAnswer).not.toHaveBeenCalled()
+  })
+
+  it('сообщает, что слово уже удалено, и возвращает к заданию', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getWord).mockRejectedValue(new ApiError(404, 'word_not_found'))
+    vi.mocked(api.startTraining).mockResolvedValue(relevantSession)
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await user.click(await screen.findByRole('button', { name: 'Редактировать слово «relevant»' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Слово уже удалено.')
+    expect(api.revealAnswer).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Вернуться к заданию' }))
+    expect(screen.getByRole('button', { name: 'Показать ответ' })).toBeInTheDocument()
   })
 
   it('explains why a session cannot start', async () => {

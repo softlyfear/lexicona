@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   api,
@@ -10,6 +10,8 @@ import {
   type TrainingSession,
   type TrainingSize,
 } from '../api'
+import { EditWordButton, TrainingWordEditor } from '../components/TrainingWordEdit'
+import { wordEditOutcome } from '../wordEdit'
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
 import css from './pages.module.css'
@@ -58,6 +60,8 @@ export function MatchingRun({
   )
   const [notice, setNotice] = useState('')
   const [done, setDone] = useState(firstBatch < 0)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editNote, setEditNote] = useState('')
   const locked = useRef(false)
   const batchCount = batches.length
   const batch = batches[batchIndex] ?? []
@@ -109,6 +113,7 @@ export function MatchingRun({
     const following = batches.findIndex(
       (group, index) => index > batchIndex && group.some((item) => !isTerminal(answers[item.id])),
     )
+    setEditNote('')
     if (following < 0) setDone(true)
     else setBatchIndex(following)
   }
@@ -172,142 +177,171 @@ export function MatchingRun({
           Доступно {session.items.length} из {requestedSize} запрошенных слов
         </p>
       )}
-      <p className={ui.muted}>Выберите английское слово, а затем его русский перевод.</p>
-      {busy && <p role="status">Проверяем…</p>}
-      <div
-        className={`${ui.card} ${css.matchingGrid}`}
-        style={{
-          gridTemplateRows: `repeat(${Math.max(batch.length, batch[0]?.options.length ?? 0, 1)}, auto)`,
-        }}
-      >
-        <div className={css.matchingColumn} role="group" aria-label="Английские слова">
-          {batch.map((item) => {
-            const result = answers[item.id]
-            const answered =
-              result?.outcome === 'answered' && 'correct' in result ? result : undefined
-            const state = answered
-              ? answered.correct
-                ? css.right
-                : css.wrong
-              : selectedId === item.id
-                ? css.selected
-                : ''
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`${ui.button} ${css.matchingCell} ${state}`}
-                aria-pressed={selectedId === item.id}
-                disabled={busy || isTerminal(result)}
-                onClick={() => {
-                  cancelSpeech()
-                  action.reset()
-                  setSelectedId(item.id)
-                  setNotice('')
-                }}
-                lang="en"
-              >
-                {item.prompt}
-              </button>
-            )
-          })}
-        </div>
-        <div className={css.matchingColumn} role="group" aria-label="Русские переводы">
-          {batch[0]?.options.map((option, index) => {
-            const matched = usedOptions.has(index)
-            const wrong =
-              !matched &&
-              selectedResult?.outcome === 'answered' &&
-              'chosen_option' in selectedResult &&
-              !selectedResult.correct &&
-              selectedResult.chosen_option === index
-            return (
-              <button
-                key={index}
-                type="button"
-                className={`${ui.button} ${css.matchingCell} ${wrong ? css.wrong : matched ? css.right : ''}`}
-                disabled={busy || matched}
-                onClick={() => chooseTranslation(index)}
-                lang="ru"
-              >
-                {option}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      <div className={css.actions}>
-        <button
-          type="button"
-          className={ui.button}
-          onClick={() => selected && perform({ kind: 'reveal', item: selected })}
-          disabled={busy || !selected || isTerminal(selectedResult)}
-        >
-          Показать ответ
-        </button>
-        <button
-          type="button"
-          className={ui.button}
-          onClick={() => selected && perform({ kind: 'skip', item: selected })}
-          disabled={busy || !selected || isTerminal(selectedResult)}
-        >
-          Пропустить
-        </button>
-      </div>
-      {action.isError && (
-        <p className={ui.error} role="alert">
-          {errorMessage(action.error)}{' '}
-          {!(action.error instanceof ApiError && action.error.message === 'PROGRESS_CHANGED') &&
-            'Попробуйте ещё раз.'}
-        </p>
-      )}
-      {(notice || selectedResult) && (
-        <div className={css.stack} role="status">
-          {notice && <p>{notice}</p>}
-          {selectedResult && (
-            <>
-              <p
-                className={
-                  selectedResult.outcome === 'answered' && 'correct' in selectedResult
-                    ? selectedResult.correct
-                      ? css.good
-                      : css.bad
-                    : undefined
-                }
-              >
-                {selectedResult.outcome === 'unavailable'
-                  ? selectedResult.reason === 'word_deleted'
-                    ? 'Задание недоступно: слово удалено'
-                    : 'Задание недоступно: слово больше не в обучении'
-                  : selectedResult.outcome === 'skipped'
-                    ? 'Пропущено'
-                    : selectedResult.outcome === 'assisted'
-                      ? 'С помощью'
-                      : 'correct' in selectedResult && selectedResult.correct
-                        ? 'Верно'
-                        : 'Неверно'}{' '}
-                ({selectedResult.delta > 0 ? '+' : ''}
-                {selectedResult.delta})
-                {selectedResult.progress !== null && <> · прогресс {selectedResult.progress}%</>}
-              </p>
-              {selectedResult.outcome === 'answered' &&
-                'correct' in selectedResult &&
-                !selectedResult.correct && (
-                  <p>Выберите другой перевод. Повторного штрафа не будет.</p>
-                )}
-              {selectedResult.outcome === 'assisted' && (
-                <p className={ui.muted}>Ответ: {selectedResult.expected_answers.join(', ')}</p>
-              )}
-            </>
+      {editingId ? (
+        <TrainingWordEditor
+          wordId={editingId}
+          onClose={() => setEditingId(null)}
+          onSaved={(before, saved) => {
+            setEditNote(wordEditOutcome(session, before, saved).note)
+            setEditingId(null)
+          }}
+        />
+      ) : (
+        <>
+          <p className={ui.muted}>Выберите английское слово, а затем его русский перевод.</p>
+          {busy && <p role="status">Проверяем…</p>}
+          <div
+            className={`${ui.card} ${css.matchingGrid}`}
+            style={{
+              gridTemplateRows: `repeat(${Math.max(batch.length, batch[0]?.options.length ?? 0, 1)}, auto)`,
+            }}
+          >
+            <div className={css.matchingColumn} role="group" aria-label="Английские слова">
+              {batch.map((item) => {
+                const result = answers[item.id]
+                const answered =
+                  result?.outcome === 'answered' && 'correct' in result ? result : undefined
+                const state = answered
+                  ? answered.correct
+                    ? css.right
+                    : css.wrong
+                  : selectedId === item.id
+                    ? css.selected
+                    : ''
+                const wordButton = (
+                  <button
+                    type="button"
+                    className={`${ui.button} ${css.matchingCell} ${state}`}
+                    aria-pressed={selectedId === item.id}
+                    disabled={busy || isTerminal(result)}
+                    onClick={() => {
+                      cancelSpeech()
+                      action.reset()
+                      setSelectedId(item.id)
+                      setNotice('')
+                    }}
+                    lang="en"
+                  >
+                    {item.prompt}
+                  </button>
+                )
+                if (!item.word_id) return <Fragment key={item.id}>{wordButton}</Fragment>
+                return (
+                  <div key={item.id} className={css.matchingWord}>
+                    {wordButton}
+                    <EditWordButton
+                      name={item.prompt}
+                      disabled={busy}
+                      onEdit={() => {
+                        cancelSpeech()
+                        setEditingId(item.word_id ?? null)
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <div className={css.matchingColumn} role="group" aria-label="Русские переводы">
+              {batch[0]?.options.map((option, index) => {
+                const matched = usedOptions.has(index)
+                const wrong =
+                  !matched &&
+                  selectedResult?.outcome === 'answered' &&
+                  'chosen_option' in selectedResult &&
+                  !selectedResult.correct &&
+                  selectedResult.chosen_option === index
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`${ui.button} ${css.matchingCell} ${wrong ? css.wrong : matched ? css.right : ''}`}
+                    disabled={busy || matched}
+                    onClick={() => chooseTranslation(index)}
+                    lang="ru"
+                  >
+                    {option}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className={css.actions}>
+            <button
+              type="button"
+              className={ui.button}
+              onClick={() => selected && perform({ kind: 'reveal', item: selected })}
+              disabled={busy || !selected || isTerminal(selectedResult)}
+            >
+              Показать ответ
+            </button>
+            <button
+              type="button"
+              className={ui.button}
+              onClick={() => selected && perform({ kind: 'skip', item: selected })}
+              disabled={busy || !selected || isTerminal(selectedResult)}
+            >
+              Пропустить
+            </button>
+          </div>
+          {action.isError && (
+            <p className={ui.error} role="alert">
+              {errorMessage(action.error)}{' '}
+              {!(action.error instanceof ApiError && action.error.message === 'PROGRESS_CHANGED') &&
+                'Попробуйте ещё раз.'}
+            </p>
           )}
-        </div>
-      )}
-      {batchDone && (
-        <div className={css.actions}>
-          <button className={ui.primary} onClick={next} autoFocus>
-            {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
-          </button>
-        </div>
+          {(notice || selectedResult) && (
+            <div className={css.stack} role="status">
+              {notice && <p>{notice}</p>}
+              {selectedResult && (
+                <>
+                  <p
+                    className={
+                      selectedResult.outcome === 'answered' && 'correct' in selectedResult
+                        ? selectedResult.correct
+                          ? css.good
+                          : css.bad
+                        : undefined
+                    }
+                  >
+                    {selectedResult.outcome === 'unavailable'
+                      ? selectedResult.reason === 'word_deleted'
+                        ? 'Задание недоступно: слово удалено'
+                        : 'Задание недоступно: слово больше не в обучении'
+                      : selectedResult.outcome === 'skipped'
+                        ? 'Пропущено'
+                        : selectedResult.outcome === 'assisted'
+                          ? 'С помощью'
+                          : 'correct' in selectedResult && selectedResult.correct
+                            ? 'Верно'
+                            : 'Неверно'}{' '}
+                    ({selectedResult.delta > 0 ? '+' : ''}
+                    {selectedResult.delta})
+                    {selectedResult.progress !== null && (
+                      <> · прогресс {selectedResult.progress}%</>
+                    )}
+                  </p>
+                  {selectedResult.outcome === 'answered' &&
+                    'correct' in selectedResult &&
+                    !selectedResult.correct && (
+                      <p>Выберите другой перевод. Повторного штрафа не будет.</p>
+                    )}
+                  {selectedResult.outcome === 'assisted' && (
+                    <p className={ui.muted}>Ответ: {selectedResult.expected_answers.join(', ')}</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {batchDone && (
+            <div className={css.actions}>
+              <button className={ui.primary} onClick={next} autoFocus>
+                {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
+              </button>
+            </div>
+          )}
+          {editNote && <p className={ui.muted}>{editNote}</p>}
+        </>
       )}
     </section>
   )

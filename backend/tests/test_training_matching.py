@@ -66,7 +66,7 @@ async def test_matching_batches_are_unambiguous_and_hide_answers(
         assert {item["prompt"] for item in batch} <= set(translations)
         assert set(options) == {translations[item["prompt"]] for item in batch}
         for item in batch:
-            assert set(item) == {"id", "prompt", "options", "transcription"}
+            assert set(item) == {"id", "prompt", "options", "transcription", "word_id"}
             assert item["options"] == options
             assert "correct_option" not in item
             assert await correct_option(app, item["id"]) == options.index(

@@ -25,6 +25,8 @@ vi.mock('../api', async (original) => {
       answer: vi.fn(),
       revealAnswer: vi.fn(),
       skipItem: vi.fn(),
+      getWord: vi.fn(),
+      updateWord: vi.fn(),
     },
   }
 })
@@ -350,5 +352,42 @@ describe('сопоставление пар', () => {
     await user.keyboard('{Enter}')
     expect(await screen.findByText('1 из 1')).toBeInTheDocument()
     expect(screen.getByText('Недоступно: 1')).toBeInTheDocument()
+  })
+
+  it('правит английское слово отдельной кнопкой и не раскрывает пару', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getWord).mockResolvedValue({
+      id: 'w-cat',
+      headword: 'cat',
+      translations: ['кот'],
+      transcription: null,
+      example_en: null,
+      example_ru: null,
+      note: null,
+      tags: [],
+      progress: 0,
+      is_excluded: false,
+      is_learned: false,
+      created_at: '',
+      updated_at: '',
+    })
+    vi.mocked(api.startTraining).mockResolvedValue({
+      ...twoItems,
+      items: [
+        { id: 'cat', word_id: 'w-cat', prompt: 'cat', options: ['кот', 'собака'] },
+        { id: 'dog', word_id: 'w-dog', prompt: 'dog', options: ['кот', 'собака'] },
+      ],
+    })
+    renderPage()
+    await start(user)
+    const edit = screen.getByRole('button', { name: 'Редактировать слово «cat»' })
+    expect(screen.getByRole('button', { name: 'cat' }).contains(edit)).toBe(false)
+    await user.click(edit)
+    expect(await screen.findByRole('heading', { name: 'Редактировать слово' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Показать ответ' })).not.toBeInTheDocument()
+    expect(api.revealAnswer).not.toHaveBeenCalled()
+    expect(api.answer).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(screen.getByRole('button', { name: 'cat' })).toBeInTheDocument()
   })
 })

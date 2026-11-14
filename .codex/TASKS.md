@@ -1,5 +1,12 @@
 # Активные задачи
 
+TRAIN-EDIT accepted (2026-11-14): during a training item, a small edit control
+on the right of the prompt opens the existing word form. Matching puts the same
+control beside each English word, not inside its button. Public items include
+the owner's word_id, or null after deletion. The open question stays the
+snapshot. Independent Ship. make check exit 0: tooling 38 / backend 470 /
+frontend 218. No deployment. The screen was not opened in a browser.
+
 PREFS-001 accepted (2026-11-14): training setup and speech choices are stored
 on the account and restored on the next visit. Overlapping section writes merge
 through preferences_revision and do not write a difficulty the request did not

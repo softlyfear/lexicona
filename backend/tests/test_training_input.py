@@ -26,9 +26,15 @@ async def start_input(client: Client, direction: str = "en_ru") -> dict[str, Any
 async def test_input_checks_snapshot_without_leaking(
     alice: Client, direction: str, prompt: str, answer: str, expected: list[str]
 ) -> None:
-    await add_word(alice, "cat", "кот", "кошка")
+    word = await add_word(alice, "cat", "кот", "кошка")
     item = await start_input(alice, direction)
-    assert item == {"id": item["id"], "prompt": prompt, "options": [], "transcription": None}
+    assert item == {
+        "id": item["id"],
+        "prompt": prompt,
+        "options": [],
+        "transcription": None,
+        "word_id": word["id"],
+    }
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": answer})
     assert response.status_code == 200
     assert response.json() == {
