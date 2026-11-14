@@ -1,4 +1,4 @@
-.PHONY: install dictionary voices kokoro-install kokoro-voices fmt check check-backend check-frontend check-tooling codex-models codex grok
+.PHONY: install dictionary voices kokoro-install kokoro-voices fmt check check-backend check-frontend check-tooling
 
 install:
 	cd backend && uv sync --locked
@@ -16,15 +16,15 @@ kokoro-voices:
 	cd backend && uv run --locked python -m lexicona.infrastructure.kokoro download
 
 fmt:
-	cd backend && uv run --locked ruff check --fix ../.codex/hooks ../.grok/hooks ../tests ../scripts && uv run --locked ruff format ../.codex/hooks ../.grok/hooks ../tests ../scripts
+	cd backend && uv run --locked ruff check --fix ../tests ../scripts && uv run --locked ruff format ../tests ../scripts
 	cd backend && uv run --locked ruff check --fix . && uv run --locked ruff format .
 	cd frontend && npm run format
 
 check: check-tooling check-backend check-frontend
 
 check-tooling:
-	cd backend && uv run --locked ruff check ../.codex/hooks ../.grok/hooks ../tests ../scripts
-	cd backend && uv run --locked ruff format --check ../.codex/hooks ../.grok/hooks ../tests ../scripts
+	cd backend && uv run --locked ruff check ../tests ../scripts
+	cd backend && uv run --locked ruff format --check ../tests ../scripts
 	python3 -m unittest discover -s tests -v
 
 check-backend:
@@ -38,12 +38,3 @@ check-frontend:
 	cd frontend && npm run lint
 	cd frontend && npm test
 	cd frontend && npm run build
-
-codex-models:
-	python3 scripts/codex_models.py
-
-codex:
-	./scripts/codex
-
-grok:
-	GROK_AGENT=lexicona-orchestrator grok

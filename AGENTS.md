@@ -40,10 +40,10 @@ npm run format:check && npm run lint && npm test && npm run build
 API development uses port 8000; Vite uses 5173 and proxies `/api` to 8000.
 `npm run build` includes type checks. Install locked dependencies with
 `make install`. The single final gate is `make check`, matching CI in
-`.github/workflows/ci.yml`. Codex's `.codex/hooks/format.py` handles
-`apply_patch`; Grok's `.grok/hooks/format.py` handles `search_replace` and
-`write`. After shell edits run `make fmt`. Hooks require review/trust through
-`/hooks`; the gate remains required without them.
+`.github/workflows/ci.yml`. OpenCode formats Python with locked Ruff and
+`.ts`, `.tsx`, `.css`, and `.json` with the frontend Prettier after `write`,
+`edit`, or `patch`. After shell edits run `make fmt`. The gate remains required
+either way.
 
 ## Product invariants
 
@@ -88,24 +88,9 @@ API development uses port 8000; Vite uses 5173 and proxies `/api` to 8000.
 
 Author and committer must be the user from `git config user.name` and `git config user.email`.
 
-### Task-scoped history-rewrite authorization
-
-Global GIT prohibits history rewriting and force-push by default. The user
-explicitly requested replacement of this task commit on 2026-11-11:
-`b48b76e6ad944856c4e242c106e2cfb47a0d754e`.
-This is a task-scoped exception for this repository, preserving independent
-later commits and using the verified old remote OID as an explicit lease.
-It is not standing permission for later tasks: another rewrite requires an
-explicit user request naming that work. The procedure below applies only
-within such an authorized scope; a guard accepting its syntax is not approval.
-
-Use `main`, one completed task per commit. Incorporate same-task corrections
-into that task's commit only when history rewriting is authorized; preserve
-subsequent changes and existing co-authors. For an authorized published rewrite,
-use an explicit target branch and `--force-with-lease` with the verified full
-previous remote OID. Stop and inspect remote changes if the lease fails.
-Only the orchestrator commits, pushes, or changes branches. The repository
-starts from its new root commit; do not restore old branches or tags.
+Use `main`, one completed task per commit. Only the orchestrator commits,
+pushes, or changes branches. The repository starts from its new root commit;
+do not restore old branches or tags.
 
 Deployment targets a Docker VPS that also runs VPN. Agree on ports 80/443,
 subdomain, and DNS before changing the server.
@@ -114,14 +99,16 @@ subdomain, and DNS before changing the server.
 
 The orchestrator handles one vertical ticket: outcome, acceptance criteria (AC),
 file boundaries, dependency order, check owner, and limitations. Shared protocol:
-`.codex/TASKS.md`, `.codex/PROJECT.md`, `.codex/TASKS-archive.md`.
-Private product requirements remain under `.local/`.
+`.agents/TASKS.md`, `.agents/PROJECT.md`, `.agents/TASKS-archive.md`.
+These files are not OpenCode runtime configuration. Private product requirements
+remain under `.local/`.
 
 1. Define AC, owners, and checks from the specification. Use `architect` only
    for a concrete architecture, API, or schema risk.
 2. Assign only needed `backend-agent`, `frontend-agent`, and `devops-agent`
-   roles in dependency order; use `tests-agent` for an uncovered complex
-   regression. Delegate with the ticket, AC, file boundaries, and prior report.
+   subagents from `.opencode/agents/` in dependency order; use `tests-agent`
+   for an uncovered complex regression. Delegate with the ticket, AC, file
+   boundaries, and prior report.
 3. The designated gate owner, usually the final implementer, runs `make check`
    after code and tests are complete.
 4. Independent `code-reviewer` reads the whole diff and checks AC, security, and
@@ -137,28 +124,13 @@ do not create agents for every minor edit. If delegation is unavailable or a
 role cannot be selected, perform the stages sequentially and identify review
 as self-review where applicable.
 
-## Codex integration
+## OpenCode
 
-Roles are `.codex/agents/*.toml`. `architect`/`code-reviewer` use the latest
-available stable Sol family with effort `high`; backend/frontend/devops/tests
-use the latest stable Terra family with `high`. Read exact IDs from the role
-TOML, including manual delegation; do not copy IDs from old tickets.
-`./scripts/codex` / `make codex` refresh supported stable models through the
-app-server catalog without changing the main session's chosen model.
-`make codex-models` only refreshes config; unavailable catalogs preserve the
-current values. Desktop direct launch bypasses the wrapper and existing sessions
-do not reload automatically. When the tool does not load a role TOML, explicitly
-pass its model, effort, and instructions.
-
-## Grok integration
-
-Grok-specific roles/hooks live under `.grok/`; `.grok/config.toml` loads MCP,
-plugins, and permission rules without pinning the session model. Start with
-`make grok` or `GROK_AGENT=lexicona-orchestrator grok`. Context7 uses the configured
-`https://mcp.context7.com/mcp` endpoint. Use the shared ticket protocol above;
-shared protocol documents are not Codex runtime configuration.
-Changes to `.codex/` runtime config, `scripts/codex`, and
-`scripts/codex_models.py` by Grok require explicit user authorization.
+Project settings are `opencode.jsonc`. The session model is not pinned, and
+subagents inherit it. Do not copy retired harness model IDs into role files.
+Role prompts are subagents in `.opencode/agents/`; the primary session keeps
+the built-in system prompt and follows this file. Context7 is the only project
+MCP server, at `https://mcp.context7.com/mcp`, with no secret in the repository.
 
 ## Repository synchronization
 

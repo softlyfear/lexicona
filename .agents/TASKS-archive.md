@@ -1,5 +1,9 @@
 # Закрытые задачи
 
+Упоминания Codex, Grok и каталогов `.codex/` и `.grok/` ниже — история закрытых
+тикетов, не действующие настройки. Роли теперь в `.opencode/agents/`, настройки
+в `opencode.jsonc`, общий протокол в этом каталоге.
+
 ## SPEECH-005 — complete English Kokoro catalog (2026-11-14)
 
 - Status: accepted; attempt 1; orchestrator root; independent review: Ship for the

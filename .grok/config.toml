@@ -1,6 +1,0 @@
-# Документация библиотек. Ключ не хранится: сервер отвечает без авторизации.
-# Для более высокого лимита можно добавить заголовок
-# Authorization = "Bearer ${CONTEXT7_API_KEY}" — переменную в репозиторий не класть.
-[mcp_servers.context7]
-url = "https://mcp.context7.com/mcp"
-enabled = true

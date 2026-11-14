@@ -28,8 +28,3 @@ backend/data/
 .DS_Store
 .idea/
 .vscode/
-
-# Machine-local agent settings
-.codex/*.local.*
-/.grok/*.local.*
-/.grok/local.toml

@@ -86,8 +86,8 @@ Final make check: exit 0, tooling 30 / backend 422 / frontend 193. No deployment
 продолжение занятий, график повторений, установка на телефонах/планшетах и больше голосов TTS.
 Дополнительные упражнения, подборки/каталог, импорт/экспорт, темы, регистрация/удаление аккаунта
 и серверные бэкапы исключены из текущего объёма; аккаунты создаёт владелец.
-Настройки Codex не менять.
-TASKS/PROJECT/TASKS-archive — общий проектный протокол обоих агентов, не настройки Codex.
+Настройки OpenCode — `opencode.jsonc` и `.opencode/`.
+TASKS/PROJECT/TASKS-archive — общий проектный протокол, не runtime-настройки.
 
 PWA-001 принят и перенесён в TASKS-archive.md:
 root make check 17 / 341 / 144, независимое Ship, Chromium installability без ошибок.

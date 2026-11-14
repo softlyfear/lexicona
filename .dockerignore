@@ -6,7 +6,8 @@
 **/__pycache__
 **/.*_cache
 backend/data
-.codex
+.opencode
+opencode.jsonc
 .agents
 .env
 .env.*

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Session model is not pinned; it stays with the user.
+  // Context7 answers without a key. Do not commit CONTEXT7_API_KEY.
+  // An optional higher limit is a user environment setting, not a repository header.
+  // Formatter matches by extension, so Python outside backend/ and these
+  // frontend extensions outside frontend/ are formatted too. Shell edits still
+  // use `make fmt`.
+  "formatter": {
+    "ruff": { "disabled": true },
+    "uv": { "disabled": true },
+    "prettier": { "disabled": true },
+    "lexicona-ruff": {
+      "command": [
+        "uv",
+        "run",
+        "--directory",
+        "backend",
+        "--locked",
+        "--no-sync",
+        "ruff",
+        "format",
+        "$FILE",
+      ],
+      "extensions": [".py"],
+    },
+    "lexicona-prettier": {
+      "command": [
+        "npm",
+        "--prefix",
+        "frontend",
+        "exec",
+        "--no",
+        "--",
+        "prettier",
+        "--write",
+        "--log-level",
+        "warn",
+        "$FILE",
+      ],
+      "extensions": [".ts", ".tsx", ".css", ".json"],
+    },
+  },
+  "mcp": {
+    "servers": {
+      "context7": {
+        "type": "remote",
+        "url": "https://mcp.context7.com/mcp"
+      }
+    }
+  },
+}
