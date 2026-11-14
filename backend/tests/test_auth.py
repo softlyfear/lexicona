@@ -166,7 +166,21 @@ async def test_preferences_merge_per_account(alice: Client, bob: Client, app: ob
     kept = (await alice.get("/api/auth/me")).json()["user"]
     assert kept["difficulty"] == "hard"
     assert kept["preferences"]["training"]["direction"] == "ru_en"
+    assert kept["preferences"]["training"]["include_learned"] is False
     assert kept["preferences"]["speech"]["rate"] == 1
+    learned = await alice.put(
+        "/api/auth/settings", json={"training": {**TRAINING, "include_learned": True}}
+    )
+    assert learned.status_code == 200
+    assert learned.json()["preferences"]["training"]["include_learned"] is True
+    assert (
+        await alice.put(
+            "/api/auth/settings", json={"training": {**TRAINING, "include_learned": "yes"}}
+        )
+    ).status_code == 422
+    assert (await alice.get("/api/auth/me")).json()["user"]["preferences"]["training"][
+        "include_learned"
+    ] is True
 
     cleared = await alice.put("/api/auth/settings", json={"training": None})
     assert cleared.status_code == 200
@@ -174,6 +188,16 @@ async def test_preferences_merge_per_account(alice: Client, bob: Client, app: ob
     assert cleared.json()["preferences"]["speech"]["engine_en"] == "server"
 
     database = app.state.db
+    async with database.sessions() as db:
+        await db.execute(
+            update(User)
+            .where(User.login == "alice")
+            .values(preferences={"training": TRAINING, "speech": SPEECH})
+        )
+        await db.commit()
+    legacy = (await alice.get("/api/auth/me")).json()["user"]["preferences"]["training"]
+    assert legacy["mode"] == "input" and legacy["include_learned"] is False
+
     async with database.sessions() as db:
         await db.execute(
             update(User)

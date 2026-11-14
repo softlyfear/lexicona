@@ -43,6 +43,7 @@ const base: TrainingPreferences = {
   progress_max: null,
   order: 'random',
   shuffle: false,
+  include_learned: false,
 }
 
 function renderPage(account: unknown) {

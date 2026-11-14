@@ -1,5 +1,14 @@
 # Активные задачи
 
+TRAIN-LEARNED accepted (2026-11-14): the training filter «Перемешать» is smaller
+and sits beside «Выученные». When that toggle is on, words marked learned join
+the same sample; tags, progress bounds, order, size, purpose, and shuffle still
+apply. Excluded words stay out. Only a session that opted in can score those
+words. The choice is stored with the other training settings, and older
+preference documents without the field stay valid. Independent Ship. make check
+exit 0: tooling 38 / backend 473 / frontend 219. No deployment. The screen was
+not opened in a browser.
+
 TRAIN-EDIT accepted (2026-11-14): during a training item, a small edit control
 on the right of the prompt opens the existing word form. Matching puts the same
 control beside each English word, not inside its button. Public items include

@@ -279,12 +279,16 @@
   padding-inline: 0.75rem;
 }
 
-.shuffle {
-  align-self: flex-start;
-  min-width: 0;
-  min-height: 2.75rem;
-  max-width: 100%;
-  overflow-wrap: anywhere;
+.filterToggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.filterToggles button {
+  min-height: 2rem;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.9rem;
 }
 
 .wordList {

@@ -113,12 +113,17 @@ describe('фильтры тренировки', () => {
     expect(screen.getByLabelText('Дом')).toBeChecked()
     await user.selectOptions(screen.getByLabelText('Сначала показывать'), 'progress_asc')
     await user.click(screen.getByRole('button', { name: 'Перемешать' }))
+    await user.click(screen.getByRole('button', { name: 'Выученные' }))
     await user.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
     expect(min).toHaveValue('')
     expect(max).toHaveValue('')
     expect(screen.getByLabelText('Дом')).not.toBeChecked()
     expect(screen.getByLabelText('Сначала показывать')).toHaveValue('random')
     expect(screen.getByRole('button', { name: 'Перемешать' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(screen.getByRole('button', { name: 'Выученные' })).toHaveAttribute(
       'aria-pressed',
       'false',
     )
@@ -185,6 +190,32 @@ describe('фильтры тренировки', () => {
     )
   })
 
+  it('включает выученные слова в ту же выборку и выключает их вместе с фильтрами', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const learned = screen.getByRole('button', { name: 'Выученные' })
+    expect(learned).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Перемешать' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await user.click(learned)
+    expect(learned).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Очистить фильтры' }))
+    expect(learned).toHaveAttribute('aria-pressed', 'false')
+    await user.click(learned)
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    expect(api.startTraining).toHaveBeenCalledWith(
+      'en_ru',
+      10,
+      'choice',
+      { include_learned: true },
+      'free',
+      true,
+      '0123456789abcdef0123456789abcdef',
+    )
+  })
+
   it('ошибка справочника не мешает старту без тегов', async () => {
     vi.mocked(api.listTags).mockRejectedValue(new TypeError('offline'))
     const user = userEvent.setup()
@@ -217,6 +248,7 @@ describe('фильтры тренировки', () => {
     expect(screen.getByLabelText('Прогресс от, %')).toBeDisabled()
     expect(screen.getByLabelText('Сначала показывать')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Перемешать' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Выученные' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Очистить фильтры' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Начать' })).toBeDisabled()
     expect(api.startTraining).toHaveBeenCalledTimes(1)

@@ -27,6 +27,7 @@ export interface TrainingFilters {
   progress_max?: number | null
   order?: TrainingOrder
   shuffle?: boolean
+  include_learned?: boolean
 }
 
 export interface TrainingPreview {
@@ -46,6 +47,7 @@ export interface TrainingPreferences {
   progress_max: number | null
   order: TrainingOrder
   shuffle: boolean
+  include_learned: boolean
 }
 
 export interface SpeechPreferencesDto {

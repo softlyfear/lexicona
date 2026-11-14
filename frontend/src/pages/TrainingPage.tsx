@@ -229,6 +229,7 @@ function Setup({
   )
   const [order, setOrder] = useState<TrainingOrder>(draft.training.order)
   const [shuffle, setShuffle] = useState(draft.training.shuffle)
+  const [includeLearned, setIncludeLearned] = useState(draft.training.include_learned)
   // Opening the page must not upload defaults. A local copy is sent once when the
   // account has no training section yet. The flag stays set until that send starts:
   // StrictMode clears the module timer during its extra effect pass and must schedule it again.
@@ -269,6 +270,7 @@ function Setup({
       progress_max: max,
       order,
       shuffle,
+      include_learned: includeLearned,
     }
     return training
   }, [
@@ -285,6 +287,7 @@ function Setup({
     selectedTagIds,
     order,
     shuffle,
+    includeLearned,
   ])
   useEffect(() => {
     if (!userId || !persisted) return
@@ -306,6 +309,7 @@ function Setup({
   }
   if (order !== 'random') filters.order = order
   if (shuffle) filters.shuffle = true
+  if (includeLearned) filters.include_learned = true
   const activeFilters = Object.keys(filters).length ? filters : undefined
   const preview = useQuery({
     queryKey: [
@@ -583,20 +587,38 @@ function Setup({
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                className={shuffle ? `${ui.primary} ${css.shuffle}` : `${ui.button} ${css.shuffle}`}
-                aria-pressed={shuffle}
-                aria-describedby="training-order-hint"
-                onClick={() => {
-                  start.reset()
-                  setShuffle((value) => !value)
-                }}
-              >
-                Перемешать
-              </button>
+              <div className={css.filterToggles}>
+                <button
+                  type="button"
+                  className={shuffle ? ui.primary : ui.button}
+                  aria-pressed={shuffle}
+                  aria-describedby="training-order-hint"
+                  onClick={() => {
+                    start.reset()
+                    setShuffle((value) => !value)
+                  }}
+                >
+                  Перемешать
+                </button>
+                <button
+                  type="button"
+                  className={includeLearned ? ui.primary : ui.button}
+                  aria-pressed={includeLearned}
+                  aria-describedby="training-learned-hint"
+                  onClick={() => {
+                    start.reset()
+                    setIncludeLearned((value) => !value)
+                  }}
+                >
+                  Выученные
+                </button>
+              </div>
               <p id="training-order-hint" className={ui.muted}>
                 {orderHint(purpose, order, shuffle)}
+              </p>
+              <p id="training-learned-hint" className={ui.muted}>
+                Включает слова с отметкой «выучено». Исключённые остаются в стороне, размер занятия
+                сохраняется.
               </p>
               <p className={ui.muted}>Теги: любой выбранный</p>
               {tags.isLoading && (
@@ -668,6 +690,7 @@ function Setup({
                     setMaximum('')
                     setOrder('random')
                     setShuffle(false)
+                    setIncludeLearned(false)
                   }}
                 >
                   Очистить фильтры

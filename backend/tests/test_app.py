@@ -211,6 +211,50 @@ def test_user_preferences_migration_refuses_data_loss(tmp_path: Path) -> None:
         )
 
 
+def test_session_include_learned_defaults_off_and_blocks_downgrade(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "include-learned.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "b7d4e1a83c90")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2026-01-01')"
+        )
+        db.execute(
+            "INSERT INTO training_sessions (id, owner_id, mode, direction, difficulty, created_at) "
+            "VALUES ('s', 'u', 'input', 'en_ru', 'medium', '2026-01-01')"
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT mode, direction, include_learned FROM training_sessions WHERE id = 's'"
+        ).fetchone() == ("input", "en_ru", 0)
+        db.execute(
+            "INSERT INTO training_sessions (id, owner_id, mode, direction, difficulty, created_at) "
+            "VALUES ('later', 'u', 'choice', 'en_ru', 'medium', '2026-01-02')"
+        )
+        assert db.execute(
+            "SELECT include_learned FROM training_sessions WHERE id = 'later'"
+        ).fetchone() == (0,)
+        db.execute("UPDATE training_sessions SET include_learned = 1 WHERE id = 's'")
+    with pytest.raises(RuntimeError, match="includes learned words"):
+        command.downgrade(config, "b7d4e1a83c90")
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT include_learned FROM training_sessions WHERE id = 's'"
+        ).fetchone() == (1,)
+        db.execute("UPDATE training_sessions SET include_learned = 0")
+    command.downgrade(config, "b7d4e1a83c90")
+    with sqlite3.connect(path) as db:
+        columns = [row[1] for row in db.execute("PRAGMA table_info(training_sessions)")]
+        assert "include_learned" not in columns
+        assert db.execute("SELECT mode FROM training_sessions WHERE id = 's'").fetchone() == (
+            "input",
+        )
+
+
 def test_source_refs_migration_refuses_data_loss(tmp_path: Path) -> None:
     import json
     import sqlite3

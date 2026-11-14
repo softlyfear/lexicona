@@ -83,6 +83,8 @@ class TrainingPreferences(BaseModel):
         "progress_desc",
     ]
     shuffle: StrictBool
+    # Absent in setups saved before the toggle. Those stay closed to learned words.
+    include_learned: StrictBool = False
 
     @model_validator(mode="after")
     def consistent(self) -> Self:

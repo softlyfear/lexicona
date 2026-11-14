@@ -59,6 +59,7 @@ class SessionIn(BaseModel):
         "progress_desc",
     ] = "random"
     shuffle: StrictBool = False
+    include_learned: StrictBool = False
     selection_seed: (
         Annotated[str, StringConstraints(pattern=r"^[0-9a-fA-F]{32}$", strict=True)] | None
     ) = None
@@ -336,17 +337,13 @@ async def _select_targets(
         if len(owned) != len(tag_ids):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "tag_not_found")
 
-    pool = list(
-        await db.scalars(
-            select(Word)
-            .where(
-                Word.owner_id == auth.user.id,
-                Word.is_excluded.is_(False),
-                Word.is_learned.is_(False),
-            )
-            .order_by(Word.id)
-        )
-    )
+    pool_filters = [
+        Word.owner_id == auth.user.id,
+        Word.is_excluded.is_(False),
+    ]
+    if not body.include_learned:
+        pool_filters.append(Word.is_learned.is_(False))
+    pool = list(await db.scalars(select(Word).where(*pool_filters).order_by(Word.id)))
     matching_ids: set[str] | None = None
     if tag_ids:
         rows = await db.execute(
@@ -483,6 +480,7 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
         purpose=body.purpose,
         difficulty=auth.user.difficulty,
         requested_size=str(body.size),
+        include_learned=body.include_learned,
     )
     if body.mode == "matching":
         matching_targets = targets
@@ -603,7 +601,7 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
         elif item.outcome is not None:
             state = "done"
             result = _answer_out(item, word.progress).model_dump()
-        elif word.is_learned:
+        elif word.is_learned and not session.include_learned:
             state = "done"
             result = UnavailableOut(progress=word.progress).model_dump()
         elif item.answered_at is not None:
@@ -784,18 +782,16 @@ def _owned_sessions(auth: CurrentAuth) -> Select[str]:
     )
 
 
-def _eligible(auth: CurrentAuth) -> Exists:
-    return (
-        select(Word.id)
-        .where(
-            Word.id == TrainingItem.word_id,
-            Word.owner_id == auth.user.id,
-            Word.is_excluded.is_(False),
-            Word.is_learned.is_(False),
-            Word.training_version == TrainingItem.word_training_version,
-        )
-        .exists()
-    )
+def _eligible(auth: CurrentAuth, *, include_learned: bool = False) -> Exists:
+    filters = [
+        Word.id == TrainingItem.word_id,
+        Word.owner_id == auth.user.id,
+        Word.is_excluded.is_(False),
+        Word.training_version == TrainingItem.word_training_version,
+    ]
+    if not include_learned:
+        filters.append(Word.is_learned.is_(False))
+    return select(Word.id).where(*filters).exists()
 
 
 @router.post("/items/{item_id}/reveal")
@@ -812,7 +808,7 @@ async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | Te
     if item.outcome is not None:
         return _answer_out(item, word.progress)
 
-    eligible = _eligible(auth)
+    eligible = _eligible(auth, include_learned=item.session.include_learned)
     now = utcnow()
     if item.session.mode == "cards":
         await db.execute(
@@ -879,7 +875,10 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
                 TrainingItem.outcome.is_(None),
             )
             .values(
-                outcome=case((_eligible(auth), "skipped"), else_="unavailable"),
+                outcome=case(
+                    (_eligible(auth, include_learned=item.session.include_learned), "skipped"),
+                    else_="unavailable",
+                ),
                 delta=0,
                 answered_at=utcnow(),
             )
@@ -916,7 +915,7 @@ async def hint_item(item_id: str, body: LetterHintIn, auth: CurrentAuth, db: Db)
             TrainingItem.id == item.id,
             TrainingItem.session_id.in_(_owned_sessions(auth)),
             TrainingItem.outcome.is_(None),
-            _eligible(auth),
+            _eligible(auth, include_learned=item.session.include_learned),
         )
         .values(letter_hints=TrainingItem.letter_hints + 1)
     )
@@ -988,7 +987,7 @@ async def answer_item(
         .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
         .scalar_subquery()
     )
-    eligible = _eligible(auth)
+    eligible = _eligible(auth, include_learned=item.session.include_learned)
     card_ready = (
         or_(~eligible, TrainingItem.revealed_at.is_not(None))
         if item.session.mode == "cards"
@@ -1044,7 +1043,7 @@ async def answer_item(
         current = (
             state is not None
             and not state[2]
-            and not state[3]
+            and (item.session.include_learned or not state[3])
             and state[0] == item.word_content_version
             and state[1] == item.word_training_version
         )
@@ -1076,16 +1075,18 @@ async def answer_item(
             if changed.rowcount != 1:  # type: ignore[attr-defined]
                 await db.rollback()
                 raise HTTPException(status.HTTP_409_CONFLICT, "PROGRESS_CHANGED")
+            progress_filters = [
+                Word.id == word.id,
+                Word.owner_id == auth.user.id,
+                Word.is_excluded.is_(False),
+                Word.training_version == item.word_training_version,
+                Word.content_version == item.word_content_version,
+            ]
+            if not item.session.include_learned:
+                progress_filters.append(Word.is_learned.is_(False))
             applied = await db.execute(
                 update(Word)
-                .where(
-                    Word.id == word.id,
-                    Word.owner_id == auth.user.id,
-                    Word.is_excluded.is_(False),
-                    Word.is_learned.is_(False),
-                    Word.training_version == item.word_training_version,
-                    Word.content_version == item.word_content_version,
-                )
+                .where(*progress_filters)
                 .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
             )
             if applied.rowcount != 1:  # type: ignore[attr-defined]

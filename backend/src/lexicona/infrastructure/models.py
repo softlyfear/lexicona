@@ -178,6 +178,8 @@ class TrainingSession(Base):
     status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
     finished_at: Mapped[datetime | None]
     requested_size: Mapped[str | None] = mapped_column(String(32))
+    # Frozen at start. Only this session may train words marked learned.
+    include_learned: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     items: Mapped[list[TrainingItem]] = relationship(
         back_populates="session",

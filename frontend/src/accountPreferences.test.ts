@@ -41,6 +41,11 @@ describe('настройки аккаунта', () => {
       shuffle: true,
     }
     expect(parseTrainingPreferences(training)?.tag_ids).toEqual(['a', 'b'])
+    expect(parseTrainingPreferences(training)?.include_learned).toBe(false)
+    expect(parseTrainingPreferences({ ...training, include_learned: true })?.include_learned).toBe(
+      true,
+    )
+    expect(parseTrainingPreferences({ ...training, include_learned: 'yes' })).toBeNull()
     expect(parseTrainingPreferences({ ...training, direction: 'en_en' })).toBeNull()
     expect(parseTrainingPreferences({ ...training, mode: 'matching' })).toBeNull()
     expect(parseTrainingPreferences({ ...training, size: 0 })).toBeNull()

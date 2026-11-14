@@ -35,6 +35,7 @@ export const DEFAULT_TRAINING: TrainingPreferences = {
   progress_max: null,
   order: 'random',
   shuffle: false,
+  include_learned: false,
 }
 
 function isVoiceUri(value: unknown): value is string | null {
@@ -88,7 +89,8 @@ export function parseTrainingPreferences(value: unknown): TrainingPreferences | 
       raw.progress_max < raw.progress_min) ||
     typeof raw.order !== 'string' ||
     !ORDERS.has(raw.order as TrainingPreferences['order']) ||
-    typeof raw.shuffle !== 'boolean'
+    typeof raw.shuffle !== 'boolean' ||
+    (raw.include_learned !== undefined && typeof raw.include_learned !== 'boolean')
   )
     return null
   return {
@@ -102,6 +104,7 @@ export function parseTrainingPreferences(value: unknown): TrainingPreferences | 
     progress_max: raw.progress_max,
     order: raw.order as TrainingPreferences['order'],
     shuffle: raw.shuffle,
+    include_learned: raw.include_learned === true,
   }
 }
 

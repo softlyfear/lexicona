@@ -8,6 +8,7 @@ from alembic import command
 from fastapi import FastAPI
 
 from lexicona.domain import distractors
+from lexicona.domain.choice import ChoiceEntry
 from lexicona.infrastructure.db import Database
 from lexicona.infrastructure.models import TrainingItem, Word
 from tests.conftest import Client, add_legacy_card_item, add_legacy_cloze_item, add_word
@@ -256,6 +257,162 @@ async def test_learned_words_stay_out_of_new_sessions_and_open_items(
         json={"mode": "input", "size": "all", "progress_min": 100, "progress_max": 100},
     )
     assert [item["prompt"] for item in returned.json()["items"]] == ["fox"]
+
+
+async def test_include_learned_adds_marked_words_inside_the_same_filters(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
+    created: dict[str, str] = {}
+    for en, ru, progress in (
+        ("fox", "лиса", 100),
+        ("cat", "кот", 40),
+        ("owl", "сова", 80),
+        ("dog", "собака", 0),
+    ):
+        word = await add_word(alice, en, ru)
+        created[en] = word["id"]
+        await set_progress(app, word["id"], progress)
+    await alice.patch(f"/api/words/{created['fox']}/learned", json={"is_learned": True})
+    await alice.patch(f"/api/words/{created['dog']}/learned", json={"is_learned": True})
+    await alice.patch(f"/api/words/{created['owl']}/learned", json={"is_learned": True})
+    await set_state(alice, created["owl"], True)
+    bob_word = await add_word(bob, "bat", "летучая мышь")
+    await bob.patch(f"/api/words/{bob_word['id']}/learned", json={"is_learned": True})
+
+    closed = await alice.post("/api/training/sessions", json={"mode": "input", "size": "all"})
+    assert closed.status_code == 201
+    assert [item["prompt"] for item in closed.json()["items"]] == ["cat"]
+
+    preview = await alice.post(
+        "/api/training/sessions/preview",
+        json={"mode": "input", "size": "all", "include_learned": True, "order": "progress_desc"},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["count"] == 3
+    assert preview.json()["unavailable_reason"] is None
+
+    opened = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "size": "all", "include_learned": True, "order": "progress_desc"},
+    )
+    assert opened.status_code == 201
+    assert [item["prompt"] for item in opened.json()["items"]] == ["fox", "cat", "dog"]
+    assert "bat" not in {item["prompt"] for item in opened.json()["items"]}
+    assert "owl" not in {item["prompt"] for item in opened.json()["items"]}
+
+    sized = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "size": 1, "include_learned": True, "order": "progress_desc"},
+    )
+    assert [item["prompt"] for item in sized.json()["items"]] == ["fox"]
+
+    bounded = await alice.post(
+        "/api/training/sessions",
+        json={
+            "mode": "input",
+            "size": "all",
+            "include_learned": True,
+            "progress_min": 100,
+            "progress_max": 100,
+        },
+    )
+    assert [item["prompt"] for item in bounded.json()["items"]] == ["fox"]
+
+    matched = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "matching", "size": "all", "include_learned": True, "order": "progress_desc"},
+    )
+    assert [item["prompt"] for item in matched.json()["items"]] == ["fox", "cat", "dog"]
+
+    waiting = await alice.post(
+        "/api/training/sessions",
+        json={
+            "mode": "input",
+            "purpose": "scheduled",
+            "include_new": False,
+            "include_learned": True,
+            "size": "all",
+        },
+    )
+    assert waiting.status_code == 409 and waiting.json()["detail"] == "no_scheduled_words"
+    scheduled = await alice.post(
+        "/api/training/sessions",
+        json={
+            "mode": "input",
+            "purpose": "scheduled",
+            "include_new": True,
+            "include_learned": True,
+            "size": "all",
+            "order": "progress_desc",
+        },
+    )
+    assert [item["prompt"] for item in scheduled.json()["items"]] == ["fox", "cat", "dog"]
+    assert (
+        await alice.post("/api/training/sessions", json={"include_learned": "yes"})
+    ).status_code == 422
+
+    fox_item = opened.json()["items"][0]
+    assert fox_item["prompt"] == "fox"
+    snapshot = await alice.get(f"/api/training/sessions/{opened.json()['id']}")
+    assert snapshot.json()["items"][0]["state"] == "open"
+    answer = await alice.post(f"/api/training/items/{fox_item['id']}/answer", json={"text": "лиса"})
+    assert answer.status_code == 200
+    assert answer.json()["outcome"] == "answered"
+    assert answer.json()["correct"] is True
+    assert answer.json()["delta"] == 8
+    assert answer.json()["progress"] == 108
+    saved = (await alice.get(f"/api/words/{created['fox']}")).json()
+    assert saved["is_learned"] is True and saved["progress"] == 108
+
+    active = await alice.post(
+        "/api/training/sessions",
+        json={
+            "mode": "input",
+            "size": 1,
+            "include_learned": True,
+            "progress_min": 40,
+            "progress_max": 40,
+        },
+    )
+    cat_item = active.json()["items"][0]
+    assert cat_item["prompt"] == "cat"
+    marked = await alice.patch(f"/api/words/{created['cat']}/learned", json={"is_learned": True})
+    assert marked.json()["progress"] == 40
+    resumed = await alice.get(f"/api/training/sessions/{active.json()['id']}")
+    assert resumed.json()["items"][0]["state"] == "open"
+    continued = await alice.post(
+        f"/api/training/items/{cat_item['id']}/answer", json={"text": "кот"}
+    )
+    assert continued.json()["outcome"] == "answered" and continued.json()["progress"] == 48
+    assert (await alice.get(f"/api/words/{created['cat']}")).json()["is_learned"] is True
+
+
+async def test_include_learned_can_use_a_marked_word_as_a_choice_distractor(
+    alice: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        distractors,
+        "choice_candidates",
+        lambda: [
+            ChoiceEntry(1, "table", "table", (("стол", "стол"),)),
+            ChoiceEntry(2, "river", "river", (("река", "река"),)),
+            ChoiceEntry(3, "stone", "stone", (("камень", "камень"),)),
+            ChoiceEntry(4, "cloud", "cloud", (("облако", "облако"),)),
+        ],
+    )
+    await add_word(alice, "cat", "кот")
+    fox = await add_word(alice, "fox", "лиса")
+    await alice.patch(f"/api/words/{fox['id']}/learned", json={"is_learned": True})
+    shown = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "choice", "size": "all", "include_learned": True},
+    )
+    items = shown.json()["items"]
+    assert {item["prompt"] for item in items} == {"cat", "fox"}
+    cat_item = next(item for item in items if item["prompt"] == "cat")
+    fox_item = next(item for item in items if item["prompt"] == "fox")
+    assert "лиса" in cat_item["options"]
+    assert "кот" in fox_item["options"]
 
 
 async def test_excluded_word_not_used_even_when_choice_has_enough_active(
