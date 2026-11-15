@@ -205,6 +205,15 @@ LEXICONA_TLS_KEY=/path/to/cert/privkey.pem
 
 Это файлы Let's Encrypt. Имя в сертификате совпадает с доменом, оба пути лежат внутри `LEXICONA_TLS_DIR`. После замены файлов: `docker compose --profile lexicona restart caddy`.
 
+Перед первым запуском создайте каталог данных от своего пользователя. Docker создаёт отсутствующий bind-mount от `root`, и контейнер с `LEXICONA_UID` не сможет писать в него:
+
+```sh
+mkdir -p backend/data
+ls -ld backend/data
+```
+
+Владелец каталога должен совпадать с `LEXICONA_UID`/`LEXICONA_GID`. Если каталог уже создан от `root`, исправьте владельца от своего пользователя (`sudo chown "$(id -u):$(id -g)" backend/data`).
+
 ```sh
 docker compose --profile lexicona up -d --build
 docker compose run --rm lexicona-admin create-user me --admin

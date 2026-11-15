@@ -33,6 +33,8 @@ async def test_health(anon: AsyncClient) -> None:
 async def test_spa_fallback(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<!doctype html>app")
     (tmp_path / "app.js").write_text("js")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-abc.js").write_text("bundle")
     app = create_app(
         Settings(
             _env_file=None,
@@ -45,6 +47,11 @@ async def test_spa_fallback(tmp_path: Path) -> None:
         assert (await client.get("/app.js")).text == "js"
         assert (await client.get("/training")).text == "<!doctype html>app"
         assert (await client.get("/api/nope")).status_code == 404
+        assert (await client.get("/")).headers["cache-control"] == "no-cache"
+        assert (await client.get("/app.js")).headers["cache-control"] == "no-cache"
+        assert (await client.get("/assets/index-abc.js")).headers[
+            "cache-control"
+        ] == "public, max-age=31536000, immutable"
 
 
 def test_admin_cli(
@@ -71,6 +78,16 @@ def test_admin_cli(
     monkeypatch.setattr("getpass.getpass", lambda _prompt: "short")
     with pytest.raises(SystemExit):
         admin(["create-user", "bob"])
+
+    monkeypatch.setattr("getpass.getpass", lambda _prompt: "p" * 129)
+    with pytest.raises(SystemExit):
+        admin(["create-user", "carol"])
+
+    monkeypatch.setattr("getpass.getpass", lambda _prompt: "long enough password")
+    with pytest.raises(SystemExit):
+        admin(["create-user", ""])
+    with pytest.raises(SystemExit):
+        admin(["create-user", "a" * 65])
 
 
 def test_tags_upgrade_and_guarded_downgrade(tmp_path: Path) -> None:

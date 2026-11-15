@@ -2,7 +2,6 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Self
 
-from anyio import to_thread
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 from sqlalchemy import delete, insert, literal, select, update
@@ -13,18 +12,18 @@ from lexicona.infrastructure.db import utcnow
 from lexicona.infrastructure.models import AuthSession, User, new_id
 from lexicona.infrastructure.security import (
     LoginThrottle,
-    hash_password,
+    hash_password_limited,
     new_token,
     token_hash,
-    verify_password,
+    verify_password_limited,
 )
 from lexicona.interfaces.http.deps import SESSION_COOKIE, AppSettings, CurrentAuth, Db
 from lexicona.interfaces.http.preferences import (
     AccountPreferences,
     SpeechPreferences,
     TrainingPreferences,
-    preference_document,
     public_preferences,
+    writable_document,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -105,7 +104,7 @@ def _set_session_cookie(response: Response, token: str, settings: AppSettings) -
 
 @router.post("/login")
 async def login(body: LoginIn, response: Response, db: Db, settings: AppSettings) -> SessionOut:
-    key = body.login.casefold()
+    key = body.login
     if throttle.blocked(key):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too_many_attempts")
     user = await db.scalar(select(User).where(User.login == body.login))
@@ -113,13 +112,16 @@ async def login(body: LoginIn, response: Response, db: Db, settings: AppSettings
     verified_hash = user.password_hash if user else None
     # Do not hold a DB transaction or the event loop while Argon2 runs.
     await db.rollback()
-    valid = await to_thread.run_sync(verify_password, verified_hash, body.password)
+    valid = await verify_password_limited(verified_hash, body.password)
     if not valid or user_id is None:
         throttle.fail(key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
 
     token, csrf_token = new_token(), new_token()
     now = utcnow()
+    await db.execute(
+        delete(AuthSession).where(AuthSession.user_id == user_id, AuthSession.expires_at <= now)
+    )
     inserted = await db.execute(
         insert(AuthSession).from_select(
             ["id", "user_id", "token_hash", "csrf_token", "created_at", "expires_at"],
@@ -156,10 +158,10 @@ async def change_password(
     if password_throttle.blocked(user_id):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too_many_attempts")
     await db.rollback()
-    if not await to_thread.run_sync(verify_password, old_hash, body.current_password):
+    if not await verify_password_limited(old_hash, body.current_password):
         password_throttle.fail(user_id)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid_current_password")
-    new_hash = await to_thread.run_sync(hash_password, body.new_password)
+    new_hash = await hash_password_limited(body.new_password)
     valid_session = (
         select(AuthSession.id)
         .where(
@@ -219,7 +221,7 @@ async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOu
         await db.refresh(auth.user)
         user_id = auth.user.id
         revision = auth.user.preferences_revision
-        document = preference_document(auth.user.preferences)
+        document = writable_document(auth.user.preferences)
         if "training" in fields:
             if body.training is None:
                 document.pop("training", None)

@@ -7,7 +7,11 @@ from sqlalchemy import select
 
 from lexicona.infrastructure.db import Database
 from lexicona.infrastructure.models import AuthSession, User
-from lexicona.infrastructure.security import LoginThrottle, hash_password, verify_password
+from lexicona.infrastructure.security import (
+    LoginThrottle,
+    hash_password_limited,
+    verify_password_limited,
+)
 from lexicona.interfaces.http.deps import SESSION_COOKIE
 from lexicona.interfaces.http.routers import auth
 from tests.conftest import PASSWORD, Client, _client
@@ -157,14 +161,16 @@ async def test_two_simultaneous_password_changes_only_one_wins(
     app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     barrier = threading.Barrier(2)
-    original = hash_password
+    original = hash_password_limited
 
-    def synchronized_hash(password: str) -> str:
-        result = original(password)
-        barrier.wait(timeout=15)
+    async def synchronized_hash(password: str) -> str:
+        result = await original(password)
+        await asyncio.to_thread(barrier.wait, 15)
         return result
 
-    monkeypatch.setattr(auth, "hash_password", synchronized_hash)
+    monkeypatch.setattr(
+        "lexicona.interfaces.http.routers.auth.hash_password_limited", synchronized_hash
+    )
     async with _client(app) as first, _client(app) as second:
         for client in [first, second]:
             client.cookies.update(alice.cookies)
@@ -193,15 +199,15 @@ async def test_logout_during_hash_prevents_password_change(
 ) -> None:
     started = threading.Event()
     proceed = threading.Event()
-    original = hash_password
+    original = hash_password_limited
 
-    def wait_hash(password: str) -> str:
-        result = original(password)
+    async def wait_hash(password: str) -> str:
+        result = await original(password)
         started.set()
-        assert proceed.wait(timeout=15)
+        await asyncio.to_thread(proceed.wait, 15)
         return result
 
-    monkeypatch.setattr(auth, "hash_password", wait_hash)
+    monkeypatch.setattr("lexicona.interfaces.http.routers.auth.hash_password_limited", wait_hash)
     async with _client(app) as concurrent:
         concurrent.cookies.update(alice.cookies)
         concurrent.headers["X-CSRF-Token"] = alice.csrf
@@ -226,16 +232,18 @@ async def test_login_with_verified_old_hash_cannot_survive_change(
 ) -> None:
     started = threading.Event()
     proceed = threading.Event()
-    original = verify_password
+    original = verify_password_limited
 
-    def wait_first_check(password_hash: str | None, password: str) -> bool:
-        result = original(password_hash, password)
+    async def wait_first_check(password_hash: str | None, password: str) -> bool:
+        result = await original(password_hash, password)
         if not started.is_set():
             started.set()
-            assert proceed.wait(timeout=15)
+            await asyncio.to_thread(proceed.wait, 15)
         return result
 
-    monkeypatch.setattr(auth, "verify_password", wait_first_check)
+    monkeypatch.setattr(
+        "lexicona.interfaces.http.routers.auth.verify_password_limited", wait_first_check
+    )
     async with _client(app) as stale:
         task = asyncio.create_task(
             stale.post("/api/auth/login", json={"login": "alice", "password": PASSWORD})

@@ -4,19 +4,24 @@ import getpass
 import sys
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import OperationalError
 
 from lexicona.config import Settings
 from lexicona.infrastructure.db import Database
 from lexicona.infrastructure.models import AuthSession, User
 from lexicona.infrastructure.security import hash_password
 
-MIN_PASSWORD_LENGTH = 8
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 128
+MAX_LOGIN_LENGTH = 64
 
 
 def _read_password() -> str:
     password = getpass.getpass("Password: ")
     if len(password) < MIN_PASSWORD_LENGTH:
         sys.exit(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    if len(password) > MAX_PASSWORD_LENGTH:
+        sys.exit(f"Password must be at most {MAX_PASSWORD_LENGTH} characters.")
     if getpass.getpass("Repeat: ") != password:
         sys.exit("Passwords do not match.")
     return password
@@ -56,12 +61,20 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command in {"create-user", "set-password"}:
+        if not 1 <= len(args.login) <= MAX_LOGIN_LENGTH:
+            sys.exit(f"Login must be 1 to {MAX_LOGIN_LENGTH} characters.")
         args.password_hash = hash_password(_read_password())
 
     async def run() -> str:
         database = Database(Settings().database_url)
         try:
             return await _run(args, database)
+        except OperationalError:
+            print(
+                "Database schema is missing or outdated. Run `uv run alembic upgrade head` first.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
         finally:
             await database.dispose()
 

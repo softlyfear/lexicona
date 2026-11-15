@@ -153,3 +153,16 @@ def public_preferences(raw: object) -> AccountPreferences:
         training_auto_advance=auto_advance if isinstance(auto_advance, bool) else False,
         training_auto_check=auto_check if isinstance(auto_check, bool) else False,
     )
+
+
+def writable_document(raw: object) -> dict[str, Any]:
+    """Return the stored document without sections that no longer validate.
+
+    A section hidden from the client must not be silently carried forward on an
+    unrelated write; it cannot be used anyway and would only hide the damage.
+    """
+    document = preference_document(raw)
+    for key, model in (("training", TrainingPreferences), ("speech", SpeechPreferences)):
+        if key in document and _section(model, document[key]) is None:
+            document.pop(key)
+    return document

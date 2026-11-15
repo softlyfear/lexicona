@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException
@@ -27,11 +29,17 @@ from lexicona.interfaces.http.routers import (
 class SpaFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except HTTPException as error:
             if error.status_code != 404 or path.startswith("api/") or path == "api":
                 raise
-            return await super().get_response("index.html", scope)
+            shell = await super().get_response("index.html", scope)
+            shell.headers["Cache-Control"] = "no-cache"
+            return shell
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+        )
+        return response
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -49,6 +57,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.db = database
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, error: RequestValidationError) -> JSONResponse:
+        # Validation errors include the submitted input, which may be a password.
+        details = [
+            {
+                "loc": list(item.get("loc", ())),
+                "msg": item.get("msg", ""),
+                "type": item.get("type", ""),
+            }
+            for item in error.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": details})
 
     @app.middleware("http")
     async def no_store(

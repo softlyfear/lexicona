@@ -1,7 +1,11 @@
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 
-from lexicona.infrastructure.models import User
-from tests.conftest import Client
+from sqlalchemy import select
+
+from lexicona.infrastructure.db import utcnow
+from lexicona.infrastructure.models import AuthSession, User
+from tests.conftest import PASSWORD, Client
 
 
 async def test_login_sets_http_only_cookie(
@@ -43,6 +47,77 @@ async def test_login_is_throttled_after_repeated_failures(
         "/api/auth/login", json={"login": "alice", "password": "correct horse battery"}
     )
     assert response.status_code == 429
+
+
+async def test_throttle_key_matches_the_case_sensitive_login_lookup(
+    anon: Client, create_user: Callable[..., Awaitable[User]]
+) -> None:
+    await create_user("Alice")
+    for _ in range(10):
+        await anon.post("/api/auth/login", json={"login": "ALICE", "password": "nope"})
+    response = await anon.post("/api/auth/login", json={"login": "Alice", "password": PASSWORD})
+    assert response.status_code == 200
+
+
+async def test_login_removes_expired_sessions(
+    app: object, anon: Client, create_user: Callable[..., Awaitable[User]]
+) -> None:
+    from fastapi import FastAPI
+
+    assert isinstance(app, FastAPI)
+    user = await create_user("alice")
+    async with app.state.db.sessions() as db:
+        db.add(
+            AuthSession(
+                user_id=user.id,
+                token_hash="a" * 64,
+                csrf_token="b" * 32,
+                expires_at=utcnow() - timedelta(days=1),
+            )
+        )
+        await db.commit()
+    assert (
+        await anon.post("/api/auth/login", json={"login": "alice", "password": PASSWORD})
+    ).status_code == 200
+    async with app.state.db.sessions() as db:
+        remaining = (
+            await db.scalars(select(AuthSession).where(AuthSession.user_id == user.id))
+        ).all()
+    assert len(remaining) == 1
+
+
+async def test_validation_errors_do_not_echo_passwords(alice: Client) -> None:
+    current = "c" * 40
+    new = "n" * 200
+    response = await alice.post(
+        "/api/auth/change-password", json={"current_password": current, "new_password": new}
+    )
+    assert response.status_code == 422
+    assert current not in response.text
+    assert new not in response.text
+    login = await alice.post("/api/auth/login", json={"login": "alice", "password": "p" * 300})
+    assert login.status_code == 422
+    assert "p" * 300 not in login.text
+
+
+async def test_invalid_saved_section_is_dropped_on_write(app: object, alice: Client) -> None:
+    from fastapi import FastAPI
+
+    assert isinstance(app, FastAPI)
+    database = app.state.db
+    async with database.sessions() as db:
+        user = await db.scalar(select(User).where(User.login == "alice"))
+        assert user is not None
+        user.preferences = {"training": {"mode": "cards"}, "training_auto_advance": False}
+        await db.commit()
+    response = await alice.put("/api/auth/settings", json={"training_auto_check": True})
+    assert response.status_code == 200
+    assert response.json()["preferences"]["training"] is None
+    async with database.sessions() as db:
+        stored = (await db.scalar(select(User).where(User.login == "alice"))).preferences
+    assert stored is not None
+    assert "training" not in stored
+    assert stored["training_auto_check"] is True
 
 
 async def test_me_requires_session(anon: Client) -> None:
