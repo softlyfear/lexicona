@@ -1181,7 +1181,12 @@ async def answer_item(
             applied = await db.execute(
                 update(Word)
                 .where(*progress_filters)
-                .values(progress=func.max(progress.MIN_PROGRESS, Word.progress + change))
+                .values(
+                    progress=func.min(
+                        progress.MAX_PROGRESS,
+                        func.max(progress.MIN_PROGRESS, Word.progress + change),
+                    )
+                )
             )
             if applied.rowcount != 1:  # type: ignore[attr-defined]
                 await db.rollback()

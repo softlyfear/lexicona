@@ -47,7 +47,7 @@ either way.
 
 ## Product invariants
 
-- Word progress is a nonnegative unbounded integer, not CEFR or a probability.
+- Word progress is a nonnegative integer capped at 100, not CEFR or a probability.
   Reaching 100 does not remove or exclude a word. Deltas in `progress.py` depend
   on difficulty, captured at session start; passive listening only adds progress.
 - Only the server judges correctness; it withholds the right answer until

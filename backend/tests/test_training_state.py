@@ -64,7 +64,7 @@ async def test_state_toggle_owner_csrf_validation_and_lists(
     app: FastAPI, alice: Client, bob: Client
 ) -> None:
     word = await add_word(alice, "cat", "кот", note="pet")
-    await set_progress(app, word["id"], 158)
+    await set_progress(app, word["id"], 100)
     await add_word(alice, "dog", "собака")
     url = f"/api/words/{word['id']}/training"
     response = await bob.patch(url, json={"is_excluded": True})
@@ -78,7 +78,7 @@ async def test_state_toggle_owner_csrf_validation_and_lists(
     for _ in range(2):
         response = await set_state(alice, word["id"], True)
         assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
-        assert response.json()["is_excluded"] is True and response.json()["progress"] == 158
+        assert response.json()["is_excluded"] is True and response.json()["progress"] == 100
     assert (await alice.get(f"/api/words/{word['id']}")).json()["note"] == "pet"
     assert [w["headword"] for w in (await alice.get("/api/words")).json()] == ["dog"]
     assert [
@@ -99,7 +99,7 @@ async def test_state_toggle_owner_csrf_validation_and_lists(
         f"/api/words/{word['id']}",
         json={"headword": "Cat", "translations": ["Кот"], "note": "pet"},
     )
-    assert response.json()["is_excluded"] is True and response.json()["progress"] == 158
+    assert response.json()["is_excluded"] is True and response.json()["progress"] == 100
     for _ in range(2):
         assert (await set_state(alice, word["id"], False)).json()["is_excluded"] is False
     async with database.sessions() as db:
@@ -108,8 +108,8 @@ async def test_state_toggle_owner_csrf_validation_and_lists(
 
 
 @pytest.mark.parametrize("mode", ["choice", "input", "cards", "cloze"])
-@pytest.mark.parametrize("initial", [98, 100, 150])
-async def test_all_modes_keep_progress_above_100(
+@pytest.mark.parametrize("initial", [0, 50, 98])
+async def test_all_modes_cap_progress_at_100(
     app: FastAPI, alice: Client, mode: str, initial: int
 ) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat")
@@ -123,7 +123,7 @@ async def test_all_modes_keep_progress_above_100(
             ("wolf", "волк"),
         ]:
             added = await add_word(alice, headword, translation)
-            await set_progress(app, added["id"], initial + 10)
+            await set_progress(app, added["id"], min(100, initial + 10))
     item = await start(app, alice, mode, initial)
     payload: dict[str, Any]
     if mode == "choice":
@@ -139,7 +139,9 @@ async def test_all_modes_keep_progress_above_100(
         payload = {"text": "cat" if mode == "cloze" else "кот"}
     response = await alice.post(f"/api/training/items/{item['id']}/answer", json=payload)
     assert response.status_code == 200
-    assert response.json()["progress"] == initial + (4 if mode in ("choice", "cards") else 8)
+    assert response.json()["progress"] == min(
+        100, initial + (4 if mode in ("choice", "cards") else 8)
+    )
     assert (await alice.get(f"/api/words/{word['id']}")).json()["is_excluded"] is False
 
 
@@ -376,9 +378,9 @@ async def test_include_learned_adds_marked_words_inside_the_same_filters(
     assert answer.json()["outcome"] == "answered"
     assert answer.json()["correct"] is True
     assert answer.json()["delta"] == 8
-    assert answer.json()["progress"] == 108
+    assert answer.json()["progress"] == 100
     saved = (await alice.get(f"/api/words/{created['fox']}")).json()
-    assert saved["is_learned"] is True and saved["progress"] == 108
+    assert saved["is_learned"] is True and saved["progress"] == 100
 
     active = await alice.post(
         "/api/training/sessions",
@@ -596,7 +598,7 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
     high = await add_word(alice, "dog", "собака")
     plain = await add_word(alice, "fox", "лиса")
     await set_progress(app, low["id"], 0)
-    await set_progress(app, high["id"], 158)
+    await set_progress(app, high["id"], 100)
     await set_state(alice, high["id"], True)
     url = f"/api/words/{low['id']}/learned"
     assert (await bob.patch(url, json={"is_learned": True})).status_code == 404
@@ -610,7 +612,7 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
         {"is_learned": True, "extra": 1},
     ]:
         assert (await alice.patch(url, json=invalid)).status_code == 422
-    for word_id, progress in ((low["id"], 0), (high["id"], 158)):
+    for word_id, progress in ((low["id"], 0), (high["id"], 100)):
         for _ in range(2):
             response = await alice.patch(f"/api/words/{word_id}/learned", json={"is_learned": True})
             assert response.status_code == 200
@@ -619,9 +621,9 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
             assert response.json()["progress"] == progress
     high_body = (await alice.get(f"/api/words/{high['id']}")).json()
     assert high_body["is_excluded"] is True and high_body["is_learned"] is True
-    assert high_body["progress"] == 158
+    assert high_body["progress"] == 100
     learned = (await alice.get("/api/words", params={"training": "learned"})).json()
-    assert {word["headword"]: word["progress"] for word in learned} == {"cat": 0, "dog": 158}
+    assert {word["headword"]: word["progress"] for word in learned} == {"cat": 0, "dog": 100}
     assert {word["headword"] for word in (await alice.get("/api/words")).json()} == {"fox"}
     assert {
         word["headword"]
@@ -650,7 +652,7 @@ async def test_learned_mark_keeps_any_progress_and_stays_out_of_training_version
         assert marked_low is not None and marked_high is not None
         assert marked_low.progress == 0 and marked_low.is_learned is False
         assert marked_low.training_version == 1 and marked_low.content_version == 1
-        assert marked_high.progress == 158 and marked_high.is_learned is True
+        assert marked_high.progress == 100 and marked_high.is_learned is True
         assert marked_high.is_excluded is True and marked_high.training_version == 2
 
 

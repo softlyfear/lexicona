@@ -188,9 +188,9 @@ async def test_each_card_grade_uses_frozen_difficulty(
 
 @pytest.mark.parametrize(
     ("initial", "grade", "delta", "expected"),
-    [(2, "again", -4, 0), (98, "good", 4, 102)],
+    [(2, "again", -4, 0), (98, "good", 4, 100)],
 )
-async def test_card_progress_has_only_lower_bound(
+async def test_card_progress_is_capped_at_100(
     app: FastAPI, alice: Client, initial: int, grade: str, delta: int, expected: int
 ) -> None:
     word = await add_word(alice, "cat", "кот")

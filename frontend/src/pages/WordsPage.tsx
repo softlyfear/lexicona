@@ -482,7 +482,7 @@ export function WordsPage({ userId }: { userId: string }) {
               </div>
             </details>
             <div className={css.wordSide}>
-              <span className={css.percent}>{word.progress}%</span>
+              <span className={css.percent}>{Math.min(100, word.progress)}%</span>
               <div className={css.meter}>
                 <ProgressBar value={word.progress} />
               </div>

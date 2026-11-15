@@ -273,7 +273,7 @@ async def test_input_progress_bounds_and_conservative_normalization(
         f"/api/training/items/{item['id']}/answer", json={"text": " CAN’T. "}
     )
     assert response.json()["correct"] is True
-    assert response.json()["progress"] == 106
+    assert response.json()["progress"] == 100
 
     await set_progress(app, word["id"], 2)
     item = await start_input(alice, "ru_en")
@@ -375,3 +375,20 @@ def test_migration_preserves_choice_and_refuses_loss_of_typed_items(tmp_path: An
         command.downgrade(config, "b24a4bb7ec9e")
     with sqlite3.connect(file) as db:
         assert db.execute("SELECT count(*) FROM training_items").fetchone() == (2,)
+
+
+async def test_progress_is_capped_at_100(app: FastAPI, alice: Client) -> None:
+    from sqlalchemy import select
+
+    from lexicona.infrastructure.models import Word
+
+    word = await add_word(alice, "cat", "кот")
+    await set_progress(app, word["id"], 95)
+    item = await start_input(alice)
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кот"})
+    assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 8
+    assert answered.json()["progress"] == 100
+    async with app.state.db.sessions() as db:
+        saved = await db.scalar(select(Word).where(Word.id == word["id"]))
+    assert saved is not None and saved.progress == 100

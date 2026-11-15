@@ -844,7 +844,7 @@ describe('сортировка словаря', () => {
     expect(within(row).getByText('Исключить')).toBeInTheDocument()
     expect(within(row).getByText('Изменить')).toBeInTheDocument()
     expect(within(row).getByText('Удалить')).toBeInTheDocument()
-    expect(screen.getByText('158%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
     const bar = screen.getByRole('progressbar', { name: 'Прогресс' })
     expect(bar).toHaveAttribute('aria-valuenow', '100')
     expect(bar).toHaveAttribute('aria-valuetext', '158%')
@@ -858,7 +858,7 @@ describe('сортировка словаря', () => {
     const restore = await screen.findByRole('button', { name: 'Вернуть в обучение «cat»' })
     expect(restore).toHaveAttribute('title', 'Вернуть в обучение')
     expect(screen.getByText('Исключено из обучения')).toBeInTheDocument()
-    expect(screen.getByText('158%')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument()
     await user.click(restore)
     expect(
       await screen.findByRole('button', { name: 'Исключить из обучения «cat»' }),

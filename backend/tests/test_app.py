@@ -316,3 +316,27 @@ def test_source_refs_migration_refuses_data_loss(tmp_path: Path) -> None:
             12,
             2,
         )
+
+
+def test_progress_cap_migration_clamps_legacy_values(tmp_path: Path) -> None:
+    import sqlite3
+
+    file = tmp_path / "progress-cap.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{file}")
+    command.upgrade(config, "c3a91e7b4d20")
+    with sqlite3.connect(file) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2020-01-01')"
+        )
+        for word_id, progress in (("high", 158), ("max", 100), ("low", 40)):
+            db.execute(
+                "INSERT INTO words (id, owner_id, headword, normalized_headword, progress, "
+                "content_version, created_at, updated_at) "
+                "VALUES (?, 'u', ?, ?, ?, 1, '2020-01-01', '2020-01-01')",
+                (word_id, word_id, word_id, progress),
+            )
+    command.upgrade(config, "head")
+    with sqlite3.connect(file) as db:
+        rows = dict(db.execute("SELECT id, progress FROM words").fetchall())
+    assert rows == {"high": 100, "max": 100, "low": 40}

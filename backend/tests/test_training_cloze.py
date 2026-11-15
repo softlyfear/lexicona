@@ -118,11 +118,11 @@ async def test_strict_answers_and_cloze_security(app: FastAPI, alice: Client, bo
 @pytest.mark.parametrize(
     ("answer", "initial", "delta", "expected"),
     [
-        ("cat", 98, 8, 106),
+        ("cat", 98, 8, 100),
         ("wrong", 2, -4, 0),
     ],
 )
-async def test_typed_deltas_allow_progress_above_100(
+async def test_typed_deltas_cap_progress_at_100(
     app: FastAPI, alice: Client, answer: str, initial: int, delta: int, expected: int
 ) -> None:
     word = await add_word(alice, "cat", "кот", example_en="a cat")

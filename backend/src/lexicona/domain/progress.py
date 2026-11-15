@@ -1,6 +1,7 @@
 from enum import StrEnum
 
 MIN_PROGRESS = 0
+MAX_PROGRESS = 100
 
 
 class Difficulty(StrEnum):
@@ -46,7 +47,7 @@ def delta(
 
 
 def apply(progress: int, change: int) -> int:
-    return max(MIN_PROGRESS, progress + change)
+    return min(MAX_PROGRESS, max(MIN_PROGRESS, progress + change))
 
 
 def with_letter_hint(change: int, used: bool, fully_revealed: bool = False) -> int:

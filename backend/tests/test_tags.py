@@ -180,14 +180,14 @@ async def test_unicode_names_and_filter_boundaries(alice: Client, bob: Client) -
 
 async def test_tag_edit_keeps_open_item_and_counts_answer_once(alice: Client, app: FastAPI) -> None:
     words = await seed(alice)
-    await set_progress(app, words["cat"]["id"], 123)
+    await set_progress(app, words["cat"]["id"], 90)
     item = next(i for i in (await start(alice))["items"] if i["prompt"] == "cat")
     response = await alice.put(
         f"/api/words/{words['cat']['id']}",
         json={"headword": "cat", "translations": ["кот"], "tags": ["животные"]},
     )
     assert response.status_code == 200
-    assert response.json()["progress"] == 123
+    assert response.json()["progress"] == 90
     right = await correct_option(app, item["id"])
     url = f"/api/training/items/{item['id']}/answer"
     first = await alice.post(url, json={"option": right})
@@ -195,5 +195,5 @@ async def test_tag_edit_keeps_open_item_and_counts_answer_once(alice: Client, ap
     assert first.status_code == again.status_code == 200
     assert first.json() == again.json()
     assert first.json()["delta"] == 4
-    assert first.json()["progress"] == 127
-    assert (await alice.get(f"/api/words/{words['cat']['id']}")).json()["progress"] == 127
+    assert first.json()["progress"] == 94
+    assert (await alice.get(f"/api/words/{words['cat']['id']}")).json()["progress"] == 94

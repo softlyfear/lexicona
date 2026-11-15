@@ -792,13 +792,18 @@ legend.settingLabel {
   align-items: center;
   justify-content: center;
   min-height: 3.1rem;
-  padding: 0.4rem 0.6rem 0.4rem 2.4rem;
+  padding: 0.4rem 0.6rem 0.4rem 2.8rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
 }
 
-.optionRow:hover:not(:has(button:disabled)),
+@media (hover: hover) {
+  .optionRow:hover:not(:has(button:disabled)) {
+    border-color: var(--accent);
+  }
+}
+
 .optionRow:active:not(:has(button:disabled)) {
   border-color: var(--accent);
 }
@@ -1078,7 +1083,7 @@ legend.settingLabel {
 
   .optionRow {
     min-height: 2.75rem;
-    padding: 0.25rem 0.45rem 0.25rem 2.15rem;
+    padding: 0.25rem 0.45rem 0.25rem 2.6rem;
   }
 
   .optionText {

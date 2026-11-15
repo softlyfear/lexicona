@@ -400,7 +400,7 @@ def test_srs_migration_backfills_and_enforces_owner_composite_fk(tmp_path: Path)
         db.execute(
             "INSERT INTO words (id, owner_id, headword, normalized_headword, progress, "
             "is_excluded, training_version, content_version, created_at, updated_at) "
-            "VALUES ('w', 'u1', 'cat', 'cat', 123, 0, 1, 1, '2026-01-01', '2026-01-01')"
+            "VALUES ('w', 'u1', 'cat', 'cat', 80, 0, 1, 1, '2026-01-01', '2026-01-01')"
         )
         db.execute(
             "INSERT INTO training_sessions (id, owner_id, mode, direction, difficulty, created_at) "
@@ -418,7 +418,7 @@ def test_srs_migration_backfills_and_enforces_owner_composite_fk(tmp_path: Path)
             "SELECT owner_id, word_id, stage, has_review, due_at, last_review_at, "
             "success_streak, review_count, lapse_count, progress_version FROM word_progress"
         ).fetchall() == [("u1", "w", 0, 0, None, None, 0, 0, 0, 1)]
-        assert db.execute("SELECT progress FROM words").fetchone() == (123,)
+        assert db.execute("SELECT progress FROM words").fetchone() == (80,)
         assert db.execute("SELECT purpose FROM training_sessions").fetchone() == ("free",)
         assert db.execute("SELECT word_progress_version FROM training_items").fetchone() == (1,)
         with pytest.raises(sqlite3.IntegrityError):
@@ -426,7 +426,7 @@ def test_srs_migration_backfills_and_enforces_owner_composite_fk(tmp_path: Path)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     command.downgrade(config, "c83917f0d52a")
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT progress FROM words").fetchone() == (123,)
+        assert db.execute("SELECT progress FROM words").fetchone() == (80,)
         assert db.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'word_progress'"
         ).fetchone() == (0,)
