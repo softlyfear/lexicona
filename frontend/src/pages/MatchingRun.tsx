@@ -211,6 +211,7 @@ export function MatchingRun({
           {busy && <p role="status">Проверяем…</p>}
           <div
             className={`${ui.card} ${css.matchingGrid}`}
+            key={batchKey}
             style={{
               gridTemplateRows: `repeat(${Math.max(batch.length, batch[0]?.options.length ?? 0, 1)}, auto)`,
             }}
@@ -240,6 +241,7 @@ export function MatchingRun({
                       setNotice('')
                     }}
                     lang="en"
+                    autoFocus={item.id === batch[0].id}
                   >
                     {item.prompt}
                   </button>

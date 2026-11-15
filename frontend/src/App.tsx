@@ -16,9 +16,14 @@ export function App() {
   if (session.isPending) return null
   if (session.isError)
     return (
-      <p className={ui.error} role="alert" style={{ padding: '1rem' }}>
-        {errorMessage(session.error)}
-      </p>
+      <div style={{ padding: '1rem' }}>
+        <p className={ui.error} role="alert">
+          {errorMessage(session.error)}
+        </p>
+        <button className={ui.button} onClick={() => void session.refetch()}>
+          Повторить
+        </button>
+      </div>
     )
   if (!session.data) return <LoginPage />
 

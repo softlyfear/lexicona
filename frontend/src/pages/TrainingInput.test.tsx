@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api } from '../api'
@@ -27,6 +27,7 @@ vi.mock('../api', async (original) => {
       revealAnswer: vi.fn(),
       skipItem: vi.fn(),
       letterHint: vi.fn(),
+      getWord: vi.fn(),
     },
   }
 })
@@ -274,5 +275,99 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Добавьте хотя бы одно слово')
+  })
+
+  it('не повторяет автопроверку после сетевой ошибки', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.answerText).mockRejectedValue(new TypeError('offline'))
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.type(input, 'кот')
+    await waitFor(() => expect(api.answerText).toHaveBeenCalledTimes(1), { timeout: 4000 })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Нет связи')
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 2300))
+    })
+    expect(api.answerText).toHaveBeenCalledTimes(1)
+  })
+
+  it('не отправляет ответ, пока открыт редактор слова', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.startTraining).mockResolvedValue({
+      id: 's',
+      purpose: 'free',
+      mode: 'input',
+      direction: 'en_ru',
+      items: [
+        { id: 'i1', word_id: 'w1', prompt: 'cat', options: [] },
+        { id: 'i2', prompt: 'dog', options: [] },
+      ],
+    })
+    vi.mocked(api.getWord).mockReturnValue(new Promise(() => {}))
+    vi.mocked(api.answerText).mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'кот',
+      expected_answers: ['кот'],
+      delta: 8,
+      progress: 8,
+    })
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.type(input, 'кот')
+    await user.click(screen.getByRole('button', { name: 'Редактировать слово «cat»' }))
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 2300))
+    })
+    expect(api.answerText).not.toHaveBeenCalled()
+  })
+
+  it('ждёт окончания IME-композиции', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.answerText).mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'ко',
+      expected_answers: ['кот'],
+      delta: 4,
+      progress: 4,
+    })
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    fireEvent.compositionStart(input)
+    fireEvent.change(input, { target: { value: 'ко' } })
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 2300))
+    })
+    expect(api.answerText).not.toHaveBeenCalled()
+    fireEvent.compositionEnd(input)
+    await waitFor(() => expect(api.answerText).toHaveBeenCalledWith('i1', 'ко'), { timeout: 4000 })
+  })
+
+  it('не отправляет точку автоматически', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.answerText).mockResolvedValue({
+      outcome: 'answered',
+      correct: false,
+      submitted_text: '.',
+      expected_answers: ['кот'],
+      delta: -4,
+      progress: 0,
+    })
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.type(input, '.')
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 2300))
+    })
+    expect(api.answerText).not.toHaveBeenCalled()
   })
 })

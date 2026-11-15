@@ -339,6 +339,13 @@ export function isCurrentApiError(error: ApiError) {
   return error.sessionGeneration === undefined || error.sessionGeneration === sessionGeneration
 }
 
+function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') return signal
+  const timeout = AbortSignal.timeout(timeoutMs)
+  if (!signal) return timeout
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -346,6 +353,7 @@ async function request<T>(
   csrfOverride?: string,
   signal?: AbortSignal,
   binary = false,
+  timeoutMs = 20_000,
 ): Promise<T> {
   const requestGeneration = sessionGeneration
   const headers: Record<string, string> = {}
@@ -356,7 +364,7 @@ async function request<T>(
     headers,
     credentials: 'same-origin',
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
+    signal: withTimeout(signal, timeoutMs),
   })
   if (!response.ok) {
     let detail = response.statusText
@@ -420,6 +428,7 @@ export const api = {
       undefined,
       signal,
       true,
+      40_000,
     ),
   me: () => sessionRequest('GET', '/auth/me'),
   login: (login: string, password: string) =>
@@ -444,18 +453,45 @@ export const api = {
     return request<Word[]>('GET', `/words?${params}`)
   },
   lookupDictionary: (headword: string) =>
-    request<DictionaryLookup>('POST', '/dictionary/lookup', { headword }),
+    request<DictionaryLookup>(
+      'POST',
+      '/dictionary/lookup',
+      { headword },
+      undefined,
+      undefined,
+      false,
+      70_000,
+    ),
   generateExample: (headword: string, previousExamples: string[]) =>
-    request<{ example_en: string; example_ru: string }>('POST', '/dictionary/example', {
-      headword,
-      previous_examples: previousExamples,
-    }),
+    request<{ example_en: string; example_ru: string }>(
+      'POST',
+      '/dictionary/example',
+      { headword, previous_examples: previousExamples },
+      undefined,
+      undefined,
+      false,
+      70_000,
+    ),
   generateTranscription: (headword: string) =>
-    request<{ transcription: string }>('POST', '/dictionary/transcription', { headword }),
+    request<{ transcription: string }>(
+      'POST',
+      '/dictionary/transcription',
+      { headword },
+      undefined,
+      undefined,
+      false,
+      70_000,
+    ),
   generateTranslations: async (headword: string): Promise<GeneratedTranslations> => {
-    const result = await request<GeneratedTranslations>('POST', '/dictionary/translations', {
-      headword,
-    })
+    const result = await request<GeneratedTranslations>(
+      'POST',
+      '/dictionary/translations',
+      { headword },
+      undefined,
+      undefined,
+      false,
+      70_000,
+    )
     if (
       result?.provider !== 'openrouter' ||
       !Array.isArray(result.translations) ||
@@ -572,10 +608,16 @@ const MESSAGES: Record<string, string> = {
     'Сейчас нет слов для занятия по расписанию. Включите новые слова или выберите свободную практику.',
   PROGRESS_CHANGED:
     'Ответ не засчитан: слово изменилось в другом занятии. Пропустите это задание и продолжите.',
+  database_busy: 'База данных занята. Попробуйте ещё раз.',
 }
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError)
     return MESSAGES[error.message] ?? `Ошибка сервера (${error.status}).`
+  if (
+    error instanceof DOMException &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  )
+    return 'Превышено время ожидания. Попробуйте ещё раз.'
   return 'Нет связи с сервером.'
 }

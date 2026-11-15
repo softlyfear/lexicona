@@ -21,6 +21,7 @@ export function TrainingSummary({
   const data = summary.data
   return (
     <section className={`${ui.card} ${css.stack} ${css.summary}`}>
+      <h1 className={css.visuallyHidden}>Итоги занятия</h1>
       {summary.isFetching && <p role="status">Загружаем итоги…</p>}
       {summary.isError && (
         <div className={css.stack}>

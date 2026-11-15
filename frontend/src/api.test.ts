@@ -132,7 +132,9 @@ describe('api', () => {
     expect(path).toBe('/api/speech/synthesize')
     expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
     expect(init.body).toBe(JSON.stringify({ text: 'hello', voice_id: 'voice', rate: 0.75 }))
-    expect(init.signal).toBe(controller.signal)
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    controller.abort()
+    expect(init.signal?.aborted).toBe(true)
     expect(blob.size).toBe(3)
   })
   it('sends the CSRF token only on mutations', async () => {
@@ -391,5 +393,13 @@ describe('api', () => {
 
   it('reports network failures in plain words', () => {
     expect(errorMessage(new TypeError('Failed to fetch'))).toBe('Нет связи с сервером.')
+  })
+
+  it('bounds requests with a timeout signal and explains timeouts', async () => {
+    const fetchMock = mockFetch(200, [])
+    await api.listWords('', 'created_desc', 'active', [])
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    expect(errorMessage(new DOMException('late', 'TimeoutError'))).toContain('время ожидания')
   })
 })

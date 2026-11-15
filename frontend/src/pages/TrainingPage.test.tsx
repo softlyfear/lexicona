@@ -76,6 +76,7 @@ function renderPage() {
 
 describe('TrainingPage', () => {
   beforeEach(() => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(api.answer).mockReset()
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',

@@ -45,7 +45,7 @@ it('shows only first-answer counts and accuracy in the compact summary', async (
   expect(results).toHaveTextContent('С помощью0')
   expect(results.querySelectorAll('dt')).toHaveLength(4)
   expect(results.querySelectorAll('dd')).toHaveLength(4)
-  expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Итоги занятия' })).toBeInTheDocument()
   expect(
     screen.queryByText(/Учитывается первый|Способ завершения|Неизвестно:/),
   ).not.toBeInTheDocument()

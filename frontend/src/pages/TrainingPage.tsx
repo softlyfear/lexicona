@@ -364,7 +364,13 @@ function Setup({
       )
     },
     onSuccess: (session, variables) => {
-      if (startScope.current === speechGeneration()) onStart(session, variables.requestedSize)
+      if (startScope.current === speechGeneration()) {
+        onStart(session, variables.requestedSize)
+        return
+      }
+      // The tab was hidden or the session ended while the request was in flight.
+      // Do not startle the user later, but do not leave an orphaned server session either.
+      void api.finishTraining(session.id).catch(() => undefined)
     },
     onSettled: () => {
       starting.current = false
@@ -865,16 +871,20 @@ export function Run({
   })
 
   const typedSinceHint = useRef(false)
+  const [composing, setComposing] = useState(false)
 
   useEffect(() => {
     if (!autoCheck || (session.mode !== 'input' && session.mode !== 'cloze')) return
-    if (disabled || finishing || result || revealed || !text.trim()) return
+    if (disabled || finishing || result || revealed || editingId) return
+    if (!text.trim() || /^\s*\.?\s*$/u.test(text) || composing) return
     if (!typedSinceHint.current) return
     const timer = window.setTimeout(() => {
-      if (!locked.current && typedSinceHint.current) performRef.current({ kind: 'text', text })
+      if (locked.current || !typedSinceHint.current) return
+      typedSinceHint.current = false
+      performRef.current({ kind: 'text', text })
     }, AUTO_CHECK_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [autoCheck, disabled, finishing, result, revealed, session.mode, text])
+  }, [autoCheck, composing, disabled, editingId, finishing, result, revealed, session.mode, text])
 
   function perform(value: Action) {
     if (finishing || locked.current || (result && !canRetry)) return
@@ -951,12 +961,13 @@ export function Run({
 
   async function hint() {
     if (finishing || locked.current || disabled) return
+    // The next reveal is not user input: auto-check waits for a new keystroke.
+    typedSinceHint.current = false
     setHintError('')
     setHintPending(true)
     locked.current = true
     try {
       const revealed = await api.letterHint(item.id, text)
-      typedSinceHint.current = false
       setText(revealed.text)
       if (revealed.complete) {
         setHintPending(false)
@@ -1112,7 +1123,7 @@ export function Run({
           </div>
           {editNote && <p className={ui.muted}>{editNote}</p>}
           {session.mode === 'choice' && (
-            <div className={css.options} role="group" aria-label="Варианты ответа">
+            <div className={css.options} role="group" aria-label="Варианты ответа" key={item.id}>
               {item.options.map((option, i) => {
                 let state = ''
                 if (
@@ -1137,6 +1148,7 @@ export function Run({
                       onClick={() => perform({ kind: 'choice', option: i })}
                       disabled={disabled}
                       lang={answerLang}
+                      autoFocus={i === 0}
                     >
                       {option}
                     </button>
@@ -1179,6 +1191,8 @@ export function Run({
                     setHintError('')
                     setText(event.target.value)
                   }}
+                  onCompositionStart={() => setComposing(true)}
+                  onCompositionEnd={() => setComposing(false)}
                   maxLength={200}
                   disabled={disabled}
                   autoComplete="off"
