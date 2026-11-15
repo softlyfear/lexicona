@@ -79,3 +79,19 @@ def _matched_prefix(folded: str, target: str) -> int:
         else:
             break
     return matched
+
+
+def hinted_steps(answer: str) -> int:
+    """Number of hint calls that reveal the whole answer from an empty input.
+
+    One call can add two visible characters when a space or an internal
+    apostrophe is crossed, so the count is not the answer length.
+    """
+    current = ""
+    steps = 0
+    while steps <= len(answer):
+        current, complete = hinted_text(current, [answer])
+        steps += 1
+        if complete:
+            return steps
+    return len(answer)

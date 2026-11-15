@@ -72,11 +72,23 @@ FILES = {
 }
 MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
 MAX_WAV_BYTES = 16 * 1024 * 1024
+# Keep the replay cache small in memory: clips can be several megabytes each.
+MAX_CACHE_BYTES = 64 * 1024 * 1024
 TIMEOUT_SECONDS = 30
 _slot = threading.BoundedSemaphore(1)
 _worker: subprocess.Popen[bytes] | None = None
 _worker_key: tuple[Path, Path] | None = None
 _clips: OrderedDict[tuple[Path, Path, str, float, str], bytes] = OrderedDict()
+_clips_bytes = 0
+
+
+def _store_clip(key: tuple[Path, Path, str, float, str], data: bytes) -> None:
+    global _clips_bytes
+    _clips[key] = data
+    _clips_bytes += len(data)
+    while len(_clips) > 1 and (len(_clips) > 32 or _clips_bytes > MAX_CACHE_BYTES):
+        _, dropped = _clips.popitem(last=False)
+        _clips_bytes -= len(dropped)
 
 
 def _validate_wav(data: bytes) -> None:
@@ -227,9 +239,7 @@ def synthesize(directory: Path, python: Path, voice_id: str, text: str, rate: fl
         if not isinstance(data, bytes):
             raise SpeechError
         _validate_wav(data)
-        _clips[key] = data
-        while len(_clips) > 32:
-            _clips.popitem(last=False)
+        _store_clip(key, data)
         return data
     except SpeechError:
         raise

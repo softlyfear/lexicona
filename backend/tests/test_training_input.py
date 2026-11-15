@@ -175,6 +175,47 @@ async def test_typed_prefix_with_hints_still_earns_half(alice: Client) -> None:
     assert answered.json()["progress"] == 4
 
 
+async def test_fully_hinted_phrase_earns_nothing(alice: Client) -> None:
+    await add_word(alice, "cat", "домашний кот")
+    item = await start_input(alice)
+    url = f"/api/training/items/{item['id']}/hint"
+    text = ""
+    for _ in range(11):
+        text = (await alice.post(url, json={"text": text})).json()["text"]
+    assert text == "домашний кот"
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": text})
+    assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 0
+    assert answered.json()["progress"] == 0
+
+
+async def test_fully_hinted_answer_does_not_advance_srs(app: FastAPI, alice: Client) -> None:
+    from sqlalchemy import select
+
+    from lexicona.infrastructure.models import WordProgress
+
+    word = await add_word(alice, "cat", "домашний кот")
+    response = await alice.post(
+        "/api/training/sessions",
+        json={"mode": "input", "purpose": "scheduled", "size": 10},
+    )
+    assert response.status_code == 201, response.text
+    item = response.json()["items"][0]
+    text = ""
+    for _ in range(11):
+        text = (
+            await alice.post(f"/api/training/items/{item['id']}/hint", json={"text": text})
+        ).json()["text"]
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": text})
+    assert answered.json()["delta"] == 0
+    async with app.state.db.sessions() as db:
+        progress = await db.scalar(select(WordProgress).where(WordProgress.word_id == word["id"]))
+    assert progress is not None
+    assert progress.stage == 0
+    assert progress.review_count == 0
+    assert progress.has_review is False
+
+
 async def test_letter_hint_keeps_a_penalty_and_a_clean_answer(alice: Client) -> None:
     await add_word(alice, "cat", "кот")
     hinted = await start_input(alice)

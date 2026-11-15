@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 
-from lexicona.infrastructure import dictionary
+from lexicona.infrastructure import dictionary, translation
 from tests.conftest import Client, add_word
 from tests.test_words import set_progress
 
@@ -196,3 +196,42 @@ async def test_corrupt_index_rejected(
     for response in (lookup, notices):
         assert response.status_code == 503
         assert response.json() == {"detail": "dictionary_unavailable"}
+
+
+async def test_broken_index_does_not_call_the_machine_provider(
+    app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "broken.sqlite3"
+    path.write_bytes(b"not a database")
+    app.state.settings.dictionary_path = path
+    calls: list[str] = []
+
+    def fake_translate(_settings: object, headword: str) -> translation.MachineTranslation:
+        calls.append(headword)
+        return translation.MachineTranslation("openrouter", "яблоко")
+
+    monkeypatch.setattr(
+        "lexicona.interfaces.http.routers.dictionary.translation.translate", fake_translate
+    )
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "apple"})
+    assert response.status_code == 503
+    assert calls == []
+
+
+async def test_missing_index_keeps_the_machine_fallback(
+    app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.state.settings.dictionary_path = tmp_path / "missing.sqlite3"
+    calls: list[str] = []
+
+    def fake_translate(_settings: object, headword: str) -> translation.MachineTranslation:
+        calls.append(headword)
+        return translation.MachineTranslation("openrouter", "яблоко")
+
+    monkeypatch.setattr(
+        "lexicona.interfaces.http.routers.dictionary.translation.translate", fake_translate
+    )
+    response = await alice.post("/api/dictionary/lookup", json={"headword": "apple"})
+    assert response.status_code == 200
+    assert response.json()["machine_translation"]["text"] == "яблоко"
+    assert calls == ["apple"]

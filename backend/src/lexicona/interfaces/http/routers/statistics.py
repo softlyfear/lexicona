@@ -44,7 +44,7 @@ async def statistics(
         "unlearned_words": len(words) - learned,
         "total_answers": total,
         "correct_answers": correct,
-        "accuracy_percent": round(correct * 100 / total, 1) if total else 0,
+        "accuracy_percent": round(correct * 100 / total, 1) if total else None,
         "average_answers_per_day": round(total / max(1, (today - started).days + 1), 2),
         "active_days": len(daily),
         "days": days,

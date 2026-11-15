@@ -2,6 +2,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from http.client import HTTPException
 from typing import Any, Literal
 
 from lexicona.config import Settings
@@ -73,7 +74,7 @@ def _post(
         if isinstance(exc.reason, TimeoutError):
             raise TranslationTimeout from None
         raise TranslationError from None
-    except OSError, ValueError:
+    except OSError, ValueError, HTTPException:
         raise TranslationError from None
     if len(data) > MAX_RESPONSE_BYTES:
         raise TranslationError

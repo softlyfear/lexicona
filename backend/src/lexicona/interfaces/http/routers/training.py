@@ -16,7 +16,7 @@ from sqlalchemy import Select, case, func, or_, select, true, update
 from sqlalchemy.sql.selectable import Exists
 
 from lexicona.domain import distractors, progress, srs
-from lexicona.domain.normalize import hinted_text, normalize, normalize_answer
+from lexicona.domain.normalize import hinted_steps, hinted_text, normalize, normalize_answer
 from lexicona.domain.progress import AnswerKind
 from lexicona.domain.srs import Grade
 from lexicona.infrastructure import dictionary
@@ -583,9 +583,11 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
     )
 
 
-async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db) -> dict[str, Any]:
+async def _session_snapshot(
+    session: TrainingSession, auth: CurrentAuth, db: Db, *, validate_matching: bool = True
+) -> dict[str, Any]:
     items = session.items
-    if session.mode == "matching":
+    if session.mode == "matching" and validate_matching:
         offset = 0
         while offset < len(items):
             options = items[offset].options
@@ -626,7 +628,9 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
         elif item.outcome is not None:
             state = "done"
             result = _answer_out(item, word.progress).model_dump()
-        elif word.is_learned and not session.include_learned:
+        elif (
+            word.is_learned and not session.include_learned
+        ) or word.training_version != item.word_training_version:
             state = "done"
             result = UnavailableOut(progress=word.progress).model_dump()
         elif item.answered_at is not None:
@@ -634,7 +638,7 @@ async def _session_snapshot(session: TrainingSession, auth: CurrentAuth, db: Db)
             result = {
                 "outcome": "retryable",
                 "correct": False,
-                "delta": item.delta,
+                "delta": item.delta if item.delta is not None else 0,
                 "progress": word.progress,
             }
             if item.chosen_option is not None:
@@ -746,7 +750,7 @@ async def session_summary(session_id: str, auth: CurrentAuth, db: Db) -> Session
     )
     if session is None:
         raise HTTPException(404, "session_not_found")
-    snapshot = await _session_snapshot(session, auth, db)
+    snapshot = await _session_snapshot(session, auth, db, validate_matching=False)
     events = {
         event.item_id: event.correct
         for event in await db.scalars(
@@ -791,7 +795,7 @@ async def session_summary(session_id: str, auth: CurrentAuth, db: Db) -> Session
 
 
 def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:
-    assert item.delta is not None
+    delta = item.delta if item.delta is not None else 0
     if item.outcome == "unavailable":
         return UnavailableOut(progress=word_progress)
     if item.outcome == "skipped":
@@ -813,7 +817,7 @@ def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:
         return GradeAnswerOut(
             grade=cast(Grade, item.grade),
             expected_answers=item.expected_answers,
-            delta=item.delta,
+            delta=delta,
             progress=word_progress,
         )
     assert item.is_correct is not None
@@ -824,7 +828,7 @@ def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:
             correct=item.is_correct,
             submitted_text=item.submitted_text,
             expected_answers=item.expected_answers,
-            delta=item.delta,
+            delta=delta,
             progress=word_progress,
         )
     assert item.correct_option is not None
@@ -833,7 +837,7 @@ def _answer_out(item: TrainingItem, word_progress: int | None) -> TerminalOut:
         correct=item.is_correct,
         correct_option=item.correct_option,
         chosen_option=item.chosen_option,
-        delta=item.delta,
+        delta=delta,
         progress=word_progress,
     )
 
@@ -1055,7 +1059,7 @@ async def answer_item(
         and isinstance(body, TextAnswerIn)
         and any(
             normalize_answer(answer) == normalize_answer(body.text)
-            and item.letter_hints >= len(answer)
+            and item.letter_hints >= hinted_steps(answer)
             for answer in item.expected_answers or []
         )
     )
@@ -1144,7 +1148,7 @@ async def answer_item(
                 WordProgress.word_id == item.word_id,
                 WordProgress.progress_version == item.word_progress_version,
             )
-            if item.session.purpose == "scheduled":
+            if item.session.purpose == "scheduled" and not fully_revealed:
                 transition = srs.review(state[4], state[5], cast(Grade, grade), now)
                 changed = await db.execute(
                     schedule_update.values(

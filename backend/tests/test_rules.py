@@ -1,6 +1,6 @@
 import pytest
 
-from lexicona.domain.normalize import hinted_text, normalize, normalize_answer
+from lexicona.domain.normalize import hinted_steps, hinted_text, normalize, normalize_answer
 from lexicona.domain.progress import AnswerKind, Difficulty, apply, delta, with_letter_hint
 
 D = Difficulty
@@ -44,6 +44,14 @@ def test_fully_hinted_answer_earns_nothing() -> None:
     assert with_letter_hint(8, False, True) == 0
     assert with_letter_hint(-4, True, True) == -4
     assert with_letter_hint(0, True, True) == 0
+
+
+def test_hinted_steps_follow_the_visible_reveal() -> None:
+    assert hinted_steps("кот") == 3
+    assert hinted_steps("домашний кот") == 11
+    assert hinted_steps("don't") == 4
+    assert hinted_steps("ice cream") == 8
+    assert hinted_steps("low-life") == 7
 
 
 @pytest.mark.parametrize(

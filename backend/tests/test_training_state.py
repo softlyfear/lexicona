@@ -44,6 +44,22 @@ async def start(
     return response.json()["items"][0]  # type: ignore[no-any-return]
 
 
+async def test_restored_word_marks_open_item_unavailable_on_resume(
+    app: FastAPI, alice: Client
+) -> None:
+    word = await add_word(alice, "cat", "кот")
+    await start(app, alice, "input", 0)
+    latest = (await alice.get("/api/training/sessions/latest")).json()
+    assert latest["items"][0]["state"] == "open"
+    assert (await set_state(alice, word["id"], True)).status_code == 200
+    assert (await set_state(alice, word["id"], False)).status_code == 200
+    snapshot = (await alice.get(f"/api/training/sessions/{latest['id']}")).json()
+    item = snapshot["items"][0]
+    assert item["state"] == "done"
+    assert item["result"]["outcome"] == "unavailable"
+    assert item["result"]["reason"] == "training_state_changed"
+
+
 async def test_state_toggle_owner_csrf_validation_and_lists(
     app: FastAPI, alice: Client, bob: Client
 ) -> None:

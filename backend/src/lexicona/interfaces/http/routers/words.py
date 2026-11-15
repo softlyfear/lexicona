@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 from sqlalchemy import ColumnElement, or_, select, text, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lexicona.application.tags import TagOut, replace_tags, tag_key, tag_name, tags_for_words
@@ -149,7 +150,11 @@ async def owned_word(db: AsyncSession, owner_id: str, word_id: str) -> Word:
 async def lock_write(db: AsyncSession) -> None:
     # A deferred read lets two creates both miss the row. The reserved lock makes
     # the second wait until the first commit, then see that row.
-    await db.execute(text("BEGIN IMMEDIATE"))
+    try:
+        await db.execute(text("BEGIN IMMEDIATE"))
+    except OperationalError:
+        await db.rollback()
+        raise HTTPException(503, "database_busy") from None
 
 
 async def ensure_unique_headword(

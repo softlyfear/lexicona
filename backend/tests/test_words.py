@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from fastapi import FastAPI
 from sqlalchemy import update
 
@@ -312,3 +313,22 @@ async def test_other_users_words_are_invisible(alice: Client, bob: Client) -> No
     assert put.status_code == 404
     assert (await bob.delete(url)).status_code == 404
     assert (await alice.get(url)).json()["headword"] == "cat"
+
+
+async def test_write_lock_timeout_returns_service_unavailable() -> None:
+    from fastapi import HTTPException
+    from sqlalchemy.exc import OperationalError
+
+    from lexicona.interfaces.http.routers.words import lock_write
+
+    class LockedSession:
+        async def execute(self, _statement: object) -> None:
+            raise OperationalError("BEGIN IMMEDIATE", {}, Exception("database is locked"))
+
+        async def rollback(self) -> None:
+            return None
+
+    with pytest.raises(HTTPException) as error:
+        await lock_write(LockedSession())  # type: ignore[arg-type]
+    assert error.value.status_code == 503
+    assert error.value.detail == "database_busy"

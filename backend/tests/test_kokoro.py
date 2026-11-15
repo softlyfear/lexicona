@@ -70,6 +70,16 @@ for line in sys.stdin.buffer:
     kokoro.close_worker()
 
 
+def test_clip_cache_is_bounded_by_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    kokoro._clips.clear()
+    monkeypatch.setattr(kokoro, "_clips_bytes", 0)
+    monkeypatch.setattr(kokoro, "MAX_CACHE_BYTES", 10)
+    for index in range(4):
+        kokoro._store_clip(("d", "p", "v", 1.0, str(index)), b"x" * 4)  # type: ignore[arg-type]
+    assert kokoro._clips_bytes <= 10
+    assert len(kokoro._clips) <= 2
+
+
 def test_catalog_requires_both_models(tmp_path: Path) -> None:
     assert kokoro.voices(tmp_path) == []
     install_fake_models(tmp_path)

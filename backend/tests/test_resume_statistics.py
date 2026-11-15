@@ -121,6 +121,13 @@ async def test_deleted_word_snapshot_and_history(app: FastAPI, alice: Client) ->
     assert stats["total_words"] == 0 and stats["total_answers"] == 1
 
 
+async def test_statistics_without_answers_reports_null_accuracy(alice: Client) -> None:
+    response = await alice.get("/api/statistics")
+    assert response.status_code == 200
+    assert response.json()["total_answers"] == 0
+    assert response.json()["accuracy_percent"] is None
+
+
 async def test_statistics_moscow_boundaries_and_owner(
     app: FastAPI, alice: Client, bob: Client
 ) -> None:
@@ -176,6 +183,29 @@ async def test_corrupt_matching_cannot_resume_but_can_finish(app: FastAPI, alice
         and latest.json()["items"] == []
     )
     assert (await alice.post(f"/api/training/sessions/{session['id']}/finish")).status_code == 200
+    summary = await alice.get(f"/api/training/sessions/{session['id']}/summary")
+    assert summary.status_code == 200
+    assert summary.json()["total"] == 2
+
+
+async def test_legacy_answered_row_without_delta_is_readable(app: FastAPI, alice: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    session = (await alice.post("/api/training/sessions", json={"mode": "input"})).json()
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        item = await db.get(TrainingItem, session["items"][0]["id"])
+        assert item is not None
+        item.outcome = "answered"
+        item.is_correct = True
+        item.submitted_text = "кот"
+        item.answered_at = utcnow()
+        item.delta = None
+        await db.commit()
+    response = await alice.get(f"/api/training/sessions/{session['id']}")
+    assert response.status_code == 200
+    assert response.json()["items"][0]["result"]["delta"] == 0
+    summary = await alice.get(f"/api/training/sessions/{session['id']}/summary")
+    assert summary.status_code == 200
 
 
 async def test_matching_resume_eight_and_legacy_four(app: FastAPI, alice: Client) -> None:
