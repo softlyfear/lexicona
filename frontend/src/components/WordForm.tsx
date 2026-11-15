@@ -17,6 +17,10 @@ import ui from './ui.module.css'
 import formCss from './WordForm.module.css'
 
 const sourceId = 'freedict-wikdict-eng-rus-2025.11.23' as const
+
+function meaningKey(headword: string, translations: string[]): string {
+  return `${normalizedAnswer(headword)}\u0000${translations.map(normalizedAnswer).sort().join('\u0000')}`
+}
 const partsOfSpeech: Record<string, string> = {
   n: 'существительное',
   noun: 'существительное',
@@ -69,6 +73,7 @@ interface Props {
   error: string | null
   onSubmit: (input: WordInput) => void
   onCancel: () => void
+  onDirtyChange?: (dirty: boolean) => void
   availableTags: Tag[]
   tagsLoading: boolean
   tagsError: string | null
@@ -80,6 +85,7 @@ export function WordForm({
   error,
   onSubmit,
   onCancel,
+  onDirtyChange,
   availableTags,
   tagsLoading,
   tagsError,
@@ -98,6 +104,15 @@ export function WordForm({
   const [transcription, setTranscription] = useState(word?.transcription ?? '')
   const [exampleEn, setExampleEn] = useState(word?.example_en ?? '')
   const [exampleRu, setExampleRu] = useState(word?.example_ru ?? '')
+  const exampleEnRef = useRef(exampleEn)
+  const exampleRuRef = useRef(exampleRu)
+  useEffect(() => {
+    exampleEnRef.current = exampleEn
+  }, [exampleEn])
+  useEffect(() => {
+    exampleRuRef.current = exampleRu
+  }, [exampleRu])
+  const initialMeaning = useRef(word ? meaningKey(word.headword, word.translations) : null)
   const [note, setNote] = useState(word?.note ?? '')
   const [localError, setLocalError] = useState<string | null>(null)
   const [tags, setTags] = useState<string[]>(word?.tags.map((tag) => tag.name) ?? [])
@@ -382,6 +397,8 @@ export function WordForm({
     const id = ++exampleRequestId.current
     const currentRevision = getSessionRevision()
     revision.current = currentRevision
+    const snapshotEn = exampleEn
+    const snapshotRu = exampleRu
     setExampleState('loading')
     setExampleError(null)
     try {
@@ -400,15 +417,24 @@ export function WordForm({
         setExampleError('DeepSeek повторил прежний пример. Попробуйте ещё раз; текст не изменён.')
         return
       }
+      const currentEn = exampleEnRef.current
+      const currentRu = exampleRuRef.current
+      if (mode === 'replace' && (currentEn !== snapshotEn || currentRu !== snapshotRu)) {
+        setExampleState('error')
+        setExampleError('Текст изменён вручную. Сгенерированный пример не применён.')
+        return
+      }
       const append = (current: string, addition: string) =>
         mode === 'append' && current.trim() ? `${current.trimEnd()}\n\n${addition}` : addition
-      const nextEn = append(exampleEn, result.example_en)
-      const nextRu = append(exampleRu, result.example_ru)
+      const nextEn = append(currentEn, result.example_en)
+      const nextRu = append(currentRu, result.example_ru)
       if (nextEn.length > 2000 || nextRu.length > 2000) {
         setExampleState('error')
         setExampleError('Примеры не помещаются в поля: максимум 2000 символов. Текст не изменён.')
         return
       }
+      exampleEnRef.current = nextEn
+      exampleRuRef.current = nextRu
       setExampleEn(nextEn)
       setExampleRu(nextRu)
       setExampleGenerated(true)
@@ -551,6 +577,14 @@ export function WordForm({
       }
     }
     if (requestId !== submitGeneration.current) return
+    if (
+      initialMeaning.current !== null &&
+      meaningKey(head, parsed) !== initialMeaning.current &&
+      !window.confirm('Изменение слова или набора переводов сбросит прогресс. Сохранить?')
+    ) {
+      submitLock.current = false
+      return
+    }
     onSubmit({
       headword: head,
       translations: parsed,
@@ -602,7 +636,12 @@ export function WordForm({
   }
   const message = localError ?? error
   return (
-    <form className={`${ui.card} ${css.form}`} onSubmit={submit} aria-label="Слово">
+    <form
+      className={`${ui.card} ${css.form}`}
+      onSubmit={submit}
+      onChange={() => onDirtyChange?.(true)}
+      aria-label="Слово"
+    >
       <fieldset className={formCss.fields} disabled={checkingDuplicate}>
         <div className={css.formRow}>
           <div className={formCss.headword}>

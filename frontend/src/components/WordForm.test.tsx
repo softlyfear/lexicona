@@ -61,6 +61,7 @@ function form(initial = word) {
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.spyOn(api, 'listWords').mockResolvedValue([])
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 const duplicateMessage = 'Такое слово или выражение уже есть в словаре.'
@@ -1080,4 +1081,37 @@ it('не отправляет слово или перевод из одной �
   expect(screen.getByRole('alert')).toHaveTextContent(
     'Слово и переводы не могут состоять только из точки.',
   )
+})
+
+it('не затирает примеры, изменённые во время запроса', async () => {
+  let resolve!: (value: { example_en: string; example_ru: string }) => void
+  vi.spyOn(api, 'generateExample').mockReturnValue(
+    new Promise((done) => {
+      resolve = done
+    }),
+  )
+  const user = userEvent.setup()
+  form({ ...word, example_en: 'Old example.', example_ru: 'Старый пример.' })
+  await user.click(screen.getByRole('button', { name: 'Добавить пример' }))
+  const input = screen.getByLabelText('Пример (EN)')
+  await user.clear(input)
+  await user.type(input, 'Manual edit.')
+  await act(async () => resolve({ example_en: 'Generated.', example_ru: 'Сгенерированный.' }))
+  expect(input).toHaveValue('Manual edit.')
+  expect(screen.getByRole('alert')).toHaveTextContent('Текст изменён вручную')
+})
+
+it('предупреждает о сбросе прогресса при смене переводов', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const user = userEvent.setup()
+  const { submit } = form()
+  const translations = screen.getByLabelText(/Переводы/)
+  await user.clear(translations)
+  await user.type(translations, 'новый')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(confirm).toHaveBeenCalled()
+  expect(submit).not.toHaveBeenCalled()
+  confirm.mockReturnValue(true)
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalled()
 })

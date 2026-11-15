@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { bindSpeechSync, cancelTrainingSync, speechFromAccount } from '../accountPreferences'
+import { confirmDraftLeave } from '../drafts'
 import { cancelSpeech, setSpeechAccountPublisher, setSpeechOwner, useSpeech } from '../speech'
 import { type User } from '../api'
 import { logoutSession } from '../session'
@@ -61,6 +62,9 @@ export function Layout({ user }: { user: User }) {
                 to={to === '/' ? dictionaryTo : to}
                 end
                 className={({ isActive }) => (isActive ? css.active : css.link)}
+                onClick={(event) => {
+                  if (!confirmDraftLeave()) event.preventDefault()
+                }}
               >
                 <SectionIcon name={icon} />
                 <span className={css.navLabel}>{label}</span>
@@ -68,13 +72,21 @@ export function Layout({ user }: { user: User }) {
             ))}
           </nav>
           <div className={css.user}>
-            <NavLink to="/account" className={({ isActive }) => (isActive ? css.active : css.link)}>
+            <NavLink
+              to="/account"
+              className={({ isActive }) => (isActive ? css.active : css.link)}
+              onClick={(event) => {
+                if (!confirmDraftLeave()) event.preventDefault()
+              }}
+            >
               {user.login}
             </NavLink>
             <button
               type="button"
               className={`${ui.ghost} ${css.logout}`}
-              onClick={() => void logoutSession()}
+              onClick={() => {
+                if (confirmDraftLeave()) void logoutSession()
+              }}
             >
               <SectionIcon name="logout" />
               <span className={css.logoutText}>Выйти</span>

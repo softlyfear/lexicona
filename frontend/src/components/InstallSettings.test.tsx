@@ -55,6 +55,20 @@ describe('установка приложения', () => {
     expect(screen.queryByRole('button', { name: 'Установить' })).not.toBeInTheDocument()
   })
 
+  it('подсказывает ручную установку в Safari на iOS', () => {
+    const original = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      configurable: true,
+    })
+    try {
+      render(<InstallSettings />)
+      expect(screen.getByRole('region', { name: 'Установка' })).toHaveTextContent('На экран Домой')
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: original, configurable: true })
+    }
+  })
+
   it('удаляет слушатели при завершении работы', () => {
     stop()
     const event = new Event('beforeinstallprompt', { cancelable: true })

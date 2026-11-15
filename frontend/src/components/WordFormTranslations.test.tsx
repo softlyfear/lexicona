@@ -52,6 +52,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
   vi.spyOn(api, 'listWords').mockResolvedValue([])
   vi.spyOn(api, 'generateTranslations').mockResolvedValue(result)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   sessionStorage.clear()
   rememberSession({
     user: { id: 'a', login: 'alice', difficulty: 'medium', is_admin: false },

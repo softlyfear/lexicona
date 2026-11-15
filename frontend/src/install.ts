@@ -44,6 +44,10 @@ export async function requestInstall() {
   await prompt.prompt()
 }
 
+export function isIos(): boolean {
+  return /iPad|iPhone|iPod/u.test(navigator.userAgent)
+}
+
 export function isStandalone() {
   return (
     window.matchMedia?.('(display-mode: standalone)').matches ||

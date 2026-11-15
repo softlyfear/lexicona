@@ -10,6 +10,7 @@ import {
   type WordTrainingFilter,
 } from '../api'
 import { WordForm } from '../components/WordForm'
+import { setDraftDirty } from '../drafts'
 import { ProgressBar, SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { cancelSpeech } from '../speech'
@@ -72,6 +73,8 @@ export function WordsPage({ userId }: { userId: string }) {
     return stored?.tagIds ?? []
   }, [settled, specifiesTags, stored, urlTagKey])
   const [editing, setEditing] = useState<Editing>(null)
+  const [draftDirty, setDraftDirtyState] = useState(false)
+  const editGeneration = useRef(0)
   const [editingLocationKey, setEditingLocationKey] = useState(location.key)
   // A link can navigate to the same URL. Drafts belong to the previous visit,
   // not to the dictionary location reached by that navigation.
@@ -118,10 +121,10 @@ export function WordsPage({ userId }: { userId: string }) {
     query === search.trim()
 
   const save = useMutation({
-    mutationFn: (input: WordInput) =>
+    mutationFn: ({ input }: { input: WordInput; generation: number }) =>
       editing?.kind === 'edit' ? api.updateWord(editing.word.id, input) : api.createWord(input),
-    onSuccess: () => {
-      setEditing(null)
+    onSuccess: (_data, { generation }) => {
+      if (generation === editGeneration.current) setEditing(null)
       return Promise.all([
         queryClient.invalidateQueries({ queryKey: ['words'] }),
         queryClient.invalidateQueries({ queryKey: ['tags'] }),
@@ -148,9 +151,26 @@ export function WordsPage({ userId }: { userId: string }) {
 
   function startEditing(next: Editing) {
     cancelSpeech()
+    editGeneration.current += 1
+    setDraftDirtyState(false)
     save.reset()
     setEditing(next)
   }
+
+  useEffect(() => {
+    setDraftDirty(editing !== null && draftDirty)
+    return () => setDraftDirty(false)
+  }, [editing, draftDirty])
+
+  useEffect(() => {
+    if (!editing || !draftDirty) return
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [editing, draftDirty])
 
   function updateParameter(key: 'q' | 'sort' | 'training', value: string) {
     setSearchParams((current) => {
@@ -198,8 +218,9 @@ export function WordsPage({ userId }: { userId: string }) {
           word={editing.kind === 'edit' ? editing.word : undefined}
           pending={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
-          onSubmit={(input) => save.mutate(input)}
+          onSubmit={(input) => save.mutate({ input, generation: editGeneration.current })}
           onCancel={() => setEditing(null)}
+          onDirtyChange={setDraftDirtyState}
         />
       </section>
     )

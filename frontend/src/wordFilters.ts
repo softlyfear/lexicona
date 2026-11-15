@@ -21,7 +21,7 @@ function storageKey(userId: string) {
 }
 
 function isTagId(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(value)
 }
 
 export function readWordFilters(userId: string): WordListFilters | null {

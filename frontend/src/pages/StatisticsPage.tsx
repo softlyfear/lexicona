@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, errorMessage, type StatisticsPeriod } from '../api'
 import ui from '../components/ui.module.css'
@@ -10,6 +10,7 @@ export function StatisticsPage() {
     queryKey: ['statistics', period],
     queryFn: () => api.statistics(period),
     retry: false,
+    placeholderData: keepPreviousData,
   })
   return (
     <section className={css.stack}>
@@ -168,11 +169,12 @@ function Chart({ days }: { days: { date: string; answers: number; correct: numbe
         <summary>Таблица по дням</summary>
         <div className={css.dayTableWrap}>
           <table className={css.dayTable}>
+            <caption className={css.visuallyHidden}>Ответы и правильные ответы по дням</caption>
             <thead>
               <tr>
-                <th>Дата</th>
-                <th>Ответы</th>
-                <th>Правильные</th>
+                <th scope="col">Дата</th>
+                <th scope="col">Ответы</th>
+                <th scope="col">Правильные</th>
               </tr>
             </thead>
             <tbody>

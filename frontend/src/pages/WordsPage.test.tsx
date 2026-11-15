@@ -365,6 +365,7 @@ describe('сортировка словаря', () => {
       { id: 'work', name: 'Работа' },
     ])
     const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderDictionary(url)
     await screen.findByText('cat')
     if (kind === 'edit') {
@@ -1066,5 +1067,35 @@ describe('сортировка словаря', () => {
     await user.type(input, 'новый')
     await user.click(screen.getByRole('button', { name: 'Добавить тег' }))
     expect(screen.getByRole('alert')).toHaveTextContent('не больше 20')
+  })
+
+  it('не закрывает новый редактор поздним ответом сохранения', async () => {
+    let resolve!: (value: Word) => void
+    vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat')])
+    vi.mocked(api.updateWord).mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage('/')
+    await user.click(await screen.findByRole('button', { name: 'Изменить «cat»' }))
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await user.click(screen.getByRole('button', { name: 'Отмена' }))
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    await act(async () => resolve(word('1', 'cat')))
+    expect(screen.getByRole('heading', { name: 'Добавить слово' })).toBeInTheDocument()
+  })
+
+  it('предупреждает о несохранённом черновике при уходе со страницы', async () => {
+    vi.mocked(api.listWords).mockResolvedValue([])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    renderDictionary('/')
+    await user.click(screen.getByRole('button', { name: 'Добавить слово' }))
+    await user.type(screen.getByLabelText('Слово или выражение (EN)'), 'cat')
+    await user.click(screen.getByRole('link', { name: 'Тренировка' }))
+    expect(confirm).toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Добавить слово' })).toBeInTheDocument()
   })
 })
