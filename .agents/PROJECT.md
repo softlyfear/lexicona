@@ -308,3 +308,8 @@ speech sections. After a fresh server-confirmed correct answer, auto-next waits
 for 1.5 seconds of feedback and speech.busy=false. Matching advances only an
 all-correct completed group. Manual and timed transitions share a one-shot guard;
 editor, finish, disable and lifecycle changes cancel pending transitions.
+
+POST /dictionary/transcription is an authenticated CSRF-protected IPA-only
+draft operation using the existing OpenRouter transcription provider. It performs
+no dictionary lookup, translation or word mutation; provider failure is 503 and
+timeout is 504. Generated IPA is not attributed to FreeDict.

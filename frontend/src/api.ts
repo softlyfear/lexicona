@@ -442,6 +442,8 @@ export const api = {
       headword,
       previous_examples: previousExamples,
     }),
+  generateTranscription: (headword: string) =>
+    request<{ transcription: string }>('POST', '/dictionary/transcription', { headword }),
   dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
@@ -522,6 +524,10 @@ const MESSAGES: Record<string, string> = {
     'Поиск перевода занял слишком много времени. Попробуйте ещё раз или введите данные вручную.',
   examples_timeout:
     'Составление примера заняло слишком много времени. Попробуйте ещё раз или введите его вручную.',
+  transcription_unavailable:
+    'Не удалось получить транскрипцию. Попробуйте ещё раз или введите её вручную.',
+  transcription_timeout:
+    'Получение транскрипции заняло слишком много времени. Попробуйте ещё раз или введите её вручную.',
   not_enough_words: 'Нужно хотя бы 6 подходящих активных слов с различными словами и переводами.',
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',

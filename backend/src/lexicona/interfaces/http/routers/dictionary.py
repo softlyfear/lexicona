@@ -87,6 +87,19 @@ async def example(body: ExampleIn, auth: CurrentAuth, settings: AppSettings) -> 
     return {"example_en": example_en, "example_ru": example_ru}
 
 
+@router.post("/transcription")
+async def transcription(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, str]:
+    try:
+        generated = await asyncio.to_thread(translation.transcribe, settings, body.headword)
+    except translation.TranslationTimeout:
+        raise HTTPException(504, "transcription_timeout") from None
+    except translation.TranslationError:
+        raise HTTPException(503, "transcription_unavailable") from None
+    if not generated:
+        raise HTTPException(503, "transcription_unavailable")
+    return {"transcription": generated}
+
+
 @router.get("/notices")
 def notices(auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
     try:

@@ -109,20 +109,41 @@ export function WordForm({
   const [exampleGenerated, setExampleGenerated] = useState(false)
   const [exampleError, setExampleError] = useState<string | null>(null)
   const lookupRequestId = useRef(0)
+  const lookupLocked = useRef(false)
   const exampleRequestId = useRef(0)
+  const transcriptionRequestId = useRef(0)
+  const transcriptionLocked = useRef(false)
+  const [transcriptionState, setTranscriptionState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [transcriptionError, setTranscriptionError] = useState('')
+  const transcriptionId = useId()
+  const transcriptionMessageId = useId()
   const revision = useRef(getSessionRevision())
   useEffect(
     () => () => {
       lookupRequestId.current++
+      lookupLocked.current = false
       exampleRequestId.current++
       submitGeneration.current++
       duplicateRequestId.current++
+      transcriptionRequestId.current++
+      transcriptionLocked.current = false
     },
     [],
   )
 
+  function invalidateTranscription() {
+    transcriptionRequestId.current++
+    transcriptionLocked.current = false
+    setTranscriptionState('idle')
+    setTranscriptionError('')
+  }
+
   function changeHeadword(value: string) {
+    invalidateTranscription()
     lookupRequestId.current++
+    lookupLocked.current = false
     exampleRequestId.current++
     duplicateRequestId.current++
     setDuplicateWarning(false)
@@ -154,6 +175,9 @@ export function WordForm({
   }
 
   async function findSuggestions(value = headword) {
+    if (transcriptionLocked.current || lookupLocked.current || pending) return
+    lookupLocked.current = true
+    invalidateTranscription()
     void checkEarlyDuplicate(value)
     const id = ++lookupRequestId.current
     const currentRevision = getSessionRevision()
@@ -217,6 +241,42 @@ export function WordForm({
       if (error instanceof ApiError && error.message === 'dictionary_timeout')
         setLookupError(errorMessage(error))
       setLookupState('error')
+    } finally {
+      if (id === lookupRequestId.current) lookupLocked.current = false
+    }
+  }
+
+  async function generateTranscription() {
+    if (
+      transcriptionLocked.current ||
+      !headword.trim() ||
+      transcription.trim() ||
+      lookupLocked.current ||
+      pending ||
+      checkingDuplicate
+    )
+      return
+    transcriptionLocked.current = true
+    const id = ++transcriptionRequestId.current
+    const currentRevision = getSessionRevision()
+    setTranscriptionState('loading')
+    setTranscriptionError('')
+    try {
+      const result = await api.generateTranscription(headword.trim())
+      if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
+      setTranscription(result.transcription)
+      setRefs((current) => current.filter((ref) => ref.field !== 'transcription'))
+      setTranscriptionState('ready')
+    } catch (error) {
+      if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
+      if (error instanceof ApiError && error.status === 401) {
+        forgetSession()
+        return
+      }
+      setTranscriptionError(errorMessage(error))
+      setTranscriptionState('error')
+    } finally {
+      if (id === transcriptionRequestId.current) transcriptionLocked.current = false
     }
   }
 
@@ -316,8 +376,10 @@ export function WordForm({
   }
 
   function cancel() {
+    invalidateTranscription()
     duplicateRequestId.current++
     lookupRequestId.current++
+    lookupLocked.current = false
     exampleRequestId.current++
     setDuplicateWarning(false)
     submitGeneration.current++
@@ -328,7 +390,7 @@ export function WordForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (submitLock.current || pending) return
+    if (submitLock.current || pending || transcriptionLocked.current) return
     submitLock.current = true
     const requestId = ++submitGeneration.current
     const head = headword.trim()
@@ -441,22 +503,64 @@ export function WordForm({
             </label>
             <SpeakButton text={headword.trim()} lang="en-US" disabled={!headword.trim()} />
           </div>
-          <label className={ui.field}>
-            <span className={ui.label}>Транскрипция</span>
-            <input
-              className={ui.input}
-              value={transcription}
-              onChange={(e) => {
-                setTranscription(e.target.value)
-                setRefs((current) =>
-                  current.filter(
-                    (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
-                  ),
-                )
-              }}
-              maxLength={300}
-            />
-          </label>
+          <div className={ui.field}>
+            <label className={ui.label} htmlFor={transcriptionId}>
+              Транскрипция
+            </label>
+            <div className={formCss.transcriptionRow}>
+              <input
+                id={transcriptionId}
+                className={ui.input}
+                value={transcription}
+                aria-describedby={
+                  transcriptionState !== 'idle' ? transcriptionMessageId : undefined
+                }
+                onChange={(e) => {
+                  invalidateTranscription()
+                  setTranscription(e.target.value)
+                  setRefs((current) =>
+                    current.filter(
+                      (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
+                    ),
+                  )
+                }}
+                maxLength={300}
+              />
+              <button
+                type="button"
+                className={`${ui.button} ${formCss.transcriptionButton}`}
+                aria-label="Получить транскрипцию"
+                title={
+                  transcription.trim()
+                    ? 'Чтобы получить транскрипцию, сначала очистите поле.'
+                    : 'Получить американскую транскрипцию (IPA). Остальные поля не изменятся.'
+                }
+                disabled={
+                  !headword.trim() ||
+                  !!transcription.trim() ||
+                  transcriptionState === 'loading' ||
+                  lookupState === 'loading' ||
+                  pending
+                }
+                onClick={() => void generateTranscription()}
+              >
+                IPA
+              </button>
+            </div>
+            {transcriptionState !== 'idle' && (
+              <p
+                id={transcriptionMessageId}
+                className={transcriptionState === 'error' ? ui.error : ui.muted}
+                role={transcriptionState === 'error' ? 'alert' : 'status'}
+              >
+                {transcriptionState === 'loading'
+                  ? 'Получаем транскрипцию…'
+                  : transcriptionState === 'error'
+                    ? transcriptionError
+                    : 'Транскрипция добавлена в черновик. Проверьте её и сохраните слово.'}
+              </p>
+            )}
+          </div>
         </div>
         {duplicateWarning && (
           <p id={duplicateWarningId} role="status" className={ui.error}>
@@ -467,7 +571,9 @@ export function WordForm({
           <button
             type="button"
             className={`${ui.button} ${formCss.dictionaryButton}`}
-            disabled={!headword.trim() || lookupState === 'loading'}
+            disabled={
+              !headword.trim() || lookupState === 'loading' || transcriptionState === 'loading'
+            }
             onClick={() => findSuggestions()}
           >
             Подобрать перевод и транскрипцию
@@ -490,6 +596,7 @@ export function WordForm({
                       type="button"
                       className={`${ui.button} ${formCss.dictionaryButton}`}
                       key={value}
+                      disabled={transcriptionState === 'loading'}
                       onClick={() => selectSpelling(value)}
                     >
                       {value}
@@ -723,7 +830,10 @@ export function WordForm({
         </p>
       )}
       <div className={css.actions}>
-        <button className={ui.primary} disabled={pending || checkingDuplicate}>
+        <button
+          className={ui.primary}
+          disabled={pending || checkingDuplicate || transcriptionState === 'loading'}
+        >
           {word ? 'Сохранить' : 'Добавить'}
         </button>
         <button type="button" className={ui.button} onClick={cancel}>

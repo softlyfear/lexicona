@@ -16,6 +16,26 @@
   min-inline-size: 0;
 }
 
+.transcriptionRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.transcriptionRow input {
+  min-width: 0;
+  flex: 1;
+}
+
+.transcriptionButton {
+  flex: none;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
+
 .dictionary {
   min-width: 0;
   overflow-wrap: anywhere;

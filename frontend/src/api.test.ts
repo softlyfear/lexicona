@@ -17,6 +17,39 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('requests only a transcription draft with CSRF without word mutations or translation lookup', async () => {
+    setCsrfToken('secret')
+    const fetchMock = mockFetch(200, { transcription: '/bʊk/' })
+    await expect(api.generateTranscription('book')).resolves.toEqual({ transcription: '/bʊk/' })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/dictionary/transcription')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('same-origin')
+    expect(init.headers).toMatchObject({
+      'X-CSRF-Token': 'secret',
+      'Content-Type': 'application/json',
+    })
+    expect(JSON.parse(init.body as string)).toEqual({ headword: 'book' })
+  })
+
+  it.each([
+    [503, 'transcription_unavailable', 'Не удалось получить транскрипцию'],
+    [504, 'transcription_timeout', 'слишком много времени'],
+  ])(
+    'maps safe transcription failure %s to an actionable message',
+    async (status, detail, message) => {
+      mockFetch(status as number, { detail })
+      try {
+        await api.generateTranscription('book')
+        expect.unreachable()
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError)
+        expect(errorMessage(error)).toContain(message)
+        expect(errorMessage(error)).toContain('вручную')
+      }
+    },
+  )
   it('saves automatic next as an independent scalar with CSRF without sending preference sections', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, {})

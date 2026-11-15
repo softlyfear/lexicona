@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ApiError, api, type DictionaryLookup, type Word } from '../api'
-import { forgetSession } from '../session'
+import { forgetSession, getSessionRevision, queryClient, rememberSession } from '../session'
 import { WordForm } from './WordForm'
 
 const source = {
@@ -82,6 +82,302 @@ function newForm(initial?: Word) {
   )
   return { submit, cancel, ...view }
 }
+
+it.each(['new', 'edit'] as const)(
+  'generates only IPA in the %s draft and requires explicit Save',
+  async (mode) => {
+    const generate = vi
+      .spyOn(api, 'generateTranscription')
+      .mockResolvedValue({ transcription: '/bʊk/' })
+    const lookup = vi.spyOn(api, 'lookupDictionary')
+    const example = vi.spyOn(api, 'generateExample')
+    const create = vi.spyOn(api, 'createWord')
+    const update = vi.spyOn(api, 'updateWord')
+    const user = userEvent.setup()
+    const initial = {
+      ...word,
+      transcription: null,
+      example_en: 'A book.',
+      example_ru: 'Книга.',
+      note: 'keep note',
+      source_refs: [
+        { source_id: source.id, entry_id: 1, field: 'transcription' as const, value: '/bʊk/' },
+        { source_id: source.id, entry_id: 1, field: 'translation' as const, value: 'ручной' },
+      ],
+    }
+    const { submit } = newForm(mode === 'edit' ? initial : undefined)
+    if (mode === 'new') {
+      await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+      await user.type(screen.getByLabelText(/Переводы —/), 'ручной')
+      await user.type(screen.getByLabelText('Пример (EN)'), 'A book.')
+      await user.type(screen.getByLabelText('Перевод примера'), 'Книга.')
+      await user.type(screen.getByLabelText('Заметка'), 'keep note')
+    }
+    const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+    expect(button).toHaveTextContent('IPA')
+    expect(button).toHaveAttribute('type', 'button')
+    button.focus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText(/Транскрипция добавлена в черновик/)).toHaveAttribute(
+      'role',
+      'status',
+    )
+    expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
+    expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
+    expect(screen.getByLabelText('Пример (EN)')).toHaveValue('A book.')
+    expect(screen.getByLabelText('Перевод примера')).toHaveValue('Книга.')
+    expect(screen.getByLabelText('Заметка')).toHaveValue('keep note')
+    expect(generate).toHaveBeenCalledExactlyOnceWith('book')
+    expect(submit).not.toHaveBeenCalled()
+    expect(lookup).not.toHaveBeenCalled()
+    expect(example).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole('button', { name: mode === 'edit' ? 'Сохранить' : 'Добавить' }),
+    )
+    expect(submit).toHaveBeenCalledExactlyOnceWith({
+      headword: 'book',
+      translations: ['ручной'],
+      transcription: '/bʊk/',
+      example_en: 'A book.',
+      example_ru: 'Книга.',
+      note: 'keep note',
+      tags: [],
+      source_refs:
+        mode === 'edit'
+          ? [{ source_id: source.id, entry_id: 1, field: 'translation', value: 'ручной' }]
+          : [],
+    })
+  },
+)
+
+it('requires a headword and protects nonempty manual IPA until explicitly cleared', async () => {
+  const generate = vi
+    .spyOn(api, 'generateTranscription')
+    .mockResolvedValue({ transcription: '/bʊk/' })
+  const user = userEvent.setup()
+  newForm()
+  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  expect(button).toBeDisabled()
+  await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
+  await user.type(screen.getByLabelText('Транскрипция'), '/manual/')
+  expect(button).toBeDisabled()
+  await user.click(button)
+  expect(generate).not.toHaveBeenCalled()
+  expect(button).toHaveAttribute('title', expect.stringContaining('очистите поле'))
+  await user.clear(screen.getByLabelText('Транскрипция'))
+  expect(button).toBeEnabled()
+  await user.click(button)
+  expect(await screen.findByText(/Транскрипция добавлена/)).toBeInTheDocument()
+})
+
+it('locks repeated IPA requests and Save while loading but keeps manual input and Cancel available', async () => {
+  let resolve!: (value: { transcription: string }) => void
+  const generate = vi.spyOn(api, 'generateTranscription').mockReturnValue(
+    new Promise((done) => {
+      resolve = done
+    }),
+  )
+  const user = userEvent.setup()
+  const { submit, cancel } = newForm({ ...word, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  await user.click(button)
+  expect(button).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+  expect(screen.getByLabelText('Транскрипция')).toBeEnabled()
+  expect(screen.getByRole('status')).toHaveTextContent('Получаем транскрипцию')
+  expect(screen.getByLabelText('Транскрипция')).toHaveAccessibleDescription(
+    'Получаем транскрипцию…',
+  )
+  await user.click(button)
+  fireEvent.submit(screen.getByRole('form', { name: 'Слово' }))
+  expect(generate).toHaveBeenCalledOnce()
+  expect(submit).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Отмена' }))
+  expect(cancel).toHaveBeenCalledOnce()
+  await act(async () => resolve({ transcription: '/late/' }))
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('')
+})
+
+it.each(['headword', 'manual', 'manual-clear', 'unmount'] as const)(
+  'ignores late transcription after %s',
+  async (action) => {
+    let resolve!: (value: { transcription: string }) => void
+    vi.spyOn(api, 'generateTranscription').mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const user = userEvent.setup()
+    const view = newForm({ ...word, transcription: null })
+    await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+    if (action === 'headword') {
+      fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'dog' } })
+      fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'book' } })
+    }
+    if (action === 'manual' || action === 'manual-clear') {
+      await user.type(screen.getByLabelText('Транскрипция'), '/manual/')
+      if (action === 'manual-clear') await user.clear(screen.getByLabelText('Транскрипция'))
+    }
+    if (action === 'unmount') view.unmount()
+    await act(async () => resolve({ transcription: '/late/' }))
+    if (action !== 'unmount') {
+      expect(screen.getByLabelText('Транскрипция')).toHaveValue(
+        action === 'manual' ? '/manual/' : '',
+      )
+      expect(screen.queryByText(/Транскрипция добавлена/)).not.toBeInTheDocument()
+    }
+    expect(view.submit).not.toHaveBeenCalled()
+  },
+)
+
+it.each(['success', '401'] as const)(
+  'ignores transcription %s after the account revision changes',
+  async (ending) => {
+    sessionStorage.clear()
+    rememberSession({
+      user: { id: 'a', login: 'alice', difficulty: 'medium', is_admin: false },
+      csrf_token: 'old',
+    })
+    let resolve!: (value: { transcription: string }) => void
+    let reject!: (error: unknown) => void
+    vi.spyOn(api, 'generateTranscription').mockReturnValue(
+      new Promise((done, fail) => {
+        resolve = done
+        reject = fail
+      }),
+    )
+    const user = userEvent.setup()
+    newForm({ ...word, transcription: null })
+    await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+    const other = {
+      user: { id: 'b', login: 'bob', difficulty: 'medium' as const, is_admin: false },
+      csrf_token: 'new',
+    }
+    rememberSession(other)
+    const revision = getSessionRevision()
+    await act(async () => {
+      if (ending === 'success') resolve({ transcription: '/late/' })
+      else reject(new ApiError(401, 'expired'))
+    })
+    expect(screen.getByLabelText('Транскрипция')).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(getSessionRevision()).toBe(revision)
+    expect(queryClient.getQueryData(['session'])).toEqual(other)
+    forgetSession()
+  },
+)
+
+it.each([
+  new ApiError(503, 'transcription_unavailable'),
+  new ApiError(504, 'transcription_timeout'),
+  new TypeError('offline'),
+])('reports IPA failure and permits retry without changing translations: %s', async (error) => {
+  const generate = vi
+    .spyOn(api, 'generateTranscription')
+    .mockRejectedValueOnce(error)
+    .mockResolvedValueOnce({ transcription: '/bʊk/' })
+  const user = userEvent.setup()
+  const { submit } = newForm({ ...word, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  await user.click(button)
+  expect(await screen.findByRole('alert')).not.toBeEmptyDOMElement()
+  expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
+  expect(button).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled()
+  await user.click(button)
+  expect(await screen.findByText(/Транскрипция добавлена/)).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(generate).toHaveBeenCalledTimes(2)
+  expect(submit).not.toHaveBeenCalled()
+})
+
+it('does not run IPA generation alongside lookup and ignores invalidated IPA after a later lookup', async () => {
+  let finishIpa!: (value: { transcription: string }) => void
+  let finishLookup!: (value: DictionaryLookup) => void
+  const generate = vi.spyOn(api, 'generateTranscription').mockReturnValue(
+    new Promise((done) => {
+      finishIpa = done
+    }),
+  )
+  const lookup = vi
+    .spyOn(api, 'lookupDictionary')
+    .mockReturnValueOnce(
+      new Promise((done) => {
+        finishLookup = done
+      }),
+    )
+    .mockResolvedValueOnce(result)
+  const user = userEvent.setup()
+  const { submit } = newForm({ ...word, transcription: null })
+  const ipa = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const translate = screen.getByRole('button', { name: /Подобрать перевод/ })
+  await user.click(translate)
+  expect(ipa).toBeDisabled()
+  await user.click(ipa)
+  expect(generate).not.toHaveBeenCalled()
+  await act(async () => finishLookup({ source, matches: [], spelling_suggestions: ['books'] }))
+  await user.click(ipa)
+  expect(translate).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'books' })).toBeDisabled()
+  await user.click(translate)
+  expect(lookup).toHaveBeenCalledOnce()
+  await user.type(screen.getByLabelText('Транскрипция'), '/manual/')
+  await user.clear(screen.getByLabelText('Транскрипция'))
+  await user.click(translate)
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  await act(async () => finishIpa({ transcription: '/stale/' }))
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
+  expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      source_refs: [{ source_id: source.id, entry_id: 1, field: 'transcription', value: '/bʊk/' }],
+    }),
+  )
+})
+
+it('an obsolete IPA response does not unlock or replace a newer in-flight request', async () => {
+  let old!: (value: { transcription: string }) => void
+  let latest!: (value: { transcription: string }) => void
+  vi.spyOn(api, 'generateTranscription')
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        old = resolve
+      }),
+    )
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        latest = resolve
+      }),
+    )
+  const user = userEvent.setup()
+  newForm({ ...word, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  await user.click(button)
+  await user.type(screen.getByLabelText('Транскрипция'), 'manual')
+  await user.clear(screen.getByLabelText('Транскрипция'))
+  await user.click(button)
+  await act(async () => old({ transcription: '/old/' }))
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('')
+  expect(button).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+  await act(async () => latest({ transcription: '/new/' }))
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('/new/')
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeEnabled()
+})
+
+it('a current transcription 401 expires the session without changing the draft', async () => {
+  vi.spyOn(api, 'generateTranscription').mockRejectedValue(new ApiError(401, 'not_authenticated'))
+  const user = userEvent.setup()
+  newForm({ ...word, transcription: null })
+  const revision = getSessionRevision()
+  await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+  expect(getSessionRevision()).toBe(revision + 1)
+  expect(screen.getByLabelText('Транскрипция')).toHaveValue('')
+  expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
+})
 
 it.each([
   { headword: '  BOOK. ', existing: word },

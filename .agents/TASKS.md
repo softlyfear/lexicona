@@ -69,7 +69,7 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   Independent review: Ship. Browser fixture smoke: checkbox default-off→on,
   resume input session, correct answer→exactly next item (2/3), no-voice status
   does not block the flow. Orchestrator accepted; no real API/audio claims.
-- FEEDBACK-006 / independent transcription draft / implementation / attempt 1.
+- FEEDBACK-006 / independent transcription draft / accepted / attempt 1.
   AC: compact IPA-only button; existing translations untouched; explicit Save;
   stale-response protection, provenance, auth/CSRF/no-store and failure tests.
   Owners: backend-agent (dictionary router + transcription/provider tests), then
@@ -78,10 +78,25 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   Protect late responses after headword/manual IPA changes, navigation and owner
   changes; no auto-save or generated FreeDict attribution.
   Checks: focused tests, make check, independent review and fixture UI smoke.
-- FEEDBACK-007 / AI translation drafts in add/edit / planned.
+  Evidence: backend targeted 64 and frontend targeted 144 passed; make check
+  exit 0 (tooling 20 / backend 575 / frontend 337), format/lint/types/build passed.
+  Backend stage completed by orchestrator after agent quota; no real provider call.
+  Mobile fixture smoke add/edit: keyboard Enter adds only IPA, save calls 0,
+  width/scrollWidth 390; translation and note preserved. Independent Ship;
+  orchestrator accepted.
+- FEEDBACK-007 / AI translation drafts in add/edit / implementation / attempt 1.
   AC: explicit existing OpenRouter provider; request 3–5 common distinct meanings
   but allow fewer; no verified-frequency claim; preserve manual translations;
   no automatic save; bounded validated output and stale/error/isolation tests.
+  Owners: backend-agent for translation provider/router/tests, frontend-agent for
+  shared WordForm/API/tests; frontend final gate owner. Explicit POST
+  /dictionary/translations bypasses local dictionary and DeepL, returns provider
+  openrouter and 1–5 distinct meanings. Request 3–5 common senses but never invent
+  senses for quota. Enforce existing per-translation max 200 and form max 10.
+  Preserve manual entries/provenance; merge latest draft values without silent
+  truncation, show limits and estimated AI ordering. No auto-save.
+  Check errors/timeouts/malformed output, owner/CSRF, manual/headword/session/
+  lookup races, make check, independent review and add/edit fixture smoke.
 - UBUNTU-001 / duplicate Flatpak Chrome launcher instructions / accepted / attempt 1.
   New user report: README icon script creates a second desktop entry and leaves
   the old iconless launcher. Independent documentation-only slice, disjoint from
