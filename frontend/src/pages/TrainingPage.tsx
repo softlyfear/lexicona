@@ -50,18 +50,6 @@ const WORD_ORDERS: { value: TrainingOrder; label: string }[] = [
   { value: 'progress_desc', label: 'С наибольшим процентом выученности' },
   { value: 'random', label: 'В случайном порядке' },
 ]
-function orderHint(purpose: TrainingPurpose, order: TrainingOrder, shuffle: boolean) {
-  if (purpose === 'scheduled') {
-    return shuffle
-      ? 'Слова со сроком повторения остаются первыми. Внутри них и среди новых порядок случайный.'
-      : 'Слова со сроком повторения остаются первыми. Этот порядок действует внутри них и среди новых.'
-  }
-  if (shuffle && order !== 'random') {
-    return 'Сначала отбираются слова в выбранном порядке, в пределах размера занятия. В упражнении они идут в случайном порядке.'
-  }
-  if (order === 'random') return 'Подходящие слова выбираются и идут в случайном порядке.'
-  return 'Подходящие слова идут в выбранном порядке, в пределах размера занятия.'
-}
 
 const AUTO_CHECK_DELAY_MS = 2000
 
@@ -597,7 +585,6 @@ function Setup({
                 <select
                   className={ui.input}
                   value={order}
-                  aria-describedby="training-order-hint"
                   onChange={(event) => {
                     start.reset()
                     setOrder(event.target.value as TrainingOrder)
@@ -615,7 +602,6 @@ function Setup({
                   type="button"
                   className={shuffle ? ui.primary : ui.button}
                   aria-pressed={shuffle}
-                  aria-describedby="training-order-hint"
                   onClick={() => {
                     start.reset()
                     setShuffle((value) => !value)
@@ -627,7 +613,6 @@ function Setup({
                   type="button"
                   className={includeLearned ? ui.primary : ui.button}
                   aria-pressed={includeLearned}
-                  aria-describedby="training-learned-hint"
                   onClick={() => {
                     start.reset()
                     setIncludeLearned((value) => !value)
@@ -636,14 +621,7 @@ function Setup({
                   Выученные
                 </button>
               </div>
-              <p id="training-order-hint" className={ui.muted}>
-                {orderHint(purpose, order, shuffle)}
-              </p>
-              <p id="training-learned-hint" className={ui.muted}>
-                Включает слова с отметкой «выучено». Исключённые остаются в стороне, размер занятия
-                сохраняется.
-              </p>
-              <p className={ui.muted}>Теги: любой выбранный</p>
+              <p className={ui.label}>Теги:</p>
               {tags.isLoading && (
                 <p role="status" className={ui.muted}>
                   Загружаем теги…
@@ -673,7 +651,6 @@ function Setup({
                   </label>
                 ))}
               </div>
-              <p className={ui.muted}>Можно указать диапазон выученности</p>
               <div className={css.trainingBounds}>
                 <label className={ui.field}>
                   <span className={ui.label}>Прогресс от, %</span>

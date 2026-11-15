@@ -27,14 +27,6 @@ const SORT_OPTIONS: { value: WordSort; label: string }[] = [
   { value: 'progress_asc', label: 'Прогресс: по возрастанию' },
   { value: 'progress_desc', label: 'Прогресс: по убыванию' },
 ]
-const SORT_SUMMARY: Record<WordSort, string> = {
-  created_desc: 'Новые',
-  created_asc: 'Старые',
-  headword_asc: 'Слово А–Я',
-  headword_desc: 'Слово Я–А',
-  progress_asc: 'Прогресс ↑',
-  progress_desc: 'Прогресс ↓',
-}
 const TRAINING_OPTIONS: { value: WordTrainingFilter; label: string }[] = [
   { value: 'active', label: 'В обучении' },
   { value: 'excluded', label: 'Исключённые' },
@@ -250,15 +242,7 @@ export function WordsPage({ userId }: { userId: string }) {
         <details className={css.filterDisclosure}>
           <summary className={css.disclosureSummary}>
             <span className={css.filterSummaryContent}>
-              <span className={css.filterSummaryText}>
-                <strong>Фильтры</strong>{' '}
-                <span className={ui.muted}>
-                  {SORT_SUMMARY[sort]} ·{' '}
-                  {TRAINING_OPTIONS.find((option) => option.value === training)?.label}
-                  {tagIds.length > 0 &&
-                    ` · Теги: ${tagIds.map((id) => tags.data?.find((tag) => tag.id === id)?.name ?? id).join(', ')}`}
-                </span>
-              </span>
+              <strong>Фильтры</strong>
               <span className={css.wordCount} aria-label="Количество слов" aria-live="polite">
                 Слов: {countReady ? words.data.length : words.isError ? '—' : '…'}
               </span>

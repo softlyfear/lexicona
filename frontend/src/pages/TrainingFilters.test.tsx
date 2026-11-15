@@ -60,10 +60,8 @@ describe('фильтры тренировки', () => {
     await user.click(await screen.findByLabelText('Дом'))
     await user.click(screen.getByLabelText('Работа'))
     await user.type(screen.getByLabelText('Прогресс от, %'), '100')
-    await user.type(screen.getByLabelText('Прогресс до, %'), '158')
-    expect(
-      screen.getByText('Подходящие слова выбираются и идут в случайном порядке.'),
-    ).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Прогресс до, %'), '100')
+    expect(screen.queryByText(/в случайном порядке\.$/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(api.startTraining).toHaveBeenCalledWith(
       'en_ru',
@@ -72,7 +70,7 @@ describe('фильтры тренировки', () => {
       {
         tag_ids: ['a', 'b'],
         progress_min: 100,
-        progress_max: 158,
+        progress_max: 100,
       },
       'free',
       true,
@@ -155,29 +153,25 @@ describe('фильтры тренировки', () => {
     )
   })
 
-  it('передаёт выбранный порядок слов и поясняет его', async () => {
+  it('передаёт выбранный порядок слов без поясняющего текста', async () => {
     const user = userEvent.setup()
     renderPage()
     await user.selectOptions(
       screen.getByLabelText('Сначала показывать'),
       'С наименьшим процентом выученности',
     )
-    expect(
-      screen.getByText('Подходящие слова идут в выбранном порядке, в пределах размера занятия.'),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/в выбранном порядке/)).not.toBeInTheDocument()
     await user.click(screen.getByLabelText('По расписанию'))
-    expect(screen.getByText(/Слова со сроком повторения остаются первыми/)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Слова со сроком повторения остаются первыми/),
+    ).not.toBeInTheDocument()
     await user.click(screen.getByLabelText('Свободная практика'))
     await user.click(screen.getByRole('button', { name: 'Перемешать' }))
     expect(screen.getByRole('button', { name: 'Перемешать' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    expect(
-      screen.getByText(
-        'Сначала отбираются слова в выбранном порядке, в пределах размера занятия. В упражнении они идут в случайном порядке.',
-      ),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/в случайном порядке\.$/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     expect(api.startTraining).toHaveBeenCalledWith(
       'en_ru',

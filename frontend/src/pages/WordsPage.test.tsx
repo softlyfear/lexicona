@@ -138,7 +138,8 @@ describe('сортировка словаря', () => {
       expect(screen.getByLabelText('Количество слов')).toHaveTextContent('Слов: 0'),
     )
     const summary = screen.getByText('Фильтры').closest('summary')!
-    expect(summary).toHaveTextContent(longTag)
+    expect(summary).toHaveTextContent('Фильтры')
+    expect(summary).not.toHaveTextContent(longTag)
     expect(summary).not.toHaveAttribute('role')
     summary.focus()
     expect(summary).toHaveFocus()
@@ -475,15 +476,16 @@ describe('сортировка словаря', () => {
     const filters = screen.getByText('Фильтры').closest('summary')!
     const filterDetails = filters.parentElement!
     expect(filterDetails).not.toHaveAttribute('open')
-    expect(filters).toHaveTextContent('Прогресс ↓')
-    expect(filters).toHaveTextContent('Все слова')
-    expect(filters).toHaveTextContent('Дом')
+    expect(filters).toHaveTextContent('Фильтры')
+    expect(filters).not.toHaveTextContent('Прогресс ↓')
+    expect(filters).not.toHaveTextContent('Все слова')
+    expect(filters).not.toHaveTextContent('Дом')
     await user.click(filters)
     expect(filterDetails).toHaveAttribute('open')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Обучение' }), 'excluded')
     await user.click(filters)
     expect(filterDetails).not.toHaveAttribute('open')
-    expect(filters).toHaveTextContent('Исключённые')
+    expect(filters).not.toHaveTextContent('Исключённые')
     expect(params().get('training')).toBe('excluded')
 
     const actions = screen.getByLabelText('Действия со словом «cat»')

@@ -151,7 +151,7 @@ describe('TrainingPage', () => {
     renderPage()
     expect(screen.queryByLabelText('Карточки: EN → RU')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Карточки: RU → EN')).not.toBeInTheDocument()
-    expect(screen.getByText('Теги: любой выбранный')).toBeInTheDocument()
+    expect(screen.getByText('Теги:')).toBeInTheDocument()
   })
 
   it('uses keys 5 and 6 for six options and ignores repeated answers', async () => {
