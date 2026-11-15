@@ -244,7 +244,10 @@ export function WordsPage({ userId }: { userId: string }) {
             <span className={css.filterSummaryContent}>
               <strong>Фильтры</strong>
               <span className={css.wordCount} aria-label="Количество слов" aria-live="polite">
-                Слов: {countReady ? words.data.length : words.isError ? '—' : '…'}
+                Слов:{' '}
+                <strong className={css.wordCountValue}>
+                  {countReady ? words.data.length : words.isError ? '—' : '…'}
+                </strong>
               </span>
             </span>
           </summary>

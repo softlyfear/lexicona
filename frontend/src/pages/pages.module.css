@@ -181,8 +181,15 @@
 .wordCount {
   flex: none;
   margin-inline-start: auto;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.wordCountValue {
+  color: var(--accent);
 }
 .filterDisclosure[open] > .filters,
 .filterDisclosure[open] > .tagField {
