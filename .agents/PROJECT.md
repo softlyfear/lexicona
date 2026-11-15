@@ -309,11 +309,54 @@ is hidden only while auto-next is armed for the current answer.
 preferences.training_auto_check is an independent strict boolean (default false).
 When on, typed input and cloze answers are submitted automatically 2 seconds after
 the last keystroke; the client never decides correctness. The timer restarts on
-every change and does not fire while empty, busy, revealing, finished, after an
-answer exists, or after a letter hint until the user types again. A letter hint
-still halves a positive typed reward, and a correct answer whose characters were
-all revealed by hints earns zero; penalties stay whole and the first-answer
-accuracy event is unchanged.
+every change and fires only after a new keystroke; it is suppressed while empty,
+busy, revealing, finished, the word editor is open, an IME composition is active,
+after an answer exists, and after a hint until the user types again. A failed
+submit does not re-arm it. A letter hint halves a positive typed reward; a correct
+answer revealed in every hint step earns zero and does not advance SRS; penalties
+stay whole and the first-answer accuracy event is unchanged.
+
+hinted_steps(answer) is the number of hint calls that reveal the answer from an
+empty input. One call can cross a space or an internal apostrophe and add two
+visible characters, so the fully-revealed check compares letter_hints with that
+step count, not with the raw answer length.
+
+Login lookup and the failed-attempt throttle use the same exact login string; the
+throttle table is bounded and prunes expired keys. Argon2 verification and hashing
+run in worker threads with at most four concurrent 64 MiB operations. Validation
+errors omit the submitted input, so passwords never echo in 422 bodies. Expired
+sessions are deleted on login. The admin CLI validates login 1..64 and password
+12..128 and explains a missing schema.
+
+SpaFiles marks hashed /assets/* immutable and every other static response no-cache,
+so a new deploy cannot serve an old shell against removed bundles. /api/* stays
+no-store. A missing dictionary index keeps the machine fallback; a present but
+corrupt index returns 503 dictionary_unavailable and never spends paid provider
+calls. Lookup and notices run off the event loop. The Kokoro replay cache holds at
+most 32 clips and 64 MiB in total. A BEGIN IMMEDIATE lock timeout maps to 503
+database_busy. Invalid stored preference sections are dropped on the next
+preference write instead of being silently carried forward.
+
+Resume marks an item unavailable when its word training_version changed (exclude
+and restore). The session summary tolerates a corrupt matching snapshot; legacy
+answered rows with NULL delta are read as delta 0.
+
+api.ts bounds requests (20 s default, 70 s for AI drafts, 40 s for speech
+synthesis) and reports a timeout instead of hanging the screen. The word editor
+warns about unsaved changes (beforeunload and internal navigation) and about a
+progress reset when the normalized meaning changes. On iOS/Firefox without
+beforeinstallprompt, settings shows the Share → Add to Home Screen instruction. A
+failed initial session load offers Retry. /statistics returns accuracy_percent null
+when there are no answers; the page keeps previous totals while a new period loads
+and labels its table.
+
+Choice distractors come from the builtin static pool in domain/distractors.py, not
+from the dictionary index; dictionary.choice_candidates is test-only.
+
+Accepted risks: /api/docs and /api/openapi.json are public; uvicorn/Caddy access
+logs include search query strings; alembic check does not compare CHECK constraints
+or server defaults; a hint racing an answer can still use the pre-race
+letter_hints count.
 
 POST /dictionary/transcription is an authenticated CSRF-protected IPA-only
 draft operation using the existing OpenRouter transcription provider. It performs
