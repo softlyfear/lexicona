@@ -12,6 +12,7 @@ export function summaryFixture(
     first_attempt: {
       correct: 0,
       incorrect: 0,
+      assisted: 0,
       unknown: 0,
       not_attempted: 0,
       not_applicable: 0,

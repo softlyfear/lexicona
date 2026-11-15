@@ -184,7 +184,7 @@ describe('сопоставление пар', () => {
     await user.click(translations.getByRole('button', { name: 'собака' }))
     await user.click(await screen.findByRole('button', { name: 'Завершить занятие' }))
     expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
-    expect(screen.getByText('С ответом: 2')).toBeInTheDocument()
+    expect(screen.getByText('Точность: 50%')).toBeInTheDocument()
     expect(api.trainingSummary).toHaveBeenCalledWith('s')
     expect(api.answer).toHaveBeenCalledTimes(3)
   })
@@ -258,7 +258,7 @@ describe('сопоставление пар', () => {
     vi.mocked(api.trainingSummary).mockResolvedValue(
       summaryFixture(
         { answered: 3, assisted: 1, skipped: 1 },
-        { correct: 3, not_attempted: 2, accuracy_percent: 100 },
+        { correct: 3, assisted: 1, not_attempted: 1, accuracy_percent: 100 },
       ),
     )
     const user = userEvent.setup()
@@ -320,7 +320,7 @@ describe('сопоставление пар', () => {
     await user.click(await screen.findByRole('button', { name: 'Завершить занятие' }))
     expect(await screen.findByText('Верно: 3 · Неверно: 0')).toBeInTheDocument()
     expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
+    expect(screen.queryByText(/Пропущено:/)).not.toBeInTheDocument()
     expect(api.answer).toHaveBeenCalledTimes(3)
   })
 
@@ -391,7 +391,7 @@ describe('сопоставление пар', () => {
     finish.focus()
     await user.keyboard('{Enter}')
     expect(await screen.findByText('Верно: 1 · Неверно: 0')).toBeInTheDocument()
-    expect(screen.getByText('Недоступно: 1')).toBeInTheDocument()
+    expect(screen.queryByText(/Недоступно:/)).not.toBeInTheDocument()
   })
 
   it('правит английское слово отдельной кнопкой и не раскрывает пару', async () => {

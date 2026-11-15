@@ -244,9 +244,8 @@ describe('TrainingPage', () => {
     await user.keyboard('3')
     expect(api.answer).toHaveBeenLastCalledWith('i2', 2)
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4)')
-    expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled()
 
-    await user.keyboard('{Enter}')
     expect(api.answer).toHaveBeenCalledTimes(2)
     await user.keyboard('1')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0)')

@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { ApiError, api, errorMessage, type Difficulty, type Session, type User } from '../api'
 import ui from '../components/ui.module.css'
 import { SpeechStatus } from '../components/ui'
@@ -149,34 +149,40 @@ export function SettingsPage({ user }: { user: User }) {
           </tbody>
         </table>
       </div>
-      <section className={`${ui.card} ${css.stack}`} aria-label="Переход между заданиями">
-        <label className={css.choice}>
-          <input
-            type="checkbox"
-            checked={user.preferences?.training_auto_advance === true}
-            disabled={autoUpdate.isPending}
-            onChange={(event) => {
-              if (autoLocked.current) return
-              autoLocked.current = true
-              setAutoError('')
-              autoUpdate.mutate({ enabled: event.target.checked, revision: getSessionRevision() })
-            }}
-          />
-          Автоматически переходить после верного ответа
-        </label>
-        {autoUpdate.isPending && <p role="status">Сохраняем автоматический переход…</p>}
-        {autoError && (
-          <p className={ui.error} role="alert">
-            {autoError} Повторите действие.
-          </p>
-        )}
-      </section>
-      <SpeechSettings />
+      <SpeechSettings
+        autoAdvanceControl={
+          <div className={css.stack}>
+            <label className={css.choice}>
+              <input
+                type="checkbox"
+                checked={user.preferences?.training_auto_advance === true}
+                disabled={autoUpdate.isPending}
+                onChange={(event) => {
+                  if (autoLocked.current) return
+                  autoLocked.current = true
+                  setAutoError('')
+                  autoUpdate.mutate({
+                    enabled: event.target.checked,
+                    revision: getSessionRevision(),
+                  })
+                }}
+              />
+              Автоматически переходить после верного ответа
+            </label>
+            {autoUpdate.isPending && <p role="status">Сохраняем автоматический переход…</p>}
+            {autoError && (
+              <p className={ui.error} role="alert">
+                {autoError} Повторите действие.
+              </p>
+            )}
+          </div>
+        }
+      />
     </section>
   )
 }
 
-function SpeechSettings() {
+function SpeechSettings({ autoAdvanceControl }: { autoAdvanceControl: ReactNode }) {
   const { preferences, voices, voiceState, storageError, syncError, serverVoices, serverState } =
     useSpeech()
   const serverReady = serverState === 'ready'
@@ -458,6 +464,7 @@ function SpeechSettings() {
           />{' '}
           Автоматически озвучивать задание
         </label>
+        {autoAdvanceControl}
         <SpeechStatus />
       </div>
     </section>

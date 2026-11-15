@@ -30,6 +30,24 @@ function renderWithClient(element: React.ReactNode) {
 
 beforeEach(() => vi.resetAllMocks())
 
+it('shows only first-answer counts and accuracy in the compact summary', async () => {
+  vi.mocked(api.trainingSummary).mockResolvedValue(
+    summaryFixture(
+      { answered: 41, assisted: 9 },
+      { correct: 42, incorrect: 8, assisted: 0, accuracy_percent: 84 },
+    ),
+  )
+  renderWithClient(<TrainingSummary sessionId="s" onFinish={() => {}} finishing={false} />)
+  const results = await screen.findByRole('region', { name: 'Первые ответы' })
+  expect(results).toHaveTextContent('Верно: 42 · Неверно: 8')
+  expect(results).toHaveTextContent('С помощью: 0')
+  expect(results).toHaveTextContent('Точность: 84%')
+  expect(results.querySelectorAll('p')).toHaveLength(3)
+  expect(
+    screen.queryByText(/Учитывается первый|Способ завершения|Неизвестно:/),
+  ).not.toBeInTheDocument()
+})
+
 it('loads authoritative results, retries once from the keyboard and keeps finish available', async () => {
   let resolve!: (data: Summary) => void
   vi.mocked(api.trainingSummary)
@@ -166,9 +184,8 @@ it.each(['choice', 'input', 'matching'] as const)(
     )
     expect(await screen.findByText('Верно: 0 · Неверно: 3')).toBeInTheDocument()
     expect(screen.getByText('Точность: 0%')).toBeInTheDocument()
-    expect(screen.getByText('С ответом: 1')).toBeInTheDocument()
-    expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
+    expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
+    expect(screen.queryByText(/С ответом:|Пропущено:|Учитывается первый/)).not.toBeInTheDocument()
     expect(api.trainingSummary).toHaveBeenCalledExactlyOnceWith('s')
   },
 )
@@ -212,8 +229,8 @@ it.each(['choice', 'matching'] as const)(
         <Run session={session} requestedSize={1} onFinish={() => {}} />
       ),
     )
-    expect(await screen.findByText('Неизвестно: 1')).toBeInTheDocument()
-    expect(screen.getByText('Точность: неизвестна')).toBeInTheDocument()
+    expect(await screen.findByText('Точность: —')).toBeInTheDocument()
+    expect(screen.queryByText(/Неизвестно:/)).not.toBeInTheDocument()
     expect(screen.getByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
     expect(screen.queryByText('1 из 1')).not.toBeInTheDocument()
   },

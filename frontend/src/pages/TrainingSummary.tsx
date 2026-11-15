@@ -39,37 +39,17 @@ export function TrainingSummary({
       )}
       {data && !summary.isError && (
         <>
-          <section aria-label="Первые ответы" className={css.stack}>
-            <h2 className={css.sectionTitle}>Первые ответы</h2>
-            <p>
-              Верно: {data.first_attempt.correct} · Неверно: {data.first_attempt.incorrect}
-            </p>
-            <p className={css.score}>
+          <section aria-label="Первые ответы" className={css.summaryResults}>
+            <p className={css.summaryAccuracy}>
               Точность:{' '}
               {data.first_attempt.accuracy_percent === null
-                ? 'неизвестна'
+                ? '—'
                 : `${data.first_attempt.accuracy_percent}%`}
             </p>
-            <p>Неизвестно: {data.first_attempt.unknown}</p>
-            <p>Без ответа: {data.first_attempt.not_attempted}</p>
-            <p>Не применяется: {data.first_attempt.not_applicable}</p>
-            <p className={ui.muted}>
-              Учитывается первый отправленный ответ, в том числе после подсказки. Исправления не
-              меняют первую попытку. Первые ответы старых занятий могут быть неизвестны.
+            <p className={css.summaryCounts}>
+              Верно: {data.first_attempt.correct} · Неверно: {data.first_attempt.incorrect}
             </p>
-          </section>
-          <section aria-label="Завершение заданий" className={css.stack}>
-            <h2 className={css.sectionTitle}>Завершение заданий</h2>
-            <p>Всего заданий: {data.total}</p>
-            <p>С ответом: {data.completion.answered}</p>
-            <p>С помощью: {data.completion.assisted}</p>
-            <p>Пропущено: {data.completion.skipped}</p>
-            <p>Недоступно: {data.completion.unavailable}</p>
-            <p>Не завершено: {data.completion.pending}</p>
-            <p className={ui.muted}>
-              Способ завершения не определяет точность: ошибка сохраняется и после показа ответа или
-              пропуска.
-            </p>
+            <p className={css.summaryAssisted}>С помощью: {data.first_attempt.assisted}</p>
           </section>
         </>
       )}

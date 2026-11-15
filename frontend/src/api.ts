@@ -199,6 +199,7 @@ export interface TrainingSummary {
   first_attempt: {
     correct: number
     incorrect: number
+    assisted: number
     unknown: number
     not_attempted: number
     not_applicable: number
@@ -535,7 +536,7 @@ export const api = {
     }),
   revealCard: (itemId: string) => request<RevealResult>('POST', `/training/items/${itemId}/reveal`),
   revealAnswer: (itemId: string) =>
-    request<TerminalResult>('POST', `/training/items/${itemId}/reveal`),
+    request<RevealResult>('POST', `/training/items/${itemId}/reveal`),
   skipItem: (itemId: string) => request<TerminalResult>('POST', `/training/items/${itemId}/skip`),
   answerCard: (itemId: string, grade: CardGrade) =>
     request<TerminalResult>('POST', `/training/items/${itemId}/answer`, { grade }),

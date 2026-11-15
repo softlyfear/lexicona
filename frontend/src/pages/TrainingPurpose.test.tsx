@@ -151,7 +151,7 @@ describe('тип занятия', () => {
     await user.click(await screen.findByRole('button', { name: 'Далее' }))
 
     expect(await screen.findByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 2')).toBeInTheDocument()
+    expect(screen.queryByText(/Пропущено:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/из 1/)).not.toBeInTheDocument()
     expect(api.answer).toHaveBeenCalledTimes(1)
   })

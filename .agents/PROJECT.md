@@ -284,9 +284,12 @@ Dictionary identity, search and semantic-change detection still use normalize.
 No fuzzy spelling or arbitrary whitespace removal is applied; negation letters
 remain significant.
 
-Authorized training answers are displayed in a prominent answer group, with
-language-aware manual playback and Next adjacent to the answer. Reveal does not
-require typed input; wrong open answers still withhold the expected answer.
+Choice answers use option highlighting rather than a duplicate answer panel.
+Authorized input answers are spoken automatically; reveal fills the input and
+retains manual playback. Next sits after Skip and is hidden while auto-next is
+pending. After an error, manual Next closes the item through server skip before
+advancing, preserving the first error. The compact summary uses first-answer
+counts; assistance counts reveal before any objective attempt, not later repair.
 
 The dictionary filter summary displays the full unpaginated matching word count.
 Deferred searches, placeholder data, active/paused requests and errors do not
@@ -297,7 +300,9 @@ false), updated through the existing settings CAS without replacing training or
 speech sections. After a fresh server-confirmed correct answer, auto-next waits
 for 1.5 seconds of feedback and speech.busy=false. Matching advances only an
 all-correct completed group. Manual and timed transitions share a one-shot guard;
-editor, finish, disable and lifecycle changes cancel pending transitions.
+opening the editor, finishing or leaving cancels a pending transition, while a
+temporary disabled/finishing state pauses it. Manual Next is shown after Skip and
+is hidden only while auto-next is armed for the current answer.
 
 POST /dictionary/transcription is an authenticated CSRF-protected IPA-only
 draft operation using the existing OpenRouter transcription provider. It performs

@@ -112,6 +112,7 @@ class CompletionCounts(BaseModel):
 class FirstAttemptCounts(BaseModel):
     correct: int = 0
     incorrect: int = 0
+    assisted: int = 0
     unknown: int = 0
     not_attempted: int = 0
     not_applicable: int = 0
@@ -777,6 +778,8 @@ async def session_summary(session_id: str, auth: CurrentAuth, db: Db) -> Session
         ):
             # Mutable terminal answers cannot reconstruct a missing first attempt.
             first.unknown += 1
+        elif category == "assisted":
+            first.assisted += 1
         else:
             first.not_attempted += 1
     known = first.correct + first.incorrect

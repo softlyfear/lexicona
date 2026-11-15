@@ -154,6 +154,92 @@ it('defaults off and never arms from a correct result received while disabled', 
   expect(screen.getByText('1 / 3')).toBeInTheDocument()
 })
 
+it.each([true, false])(
+  'places manual Next beside Skip only without a pending auto-next (%s)',
+  async (enabled) => {
+    run(session, enabled)
+    expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
+    await submit()
+    const next = screen.queryByRole('button', { name: 'Далее' })
+    if (enabled) expect(next).not.toBeInTheDocument()
+    else {
+      expect(next).toBeEnabled()
+      expect(next?.parentElement).toBe(
+        screen.getByRole('button', { name: 'Пропустить' }).parentElement,
+      )
+    }
+  },
+)
+
+it('closes a wrong item once before manual Next and waits for server confirmation', async () => {
+  let resolve!: (result: TerminalResult) => void
+  vi.mocked(api.answerText).mockResolvedValueOnce({ ...right, correct: false } as TerminalResult)
+  vi.mocked(api.skipItem).mockReturnValue(
+    new Promise((done) => {
+      resolve = done
+    }),
+  )
+  run()
+  await submit()
+  const next = screen.getByRole('button', { name: 'Далее' })
+  fireEvent.click(next)
+  fireEvent.click(next)
+  await tick(2000)
+  expect(next).toBeDisabled()
+  expect(api.skipItem).toHaveBeenCalledExactlyOnceWith('i0')
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  await act(async () => resolve({ outcome: 'skipped', delta: 0, progress: 5 }))
+  await tick()
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
+  expect(api.answerText).toHaveBeenCalledOnce()
+})
+
+it('keeps the wrong item retryable when closing it for manual Next fails', async () => {
+  vi.mocked(api.answerText).mockResolvedValueOnce({ ...right, correct: false } as TerminalResult)
+  vi.mocked(api.skipItem).mockRejectedValueOnce(new TypeError('offline'))
+  run()
+  await submit()
+  fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
+  await tick()
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  expect(screen.getByRole('textbox')).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Нет связи с сервером')
+  await submit()
+  await tick(1500)
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
+})
+
+it.each(['unmount', 'session'] as const)(
+  'does not play a late input answer after %s',
+  async (reason) => {
+    let resolve!: (result: TerminalResult) => void
+    const utterances = browser()
+    vi.mocked(api.answerText).mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    const view = run()
+    await submit()
+    if (reason === 'unmount') view.unmount()
+    else view.update({ ...session, id: 'other' })
+    await act(async () => resolve(right))
+    await tick()
+    expect(utterances).toHaveLength(0)
+  },
+)
+
+it('does not automatically pronounce an input answer when its language is disabled', async () => {
+  const utterances = browser()
+  act(() => updateSpeechPreferences({ speakEn: false }))
+  run()
+  await submit()
+  expect(utterances).toHaveLength(0)
+  await tick(1500)
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
+})
+
 it('waits 1.5s after fresh correct retry with delta zero, advances once without answering the next item', async () => {
   vi.mocked(api.answerText)
     .mockResolvedValueOnce({ ...right, correct: false } as TerminalResult)
@@ -171,6 +257,19 @@ it('waits 1.5s after fresh correct retry with delta zero, advances once without 
   await tick(5000)
   expect(screen.getByText('2 / 3')).toBeInTheDocument()
   expect(api.answerText).toHaveBeenCalledTimes(2)
+})
+
+it('Enter cannot bypass a pending automatic advance', async () => {
+  run()
+  await submit()
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'Enter' })
+  fireEvent.keyDown(window, { key: ' ' })
+  await tick()
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  await tick(1500)
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
 })
 
 it.each(['assisted', 'skipped', 'unavailable'] as const)(
@@ -209,24 +308,20 @@ it('does not auto-advance card self-assessment', async () => {
   expect(screen.getByText('1 / 3')).toBeInTheDocument()
 })
 
-it.each(['manual-first', 'timer-first'] as const)(
-  'manual/Enter/timer race advances only one item: %s',
-  async (order) => {
-    run()
-    await submit()
-    const next = screen.getByRole('button', { name: 'Далее' })
-    act(() => {
-      if (order === 'timer-first') vi.advanceTimersByTime(1500)
-      fireEvent.click(next)
-      fireEvent.click(next)
-      fireEvent.keyDown(window, { key: 'Enter' })
-      if (order === 'manual-first') vi.advanceTimersByTime(1500)
-    })
-    await tick()
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
-    expect(api.answerText).toHaveBeenCalledOnce()
-  },
-)
+it('manual double activation advances only one item when automatic next is disabled', async () => {
+  run(session, false)
+  await submit()
+  const next = screen.getByRole('button', { name: 'Далее' })
+  act(() => {
+    fireEvent.click(next)
+    fireEvent.click(next)
+    fireEvent.keyDown(window, { key: 'Enter' })
+    vi.advanceTimersByTime(1500)
+  })
+  await tick()
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
+  expect(api.answerText).toHaveBeenCalledOnce()
+})
 
 it('last item opens existing authoritative summary once', async () => {
   run({ ...session, items: session.items.slice(0, 1) })
@@ -264,7 +359,7 @@ it('choice Enter at the timer deadline cannot skip an extra item', async () => {
   expect(api.answer).toHaveBeenCalledOnce()
 })
 
-it.each(['editor', 'finish', 'finishing', 'disable', 'session', 'unmount'] as const)(
+it.each(['editor', 'finish', 'session', 'unmount'] as const)(
   'cancels pending auto-next permanently on %s',
   async (reason) => {
     const view = run()
@@ -276,14 +371,6 @@ it.each(['editor', 'finish', 'finishing', 'disable', 'session', 'unmount'] as co
       fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
     }
     if (reason === 'finish') fireEvent.click(screen.getByRole('button', { name: 'Завершить' }))
-    if (reason === 'finishing') {
-      view.update(session, true, true)
-      view.update(session, true, false)
-    }
-    if (reason === 'disable') {
-      view.update(session, false)
-      view.update(session, true)
-    }
     if (reason === 'session') view.update({ ...session, id: 'other' })
     if (reason === 'unmount') view.unmount()
     await tick(5000)
@@ -294,13 +381,28 @@ it.each(['editor', 'finish', 'finishing', 'disable', 'session', 'unmount'] as co
   },
 )
 
+it('pauses automatic advance while finishing or disabled and resumes afterwards once', async () => {
+  const view = run()
+  await submit()
+  await tick(1000)
+  view.update(session, true, true)
+  await tick(5000)
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  view.update(session, true, false)
+  await tick(1499)
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  await tick(1)
+  expect(screen.getByText('2 / 3')).toBeInTheDocument()
+  expect(api.answerText).toHaveBeenCalledOnce()
+})
+
 it.each(['end', 'error', 'watchdog'] as const)(
   'waits for long manually replayed speech and then advances on %s',
   async (ending) => {
     const utterances = browser()
     run()
     await submit()
-    expect(utterances).toHaveLength(0)
+    expect(utterances).toHaveLength(1)
     await tick(1000)
     fireEvent.click(within(screen.getByRole('group', { name: 'Ответ' })).getByRole('button'))
     expect(isSpeechBusy()).toBe(true)
@@ -309,8 +411,8 @@ it.each(['end', 'error', 'watchdog'] as const)(
     if (ending === 'watchdog') await tick(20000)
     else
       act(() => {
-        if (ending === 'end') utterances[0].onend?.({} as SpeechSynthesisEvent)
-        else utterances[0].onerror?.({} as SpeechSynthesisErrorEvent)
+        if (ending === 'end') utterances[1].onend?.({} as SpeechSynthesisEvent)
+        else utterances[1].onerror?.({} as SpeechSynthesisErrorEvent)
       })
     await tick()
     expect(isSpeechBusy()).toBe(false)
@@ -326,14 +428,14 @@ it('waits for a second manual replay and ignores the first utterance late comple
   const playback = within(screen.getByRole('group', { name: 'Ответ' })).getByRole('button')
   fireEvent.click(playback)
   await tick(500)
-  act(() => utterances[0].onend?.({} as SpeechSynthesisEvent))
+  act(() => utterances[1].onend?.({} as SpeechSynthesisEvent))
   await tick(500)
   fireEvent.click(playback)
   await tick(600)
-  act(() => utterances[0].onend?.({} as SpeechSynthesisEvent))
+  act(() => utterances[1].onend?.({} as SpeechSynthesisEvent))
   expect(isSpeechBusy()).toBe(true)
   expect(screen.getByText('1 / 3')).toBeInTheDocument()
-  act(() => utterances[1].onend?.({} as SpeechSynthesisEvent))
+  act(() => utterances[2].onend?.({} as SpeechSynthesisEvent))
   await tick()
   expect(screen.getByText('2 / 3')).toBeInTheDocument()
 })
@@ -373,7 +475,6 @@ it.each(['autoplay', 'watchdog'] as const)(
     await tick()
     run()
     await submit()
-    fireEvent.click(within(screen.getByRole('group', { name: 'Ответ' })).getByRole('button'))
     await tick(5000)
     expect(isSpeechBusy()).toBe(true)
     expect(screen.getByText('1 / 3')).toBeInTheDocument()

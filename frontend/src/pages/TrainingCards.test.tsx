@@ -92,9 +92,8 @@ describe('карточки', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Хорошо (+4) · прогресс 4%')
     expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('С ответом: 1')).toBeInTheDocument()
-    expect(screen.getByText('Не применяется: 1')).toBeInTheDocument()
-    expect(screen.getByText('Точность: неизвестна')).toBeInTheDocument()
+    expect(await screen.findByText('Точность: —')).toBeInTheDocument()
+    expect(screen.queryByText(/С ответом:|Не применяется:/)).not.toBeInTheDocument()
   })
 
   it('позволяет повторить раскрытие и самооценку после сетевой ошибки', async () => {

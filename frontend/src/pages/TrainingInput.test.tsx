@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api } from '../api'
@@ -24,6 +24,8 @@ vi.mock('../api', async (original) => {
       listTags: () => Promise.resolve([]),
       answer: vi.fn(),
       answerText: vi.fn(),
+      revealAnswer: vi.fn(),
+      skipItem: vi.fn(),
       letterHint: vi.fn(),
     },
   }
@@ -103,14 +105,14 @@ describe('письменная тренировка', () => {
     await user.keyboard('{Enter}')
     expect(api.answerText).toHaveBeenCalledWith('i1', 'кот 1')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+8) · прогресс 8%')
-    expect(screen.getByRole('status')).toHaveTextContent('кот, кошка')
+    expect(screen.getByRole('button', { name: 'Произнести RU «кот, кошка»' })).toBeInTheDocument()
     expect(input).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('dog')).toBeInTheDocument()
     await user.type(screen.getByRole('textbox', { name: 'Введите перевод' }), 'волк{Enter}')
     expect(await screen.findByRole('status')).toHaveTextContent('Неверно (-4) · прогресс 0%')
-    expect(screen.queryByRole('button', { name: 'Далее' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Далее' })).toBeEnabled()
     expect(screen.getByRole('status')).not.toHaveTextContent('Ответ: собака')
     const retry = screen.getByRole('textbox', { name: 'Введите перевод' })
     expect(retry).toBeEnabled()
@@ -119,7 +121,7 @@ describe('письменная тренировка', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
-    expect(screen.getByText('С ответом: 2')).toBeInTheDocument()
+    expect(screen.getByText('Точность: 50%')).toBeInTheDocument()
   })
 
   it('подсказка открывает одну букву и сама отправляет полное слово', async () => {
@@ -146,6 +148,38 @@ describe('письменная тренировка', () => {
     expect(api.letterHint).toHaveBeenLastCalledWith('i1', 'к')
     expect(api.answerText).toHaveBeenCalledWith('i1', 'кот')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4) · прогресс 4%')
+  })
+
+  it('заполняет поле раскрытым ответом и не дублирует его отдельной плашкой', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.revealAnswer).mockResolvedValue({
+      outcome: 'revealed',
+      expected_answers: ['moved her stuff out today'],
+    })
+    vi.mocked(api.startTraining).mockResolvedValue({
+      id: 's',
+      purpose: 'free',
+      mode: 'input',
+      direction: 'ru_en',
+      items: [
+        { id: 'i', prompt: 'перенесла вещи', options: [] },
+        { id: 'i2', prompt: 'кот', options: [] },
+      ],
+    })
+    renderPage()
+    await user.click(screen.getByLabelText('Написание слова: RU → EN'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите слово' })
+    await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
+    expect(input).toHaveValue('moved her stuff out today')
+    expect(screen.queryByText(/^Ответ:/)).not.toBeInTheDocument()
+    const answer = screen.getByRole('group', { name: 'Ответ' })
+    expect(answer).not.toHaveTextContent('moved her stuff out today')
+    expect(within(answer).getByRole('button')).toBeInTheDocument()
+    vi.mocked(api.skipItem).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 0 })
+    await user.click(screen.getByRole('button', { name: 'Далее' }))
+    expect(api.skipItem).toHaveBeenCalledExactlyOnceWith('i')
+    expect(await screen.findByText('кот')).toBeInTheDocument()
   })
 
   it('сохраняет текст после сетевой ошибки и позволяет повторить', async () => {

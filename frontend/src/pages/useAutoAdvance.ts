@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { isSpeechBusy, useSpeech } from '../speech'
 
 export function useAutoAdvance(
@@ -9,41 +9,32 @@ export function useAutoAdvance(
 ) {
   const { busy } = useSpeech()
   const [elapsed, setElapsed] = useState<string | null>(null)
-  const cancelled = useRef<string | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [cancelled, setCancelled] = useState<string | null>(null)
 
   function cancel() {
-    cancelled.current = target
-    if (timer.current !== null) clearTimeout(timer.current)
-    timer.current = null
+    setCancelled(target)
   }
 
   const feedbackElapsed = useEffectEvent((key: string) => {
-    if (key === target && enabled && !suspended && cancelled.current !== key) setElapsed(key)
+    if (key === target && enabled && !suspended && cancelled !== key) setElapsed(key)
   })
   const advance = useEffectEvent(() => {
-    if (target && enabled && !suspended && cancelled.current !== target && !isSpeechBusy()) {
-      cancelled.current = target
-      next()
-    }
+    if (target && enabled && !suspended && cancelled !== target && !isSpeechBusy()) next()
   })
 
   useEffect(() => {
-    if (!enabled || suspended) {
-      if (target) cancelled.current = target
-      return
-    }
-    if (!target || cancelled.current === target) return
-    timer.current = setTimeout(() => feedbackElapsed(target), 1500)
-    return () => {
-      if (timer.current !== null) clearTimeout(timer.current)
-      timer.current = null
-    }
-  }, [target, enabled, suspended])
+    if (!enabled || suspended || !target || cancelled === target) return
+    const timer = setTimeout(() => feedbackElapsed(target), 1500)
+    return () => clearTimeout(timer)
+  }, [target, enabled, suspended, cancelled])
 
   useEffect(() => {
     if (target && elapsed === target && !busy) advance()
   }, [target, elapsed, busy, enabled, suspended])
 
-  return cancel
+  return {
+    cancel,
+    // A target stays set only while auto-next is armed for the current answer.
+    pending: !!target && enabled && !suspended && cancelled !== target,
+  }
 }

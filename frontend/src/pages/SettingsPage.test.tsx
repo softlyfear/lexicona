@@ -96,6 +96,16 @@ describe('профиль и смена пароля', () => {
     const toggle = screen.getByRole('checkbox', {
       name: 'Автоматически переходить после верного ответа',
     })
+    const promptToggle = screen.getByRole('checkbox', { name: 'Автоматически озвучивать задание' })
+    const speechBlock = promptToggle.closest('label')!.parentElement!
+    expect(speechBlock).toContainElement(toggle)
+    expect(
+      promptToggle.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      toggle.compareDocumentPosition(screen.getByRole('button', { name: 'Остановить речь' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(toggle).not.toBeChecked()
     toggle.focus()
     await user.keyboard(' ')

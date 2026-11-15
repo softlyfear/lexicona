@@ -82,6 +82,7 @@ async def test_summary_owner_read_only_no_store_and_secrecy(alice: Client, bob: 
         "first_attempt": {
             "correct": 0,
             "incorrect": 0,
+            "assisted": 0,
             "unknown": 0,
             "not_attempted": 1,
             "not_applicable": 0,
@@ -102,7 +103,8 @@ async def test_no_attempt_completion_is_not_an_error(alice: Client, ending: str)
     session = await start(alice)
     await alice.post(f"/api/training/items/{session['items'][0]['id']}/{ending}")
     result = (await alice.get(f"/api/training/sessions/{session['id']}/summary")).json()
-    assert result["first_attempt"]["not_attempted"] == 1
+    assert result["first_attempt"]["not_attempted"] == int(ending == "skip")
+    assert result["first_attempt"]["assisted"] == int(ending == "reveal")
     assert result["first_attempt"]["incorrect"] == 0
     assert result["first_attempt"]["accuracy_percent"] is None
 
@@ -164,3 +166,23 @@ async def test_hint_before_first_submission_and_deleted_word_history(alice: Clie
     assert summary["first_attempt"]["accuracy_percent"] == 100
     await alice.delete(f"/api/words/{word['id']}")
     assert (await alice.get(summary_url)).json() == summary
+
+
+async def test_assistance_counts_only_reveal_before_first_answer(alice: Client) -> None:
+    for index in range(5):
+        await add_word(alice, f"word {index}", f"перевод {index}")
+    session = await start(alice)
+    for index, item in enumerate(session["items"]):
+        url = f"/api/training/items/{item['id']}"
+        if index < 3:
+            await alice.post(f"{url}/answer", json={"text": f"перевод {index}"})
+        else:
+            if index == 3:
+                await alice.post(f"{url}/answer", json={"text": "wrong"})
+            await alice.post(f"{url}/reveal")
+    summary = (await alice.get(f"/api/training/sessions/{session['id']}/summary")).json()
+    assert summary["first_attempt"]["correct"] == 3
+    assert summary["first_attempt"]["incorrect"] == 1
+    assert summary["first_attempt"]["assisted"] == 1
+    assert summary["first_attempt"]["accuracy_percent"] == 75
+    assert summary["completion"]["assisted"] == 2

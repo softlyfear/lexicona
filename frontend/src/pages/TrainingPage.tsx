@@ -31,6 +31,7 @@ import { TrainingSummary } from './TrainingSummary'
 import { resumedResult } from './resume'
 import css from './pages.module.css'
 import { useAutoAdvance } from './useAutoAdvance'
+import { getSessionRevision } from '../session'
 
 const MODES: { mode: NewTrainingMode; direction: Direction; label: string }[] = [
   { mode: 'choice', direction: 'en_ru', label: 'Поиск перевода: EN → RU' },
@@ -768,13 +769,16 @@ export function Run({
   const [transcriptions, setTranscriptions] = useState<Record<string, string | null>>({})
   const [autoCandidate, setAutoCandidate] = useState<string | null>(null)
   const advancedItem = useRef<string | null>(null)
+  const active = useRef(true)
+  const speechRequest = useRef<{ generation: number; revision: number } | null>(null)
+  const [nextPending, setNextPending] = useState(false)
   const locked = useRef(false)
   const item = session.items[index]
   const result = attempt ?? undefined
   const done = index >= session.items.length
   const canRetry = result?.outcome === 'answered' && 'correct' in result && !result.correct
   const itemKey = item ? `${session.id}:${item.id}` : null
-  const cancelAuto = useAutoAdvance(
+  const { cancel: cancelAuto, pending: autoPending } = useAutoAdvance(
     itemKey && autoCandidate === itemKey ? itemKey : null,
     autoAdvance,
     finishing || editingId !== null,
@@ -796,12 +800,32 @@ export function Run({
       }
     },
     onSuccess: (data) => {
+      if (!active.current || speechRequest.current?.revision !== getSessionRevision()) return
       if (data.outcome === 'revealed') {
         setRevealed(data.expected_answers)
+        if (session.mode === 'input' || session.mode === 'cloze')
+          setText(data.expected_answers[0] ?? '')
         locked.current = false
         return
       }
       if (data.outcome === 'answered' && 'submitted_text' in data) setText(data.submitted_text)
+      if (
+        (session.mode === 'input' || session.mode === 'cloze') &&
+        (data.outcome === 'assisted' ||
+          (data.outcome === 'answered' && 'correct' in data && data.correct)) &&
+        'expected_answers' in data
+      ) {
+        if (data.outcome === 'assisted') setText(data.expected_answers[0] ?? '')
+        const language = session.direction === 'en_ru' ? 'ru' : 'en'
+        const request = speechRequest.current
+        if (
+          active.current &&
+          request?.revision === getSessionRevision() &&
+          request.generation === speechGeneration() &&
+          speechEnabled(language)
+        )
+          speak(data.expected_answers.join(', '), language)
+      }
       setAttempt(data)
       setAutoCandidate(
         autoAdvance && data.outcome === 'answered' && 'correct' in data && data.correct
@@ -818,10 +842,15 @@ export function Run({
   })
 
   useEffect(() => {
-    return () => void queryClient.invalidateQueries({ queryKey: ['words'] })
+    active.current = true
+    return () => {
+      active.current = false
+      cancelSpeech()
+      void queryClient.invalidateQueries({ queryKey: ['words'] })
+    }
   }, [queryClient])
 
-  const busy = action.isPending
+  const busy = action.isPending || nextPending
   const disabled = busy || hintPending || (!!result && !canRetry)
 
   function perform(value: Action) {
@@ -834,20 +863,40 @@ export function Run({
       if (spoken && speechEnabled(answerLanguage)) speak(spoken, answerLanguage)
     }
     locked.current = true
+    speechRequest.current = { generation: speechGeneration(), revision: getSessionRevision() }
     action.mutate(value)
   }
 
-  function next() {
+  async function next() {
     if (
       !itemKey ||
       advancedItem.current === itemKey ||
-      !result ||
-      canRetry ||
+      (!result && !revealed) ||
+      busy ||
+      (canRetry && locked.current) ||
       finishing ||
       editingId
     )
       return
     advancedItem.current = itemKey
+    if (canRetry || (!result && revealed)) {
+      locked.current = true
+      setNextPending(true)
+      const revision = getSessionRevision()
+      try {
+        await api.skipItem(item.id)
+        if (!active.current || revision !== getSessionRevision()) return
+      } catch (error) {
+        if (active.current && revision === getSessionRevision()) {
+          advancedItem.current = null
+          locked.current = false
+          setHintError(errorMessage(error))
+        }
+        return
+      } finally {
+        if (active.current) setNextPending(false)
+      }
+    }
     cancelAuto()
     setAutoCandidate(null)
     cancelSpeech()
@@ -910,7 +959,12 @@ export function Run({
       const n = Number(event.key)
       if ((!result || canRetry) && /^[1-6]$/.test(event.key) && n <= item.options.length)
         perform({ kind: 'choice', option: n - 1 })
-      else if (result && !canRetry && (event.key === 'Enter' || event.key === ' ')) {
+      else if (
+        result &&
+        !canRetry &&
+        !autoPending &&
+        (event.key === 'Enter' || event.key === ' ')
+      ) {
         event.preventDefault()
         next()
       }
@@ -932,13 +986,14 @@ export function Run({
       ? null
       : (revealed ??
         (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null))
-  const revealedAnswers =
-    result?.outcome === 'assisted' ||
-    (result?.outcome === 'answered' &&
-      'submitted_text' in result &&
-      (!('correct' in result) || result.correct))
+  const revealedAnswers = !result
+    ? revealed
+    : result.outcome === 'assisted' ||
+        (result.outcome === 'answered' &&
+          'submitted_text' in result &&
+          (!('correct' in result) || result.correct))
       ? result.expected_answers
-      : result?.outcome === 'answered' && 'correct_option' in result && result.correct
+      : result.outcome === 'answered' && 'correct_option' in result && result.correct
         ? [item.options[result.correct_option]].filter((answer) => answer !== undefined)
         : null
   let label = ''
@@ -1173,6 +1228,27 @@ export function Run({
             >
               Пропустить
             </button>
+            {(result || revealed) && !autoPending && (
+              <button
+                type="button"
+                className={ui.primary}
+                onClick={() => void next()}
+                disabled={busy || hintPending}
+                autoFocus={!canRetry}
+              >
+                Далее
+              </button>
+            )}
+            {revealedAnswers &&
+              revealedAnswers.length > 0 &&
+              (session.mode === 'input' || session.mode === 'cloze') && (
+                <span role="group" aria-label="Ответ">
+                  <SpeakButton
+                    text={revealedAnswers.join(', ')}
+                    lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
+                  />
+                </span>
+              )}
           </div>
           {action.isError && (
             <p className={ui.error} role="alert">
@@ -1203,26 +1279,6 @@ export function Run({
                 </span>
               </div>
               {canRetry && <p>Попробуйте ещё раз. Повторного штрафа не будет.</p>}
-              <div className={css.trainingActions}>
-                {revealedAnswers && revealedAnswers.length > 0 && (
-                  <div className={css.revealedAnswer} role="group" aria-label="Ответ">
-                    <p className={css.answerText} lang={answerLang}>
-                      <span className={css.answerLabel}>Ответ: </span>
-                      {revealedAnswers.join(', ')}
-                    </p>
-                    <SpeakButton
-                      className={css.answerSpeak}
-                      text={revealedAnswers.join(', ')}
-                      lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
-                    />
-                  </div>
-                )}
-                {!canRetry && (
-                  <button className={ui.primary} onClick={next} autoFocus>
-                    Далее
-                  </button>
-                )}
-              </div>
             </div>
           )}
         </>

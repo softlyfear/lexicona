@@ -91,7 +91,7 @@ export function MatchingRun({
       const result = answers[item.id]
       return result?.outcome === 'answered' && 'correct' in result && result.correct
     })
-  const cancelAuto = useAutoAdvance(
+  const { cancel: cancelAuto, pending: autoPending } = useAutoAdvance(
     !done && batchCorrect && autoCandidate === batchKey ? batchKey : null,
     autoAdvance,
     finishing || editingId !== null,
@@ -105,6 +105,7 @@ export function MatchingRun({
       return api.skipItem(value.item.id)
     },
     onSuccess: (data, value) => {
+      if (data.outcome === 'revealed') return
       setAnswers((previous) => ({ ...previous, [value.item.id]: data }))
       setAutoCandidate(
         autoAdvance && data.outcome === 'answered' && 'correct' in data && data.correct
@@ -301,6 +302,11 @@ export function MatchingRun({
             >
               Пропустить
             </button>
+            {batchDone && !autoPending && (
+              <button className={ui.primary} onClick={next} autoFocus>
+                {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
+              </button>
+            )}
           </div>
           {action.isError && (
             <p className={ui.error} role="alert">
@@ -356,13 +362,6 @@ export function MatchingRun({
                   )}
                 </>
               )}
-            </div>
-          )}
-          {batchDone && (
-            <div className={css.trainingActions}>
-              <button className={ui.primary} onClick={next} autoFocus>
-                {batchIndex + 1 === batchCount ? 'Завершить занятие' : 'Следующая группа'}
-              </button>
             </div>
           )}
           {editNote && <p className={ui.muted}>{editNote}</p>}

@@ -102,8 +102,8 @@ describe('недоступное задание', () => {
       expect(status).not.toHaveTextContent('Ответ:')
       expect(screen.getByRole('button', { name: 'Пропустить' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Далее' }))
-      expect(await screen.findByText('Недоступно: 1')).toBeInTheDocument()
-      expect(screen.getByText('Пропущено: 0')).toBeInTheDocument()
+      expect(await screen.findByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+      expect(screen.queryByText(/Недоступно:|Пропущено:/)).not.toBeInTheDocument()
       {
         expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
         expect(screen.getByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()

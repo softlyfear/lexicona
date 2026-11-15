@@ -72,7 +72,7 @@ describe('помощь и пропуск', () => {
     ['input', 'ru_en', 'Написание слова: RU → EN'],
   ] as const)('учитывает помощь и пропуск отдельно: %s %s', async (mode, direction, label) => {
     vi.mocked(api.trainingSummary).mockResolvedValue(
-      summaryFixture({ assisted: 1, skipped: 1 }, { not_attempted: 2 }),
+      summaryFixture({ assisted: 1, skipped: 1 }, { assisted: 1, not_attempted: 1 }),
     )
     vi.mocked(api.startTraining).mockResolvedValue({
       id: 's',
@@ -100,7 +100,8 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(api.revealAnswer).toHaveBeenCalledWith('i1')
     expect(await screen.findByRole('status')).toHaveTextContent('С помощью (0) · прогресс 30%')
-    expect(screen.getByRole('status')).toHaveTextContent('Ответ: b')
+    expect(screen.queryByText('Ответ: b')).not.toBeInTheDocument()
+    if (mode === 'input') expect(screen.getByRole('textbox')).toHaveValue('b')
     expect(screen.getByRole('button', { name: 'Пропустить' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('second')).toBeInTheDocument()
@@ -110,7 +111,7 @@ describe('помощь и пропуск', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('Ответ:')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('С помощью: 1')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
+    expect(screen.queryByText(/Пропущено:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/0 из 0|0%/)).not.toBeInTheDocument()
   })
 
@@ -178,7 +179,7 @@ describe('помощь и пропуск', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4)')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('Верно: 1 · Неверно: 0')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 0')).toBeInTheDocument()
+    expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
   })
 
   it('после сетевой ошибки помощи сохраняет ввод и позволяет повторить', async () => {
@@ -209,7 +210,7 @@ describe('помощь и пропуск', () => {
     expect(input).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(await screen.findByRole('status')).toHaveTextContent('С помощью')
-    expect(input).toHaveValue('ca')
+    expect(input).toHaveValue('cat')
   })
 
   it('после сетевой ошибки пропуска сохраняет ввод и позволяет повторить', async () => {
@@ -243,7 +244,7 @@ describe('помощь и пропуск', () => {
     vi.mocked(api.trainingSummary).mockResolvedValue(
       summaryFixture(
         { answered: 2, assisted: 1, skipped: 1 },
-        { correct: 1, incorrect: 1, not_attempted: 2, accuracy_percent: 50 },
+        { correct: 1, incorrect: 1, assisted: 1, not_attempted: 1, accuracy_percent: 50 },
       ),
     )
     vi.mocked(api.startTraining).mockResolvedValue({
@@ -310,9 +311,8 @@ describe('помощь и пропуск', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
-    expect(screen.getByText('С ответом: 2')).toBeInTheDocument()
+    expect(screen.queryByText(/С ответом:|Пропущено:/)).not.toBeInTheDocument()
     expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
-    expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
   })
 
   it('карточный reveal показывает пропуск, сохранённый конкурентным запросом', async () => {
@@ -360,8 +360,8 @@ describe('помощь и пропуск', () => {
       expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
       expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Далее' }))
-      expect(await screen.findByText('С ответом: 0')).toBeInTheDocument()
-      expect(screen.getByText('Пропущено: 1')).toBeInTheDocument()
+      expect(await screen.findByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+      expect(screen.queryByText(/С ответом:|Пропущено:/)).not.toBeInTheDocument()
     },
   )
 })
