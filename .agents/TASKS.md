@@ -82,6 +82,26 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   AC: explicit existing OpenRouter provider; request 3–5 common distinct meanings
   but allow fewer; no verified-frequency claim; preserve manual translations;
   no automatic save; bounded validated output and stale/error/isolation tests.
+- UBUNTU-001 / duplicate Flatpak Chrome launcher instructions / accepted / attempt 1.
+  New user report: README icon script creates a second desktop entry and leaves
+  the old iconless launcher. Independent documentation-only slice, disjoint from
+  FEEDBACK-006/007 product files.
+  Owner: devops-agent, README.md only (no host or user-profile mutations).
+  AC: stop guessing the most recent Chrome icon/app ID; repair a specifically
+  identified existing launcher instead of blindly creating another; explain safe
+  diagnosis and reversible explicit handling of the obsolete duplicate without
+  deleting another Chrome app/profile. Do not run pkill or alter real launchers.
+  Verify commands against current primary Flatpak/freedesktop documentation and
+  isolated temporary fixtures; no new helper/dependency unless necessary.
+  Checks: content/command validation, independent reviewer; orchestrator Git.
+  Evidence: README shell blocks bash -n passed; temp fixtures cover distinct
+  apps/profiles, duplicates, exported symlinks, spaces and non-default XDG paths.
+  Orchestrator separately confirmed the two actual launchers share app/profile,
+  moved only the iconless duplicate to a restorable state-directory backup,
+  refreshed desktop database and verified exactly one themed-icon entry remains.
+  No host-specific app ID or path was copied into tracked documentation.
+  Independent reviewer: Ship. Orchestrator independently checked shell syntax
+  and official Flatpak filesystem permission syntax; accepted.
 
 Delivery order: 001 → 002 → 003 → 004 → 005 → 006 → 007.
 Each ticket receives exact file boundaries, evidence, review and acceptance before

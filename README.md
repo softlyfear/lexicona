@@ -56,41 +56,79 @@ docker compose --profile lexicona exec app python -m lexicona.infrastructure.kok
 Откройте сайт по HTTPS и в настройках нажмите «Установка». На iPhone и iPad в Safari:
 «Поделиться», затем «На экран Домой».
 
-На Ubuntu Chrome из Flatpak сам не может записать ярлык. Один раз в терминале:
+### Ubuntu: Chrome из Flatpak
+
+Сначала проверьте меню приложений (Super → «Lexicona»): если ярлык уже работает
+и имеет значок, ничего создавать не нужно. Если установка из Chrome не создаёт
+ярлык, проверьте пакет через `flatpak list --app`. Только для `com.google.Chrome`
+при необходимости можно разрешить запись в два пользовательских каталога:
 
 ```sh
-mkdir -p ~/.local/share/applications ~/.local/share/icons
-flatpak override --user --filesystem=~/.local/share/applications:create --filesystem=~/.local/share/icons:create com.google.Chrome
-pkill -f chrome || true
+flatpak override --user \
+  --filesystem=xdg-data/applications:create \
+  --filesystem=xdg-data/icons:create com.google.Chrome
 ```
 
-Полностью откройте Chrome снова и нажмите «Установка». Картинка после этого сохраняется,
-но пункт меню Chrome часто не оставляет, а старый кэш значков её не видит: в меню
-остаётся серая плитка. Сразу после установки выполните:
+Это расширяет доступ Chrome к вашим ярлыкам и значкам. Сохраните работу, закройте
+окна Chrome и установленных через него приложений обычным способом, завершите
+Chrome через его меню (включая фоновую работу, если она включена), затем откройте
+снова. Установите Lexicona в нужном профиле, только если она ещё не установлена.
+Не завершайте все процессы Chrome принудительно и не переустанавливайте приложение
+ради значка.
+
+**Если значок пустой или ярлыков два**, сначала посмотрите существующие записи.
+Следующая команда только читает файлы; она показывает и другие приложения Chrome:
 
 ```sh
-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
-ICON=$(find ~/.local/share/icons/hicolor/512x512/apps -name 'chrome-*-Default.png' -printf '%T@ %f\n' | sort -n | tail -1 | cut -d' ' -f2)
-APP_ID=${ICON#chrome-}
-APP_ID=${APP_ID%-Default.png}
-cat > ~/.local/share/applications/chrome-${APP_ID}-Default.desktop <<EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Terminal=false
-Name=Lexicona
-Exec=/var/lib/flatpak/exports/bin/com.google.Chrome --profile-directory=Default --app-id=${APP_ID}
-Icon=chrome-${APP_ID}-Default
-StartupWMClass=crx_${APP_ID}
-StartupNotify=true
-EOF
-update-desktop-database ~/.local/share/applications
+for dir in \
+  "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+  "$HOME/.local/share/flatpak/exports/share/applications" \
+  /var/lib/flatpak/exports/share/applications
+do
+  if [ -d "$dir" ]; then
+    find "$dir" -maxdepth 1 \( -type f -o -type l \) -iname '*chrome*.desktop' \
+      -exec grep -H -E '^(Name(\[[^]]+\])?|Exec|Icon|StartupWMClass|X-Flatpak)=' {} +
+  fi
+done
 ```
 
-Ярлык называется Lexicona. Он появляется в меню приложений: клавиша Super, затем поиск
-«Lexicona». На рабочий стол Ubuntu его не кладёт. Если установлены и другие приложения
-Chrome, команда берёт самый новый значок. Если имя пакета другое, его покажет
-`flatpak list --app`.
+Сопоставьте `Name=Lexicona`, `--app-id` и `--profile-directory` в `Exec` с приложением
+в нужном профиле Chrome. Если указан `--user-data-dir`, он тоже должен совпадать.
+Одинаковое название ещё не означает дубликат: другой профиль, приложение или
+установка Chrome могут требовать отдельный ярлык. Не выбирайте самый свежий PNG
+и не считайте профиль `Default` единственно возможным.
+
+Для **одного точно выбранного существующего пользовательского `.desktop`**:
+
+1. В файловом менеджере включите скрытые файлы (Ctrl+H). Скопируйте выбранный файл
+   в `~/.local/state/lexicona/launcher-backups/`, создав каталог при необходимости.
+   Дайте копии уникальное имя с датой, чтобы не затереть предыдущую.
+2. Откройте оригинал в текстовом редакторе. В секции `[Desktop Entry]` исправьте
+   только `Icon=`. Абсолютный путь должен вести к существующему изображению,
+   доступному **на хосте**, а не только внутри песочницы. Имя значка темы пишется
+   без пути и расширения: например, `chrome-APP_ID-PROFILE`, но только если
+   соответствующий PNG действительно найден в пользовательском
+   `icons/hicolor/.../apps/` и относится к этому приложению и профилю.
+   `APP_ID` и `PROFILE` здесь — обозначения, не готовые значения для копирования.
+   Не меняйте `Exec`, имя файла и профиль; не создавайте второй `.desktop`.
+3. Если второй пользовательский файл подтверждён как устаревший дубликат той же
+   установки, app ID и профиля, сначала проверьте запуск оставляемого ярлыка.
+   Затем переместите **только этот конкретный дубликат** в каталог резервных копий
+   под уникальным именем. Не удаляйте файлы по маске. Для отмены верните файл
+   на исходное место; резервная копия также позволяет отменить правку `Icon=`.
+
+Не редактируйте и не перемещайте экспортируемые Flatpak файлы или символические
+ссылки в `flatpak/exports`: ими управляет Flatpak. Префикс пакета в имени сам
+по себе не доказывает, что запись лишняя. Если не удалось однозначно определить
+файл или найти изображение, остановитесь на диагностике, а не создавайте новый ярлык.
+После изменения заново откройте меню приложений; если оболочка хранит старую
+запись, сохраните работу и выйдите из сеанса Ubuntu, затем войдите снова.
+Закреплённый старый ярлык при необходимости открепите и закрепите оставшийся.
+
+Основания: [разрешения Flatpak](https://docs.flatpak.org/en/latest/sandbox-permissions.html#filesystem-access),
+[экспорт desktop-файлов](https://docs.flatpak.org/en/latest/conventions.html#desktop-files),
+[ключ Icon](https://specifications.freedesktop.org/desktop-entry-spec/latest/recognized-keys.html)
+и [поиск значков темы](https://specifications.freedesktop.org/icon-theme-spec/latest/#icon_lookup).
 
 ## Как запустить у себя
 
