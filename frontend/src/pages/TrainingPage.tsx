@@ -632,25 +632,27 @@ function Setup({
                   {errorMessage(tags.error)} Не удалось загрузить теги; можно начать без них.
                 </p>
               )}
-              <div className={css.tagList}>
-                {tags.data?.map((tag) => (
-                  <label className={css.tag} key={tag.id}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTagIds.includes(tag.id)}
-                      disabled={!selectedTagIds.includes(tag.id) && selectedTagIds.length >= 20}
-                      onChange={(event) =>
-                        setTagIds(
-                          event.target.checked
-                            ? [...selectedTagIds, tag.id]
-                            : selectedTagIds.filter((id) => id !== tag.id),
-                        )
-                      }
-                    />
-                    {tag.name}
-                  </label>
-                ))}
-              </div>
+              {!!tags.data?.length && (
+                <div className={css.tagList}>
+                  {tags.data.map((tag) => (
+                    <label className={css.tag} key={tag.id}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTagIds.includes(tag.id)}
+                        disabled={!selectedTagIds.includes(tag.id) && selectedTagIds.length >= 20}
+                        onChange={(event) =>
+                          setTagIds(
+                            event.target.checked
+                              ? [...selectedTagIds, tag.id]
+                              : selectedTagIds.filter((id) => id !== tag.id),
+                          )
+                        }
+                      />
+                      {tag.name}
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className={css.trainingBounds}>
                 <label className={ui.field}>
                   <span className={ui.label}>Прогресс от, %</span>
@@ -677,9 +679,11 @@ function Setup({
                   />
                 </label>
               </div>
-              <p id="training-progress-hint" className={validBounds ? ui.muted : ui.error}>
-                {validBounds ? '' : 'Введите неотрицательные целые числа: от меньшего к большему.'}
-              </p>
+              {!validBounds && (
+                <p id="training-progress-hint" className={ui.error}>
+                  Введите неотрицательные целые числа: от меньшего к большему.
+                </p>
+              )}
               <div className={css.actions}>
                 <button
                   type="button"
