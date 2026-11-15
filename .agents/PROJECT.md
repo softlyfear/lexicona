@@ -255,34 +255,24 @@ User.statistics_started_at отмечает границу достоверно�
 GET /statistics?period=30d|year|all считает московские дни (UTC+3), нулевые дни и all-time
 счётчики. Word.progress>=100 означает выученное в этих счётчиках, без исключения из занятий.
 
-SPEECH-002 добавляет локальный CPU Piper1.8.0: GET /speech/voices, POST /speech/synthesize
-с auth/CSRF/no-store, fixed voice allowlist10, text<=2000/rate1/.75. Изолированный CLI процесс,
-sync semaphore сохраняется до kill/wait при отмене HTTP; timeout30с, WAV<=16MiB, temp cleanup.
-Runtime не скачивает модели. Отдельный CLI download использует pinned HF revision/SHA256,
-атомарные файлы и сохраняет MODEL_CARD; модели в data/tts (/data/tts в Docker), вне Git.
-Общий speech.ts использует fetch/audio/Blob URL только в памяти, отмену generation/owner,
-предпочтения auto/server/browser и US/GB/RU voice IDs. После NotAllowedError готовый Audio
-повторно запускается синхронно по ручному нажатию без fetch; cancel очищает его. Полные
-status/Stop остаются в Settings, на остальных страницах видны только actionable ошибки.
-В auto неподдерживаемый сервером locale (например старый en-AU) использует браузерный
-голос строго того же locale; явный server или недоступный сохранённый server ID не подменяются.
+Kokoro is the only server speech provider; Russian uses the browser.
+GET /speech/voices and POST /speech/synthesize preserve auth/CSRF/no-store,
+the fixed 28-voice English allowlist, text<=2000, and five supported speech rates.
+The isolated Python 3.13 runtime serves the Python 3.14 backend and is included
+in Docker. infrastructure/kokoro.py manages one CPU worker over stdin/stdout,
+bounded by a semaphore, a 30-second timeout and a 16 MiB WAV limit; failure
+kills/reaps the worker. Explicit make kokoro-voices downloads SHA-256-pinned
+models into tts/kokoro; synthesis never downloads models. Heart/Emma are the
+automatic US/GB defaults.
 
-SPEECH-004 adds an opt-in local Kokoro provider (`LEXICONA_TTS_ENGINE=kokoro`),
-keeping Piper as the default. `runtime/kokoro` locks an isolated Python 3.13
-environment; the backend stays on Python 3.14. `infrastructure/kokoro.py` manages
-one CPU worker over stdin/stdout, bounded by a semaphore, 30-second timeout and
-16 MiB WAV limit; failure kills/reaps the worker and permits a fresh start.
-SPEECH-005 exposes all 28 English voices from the installed model: 20 en-US
-(11 female, 9 male), 8 en-GB (4 female, 4 male). Heart/Emma remain the automatic
-US/GB defaults; existing voice IDs are preserved. Russian uses the browser.
-Explicit `make kokoro-voices` downloads pinned SHA-256 models into `tts/kokoro`;
-synthesis does not download models. The optional runtime is not in the Docker
-image. A local test database/account are isolated under ignored `.local/`.
-Long text may reach the synthesis timeout; listening quality remains a manual
-assessment. The existing authenticated speech API and frontend catalog are reused.
+speech.ts keeps fetch/audio/Blob URLs in memory with generation/owner cancellation.
+Blocked autoplay retains ready audio for synchronous manual replay without fetch;
+cancel clears it. Settings shows full status/Stop; other pages show actionable
+errors. Automatic unsupported locales use a browser voice of the same locale;
+explicit unavailable server voices are not silently substituted.
 
-FEEDBACK-001 adds owner-scoped GET /training/sessions/{id}/summary. Completion
-counts and first-submission accuracy are separate dimensions: immutable
+Owner-scoped GET /training/sessions/{id}/summary returns completion counts
+separately from first-submission accuracy. Immutable
 AnswerEvent supplies correct/incorrect even after correction, reveal or skip.
 Missing historical evidence is unknown rather than reconstructed from terminal
 correctness; accuracy_percent is null when evidence is incomplete. Letter hints

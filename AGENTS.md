@@ -99,7 +99,7 @@ subdomain, and DNS before changing the server.
 
 The orchestrator handles one vertical ticket: outcome, acceptance criteria (AC),
 file boundaries, dependency order, check owner, and limitations. Shared protocol:
-`.agents/TASKS.md`, `.agents/PROJECT.md`, `.agents/TASKS-archive.md`.
+`.agents/TASKS.md` and `.agents/PROJECT.md`.
 These files are not OpenCode runtime configuration. Private product requirements
 remain under `.local/`.
 
@@ -113,8 +113,11 @@ remain under `.local/`.
    after code and tests are complete.
 4. Independent `code-reviewer` reads the whole diff and checks AC, security, and
    gate evidence; returns `Ship` or `No-Ship` with files and reproduction steps.
-5. The orchestrator accepts and archives the ticket, or increments the attempt
-   and returns findings to owners before another review.
+5. The orchestrator accepts the ticket and removes its completed record, or
+   increments the attempt and returns findings to owners before another review.
+   Keep only active tickets in TASKS.md; completed history stays in Git, not an
+   archive file. Preserve current technical contracts in PROJECT.md without
+   copying ticket reports or verification logs.
 
 Use the same gate evidence for the same code. Repeat the gate after relevant
 code/test/check-configuration changes or failure; a protocol/status-only edit
