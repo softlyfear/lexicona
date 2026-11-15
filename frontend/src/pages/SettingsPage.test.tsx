@@ -88,6 +88,11 @@ describe('профиль и смена пароля', () => {
     const storage = vi.spyOn(Storage.prototype, 'setItem')
     const user = userEvent.setup()
     const view = renderSettings()
+    expect(screen.queryByText(/Через 1,5 секунды/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Кнопка «Проверить» выше/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Снятый язык не озвучивается в словаре и на тренировке.'),
+    ).toBeInTheDocument()
     const toggle = screen.getByRole('checkbox', {
       name: 'Автоматически переходить после верного ответа',
     })

@@ -363,9 +363,6 @@ export function WordForm({
         changeTranslations(
           `${latest}${latest && !latest.endsWith('\n') ? '\n' : ''}${additions.join('\n')}`,
         )
-        setTranslationsMessage(
-          `Добавлено переводов в черновик: ${additions.length}. Проверьте их и сохраните слово.`,
-        )
       }
       setTranslationsState('ready')
     } catch (error) {
@@ -596,10 +593,7 @@ export function WordForm({
         }
         onClick={() => {
           const added = chooseTranslation(value, entryId, generated)
-          if (generated && added)
-            setTranslationsMessage(
-              'Выбранный вариант добавлен в черновик. Проверьте переводы и сохраните слово.',
-            )
+          if (generated && added) setTranslationsMessage('')
         }}
       >
         {value}
@@ -821,11 +815,9 @@ export function WordForm({
             Заполнить с помощью ИИ
           </button>
           <p id={translationsHelpId} className={ui.muted}>
-            DeepSeek · OpenRouter: 3–5 распространённых значений, иногда меньше. Порядок — оценка
-            ИИ, не проверенная частотность. Ручные переводы сохраняются. Максимум 10 переводов по
-            200 символов.
+            3–5 распространённых значений
           </p>
-          {translationsState !== 'idle' && (
+          {(translationsState === 'loading' || translationsMessage) && (
             <p
               role={translationsState === 'error' ? 'alert' : 'status'}
               className={translationsState === 'error' ? ui.error : ui.muted}

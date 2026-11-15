@@ -73,8 +73,7 @@ export function StatisticsPage() {
             <p className={ui.muted}>
               {stats.data.history_started_at
                 ? `Достоверная история первых ответов начинается ${new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', dateStyle: 'medium' }).format(new Date(stats.data.history_started_at.endsWith('Z') ? stats.data.history_started_at : `${stats.data.history_started_at}Z`))}.`
-                : 'Достоверная история первых ответов ещё не началась.'}{' '}
-              Первые попытки старых занятий неизвестны и не учитываются.
+                : 'Достоверная история первых ответов ещё не началась.'}
             </p>
           </section>
           <section className={`${ui.card} ${css.stack}`} aria-label="График">

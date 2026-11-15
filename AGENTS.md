@@ -72,6 +72,10 @@ either way.
 
 ## Engineering invariants
 
+- Keep button and toggle descriptions minimal. Do not add explanatory help text
+  unless the user requests it; retain accessible labels and necessary error or
+  constraint feedback.
+
 - Every user-data query filters by `owner_id`; inaccessible objects return 404.
   Each new endpoint needs a second-user isolation test.
 - Mutations require `X-CSRF-Token`, checked by `current_auth`; `/api/*` responses

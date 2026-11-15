@@ -154,7 +154,6 @@ export function SettingsPage({ user }: { user: User }) {
           <input
             type="checkbox"
             checked={user.preferences?.training_auto_advance === true}
-            aria-describedby="auto-advance-help"
             disabled={autoUpdate.isPending}
             onChange={(event) => {
               if (autoLocked.current) return
@@ -165,10 +164,6 @@ export function SettingsPage({ user }: { user: User }) {
           />
           Автоматически переходить после верного ответа
         </label>
-        <p id="auto-advance-help" className={ui.muted}>
-          Через 1,5 секунды после верного ответа и окончания озвучивания. В сопоставлении — после
-          всех верных пар группы. Показ ответа и пропуск не включают переход.
-        </p>
         {autoUpdate.isPending && <p role="status">Сохраняем автоматический переход…</p>}
         {autoError && (
           <p className={ui.error} role="alert">
@@ -454,10 +449,7 @@ function SpeechSettings() {
             Русский
           </label>
         </fieldset>
-        <p className={ui.muted}>
-          Снятый язык не озвучивается в словаре и на тренировке. Кнопка «Проверить» выше по-прежнему
-          произносит образец.
-        </p>
+        <p className={ui.muted}>Снятый язык не озвучивается в словаре и на тренировке.</p>
         <label className={css.choice}>
           <input
             type="checkbox"

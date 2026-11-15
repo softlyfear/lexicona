@@ -78,10 +78,10 @@ it.each(['add', 'edit'] as const)(
       await user.type(screen.getByLabelText('Заметка'), 'keep note')
     }
     expect(ai()).toHaveAttribute('type', 'button')
-    expect(ai()).toHaveAccessibleDescription(expect.stringContaining('не проверенная частотность'))
+    expect(ai()).toHaveAccessibleDescription('3–5 распространённых значений')
     ai().focus()
     await user.keyboard('{Enter}')
-    expect(await screen.findByText(/Добавлено переводов в черновик: 3/)).toBeInTheDocument()
+    expect(screen.queryByText(/Добавлено переводов в черновик/)).not.toBeInTheDocument()
     expect(draft()).toHaveValue('ручной\nкнига\nбронировать\nзаписывать')
     expect(screen.getByLabelText('Транскрипция')).toHaveValue('/manual/')
     expect(screen.getByLabelText('Пример (EN)')).toHaveValue('Example.')
@@ -115,9 +115,6 @@ it.each([1, 2])('accepts %s available senses without inventing extra entries', a
   const user = userEvent.setup()
   form({ ...word, translations: [] })
   await user.click(ai())
-  expect(
-    await screen.findByText(new RegExp(`Добавлено переводов в черновик: ${count}`)),
-  ).toBeInTheDocument()
   expect(draft()).toHaveValue(result.translations.slice(0, count).join('\n'))
 })
 
@@ -184,7 +181,6 @@ it('uses storage normalization, not answer-only apostrophe and hyphen tolerance'
   const user = userEvent.setup()
   form({ ...word, translations: ['cant', 'low life'] })
   await user.click(ai())
-  expect(await screen.findByText(/Добавлено переводов в черновик: 2/)).toBeInTheDocument()
   expect(draft()).toHaveValue("cant\nlow life\ncan't\nlow-life")
 })
 
@@ -321,7 +317,7 @@ it.each([
   expect(draft()).toHaveValue('ручной')
   expect(ai()).toBeEnabled()
   await user.click(ai())
-  expect(await screen.findByText(/Добавлено переводов в черновик/)).toBeInTheDocument()
+  expect(draft()).toHaveValue('ручной\nкнига\nбронировать\nзаписывать')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(submit).not.toHaveBeenCalled()
 })
