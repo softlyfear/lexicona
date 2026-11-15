@@ -21,7 +21,6 @@ export function TrainingSummary({
   const data = summary.data
   return (
     <section className={`${ui.card} ${css.stack} ${css.summary}`}>
-      <h1 className={css.title}>Готово</h1>
       {summary.isFetching && <p role="status">Загружаем итоги…</p>}
       {summary.isError && (
         <div className={css.stack}>
@@ -38,20 +37,30 @@ export function TrainingSummary({
         </div>
       )}
       {data && !summary.isError && (
-        <>
-          <section aria-label="Первые ответы" className={css.summaryResults}>
-            <p className={css.summaryAccuracy}>
-              Точность:{' '}
-              {data.first_attempt.accuracy_percent === null
-                ? '—'
-                : `${data.first_attempt.accuracy_percent}%`}
-            </p>
-            <p className={css.summaryCounts}>
-              Верно: {data.first_attempt.correct} · Неверно: {data.first_attempt.incorrect}
-            </p>
-            <p className={css.summaryAssisted}>С помощью: {data.first_attempt.assisted}</p>
-          </section>
-        </>
+        <section aria-label="Первые ответы">
+          <dl className={css.statsList}>
+            <div className={css.statsRow}>
+              <dt>Точность</dt>
+              <dd>
+                {data.first_attempt.accuracy_percent === null
+                  ? '—'
+                  : `${data.first_attempt.accuracy_percent}%`}
+              </dd>
+            </div>
+            <div className={css.statsRow}>
+              <dt>Верно</dt>
+              <dd>{data.first_attempt.correct}</dd>
+            </div>
+            <div className={css.statsRow}>
+              <dt>Неверно</dt>
+              <dd>{data.first_attempt.incorrect}</dd>
+            </div>
+            <div className={css.statsRow}>
+              <dt>С помощью</dt>
+              <dd>{data.first_attempt.assisted}</dd>
+            </div>
+          </dl>
+        </section>
       )}
       <div className={css.actions}>
         <button className={ui.primary} onClick={onFinish} disabled={finishing} autoFocus>

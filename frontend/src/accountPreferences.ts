@@ -253,27 +253,41 @@ function patchPreference<K extends keyof AccountPreferences>(
   })
 }
 
-let autoAdvanceEpoch = 0
-export async function putTrainingAutoAdvance(
+type TrainingFlag = 'training_auto_advance' | 'training_auto_check'
+const flagEpochs: Record<TrainingFlag, number> = {
+  training_auto_advance: 0,
+  training_auto_check: 0,
+}
+
+export async function putTrainingFlag(
   userId: string,
+  field: TrainingFlag,
   enabled: boolean,
   revision = getSessionRevision(),
 ): Promise<{ status: 'saved' | 'stale' } | { status: 'error'; error: unknown }> {
   if (!isCurrentSession(revision, userId)) return { status: 'stale' }
-  const epoch = ++autoAdvanceEpoch
-  const current = () => epoch === autoAdvanceEpoch && isCurrentSession(revision, userId)
+  const epoch = ++flagEpochs[field]
+  const current = () => epoch === flagEpochs[field] && isCurrentSession(revision, userId)
   try {
-    const user = await api.updateSettings({ training_auto_advance: enabled })
-    if (!current() || user.id !== userId) return { status: 'stale' }
-    patchPreference(
-      userId,
-      'training_auto_advance',
-      user.preferences?.training_auto_advance === true,
+    const user = await api.updateSettings(
+      field === 'training_auto_advance'
+        ? { training_auto_advance: enabled }
+        : { training_auto_check: enabled },
     )
+    if (!current() || user.id !== userId) return { status: 'stale' }
+    patchPreference(userId, field, user.preferences?.[field] === true)
     return { status: 'saved' }
   } catch (error) {
     return current() ? { status: 'error', error } : { status: 'stale' }
   }
+}
+
+export function putTrainingAutoAdvance(
+  userId: string,
+  enabled: boolean,
+  revision = getSessionRevision(),
+) {
+  return putTrainingFlag(userId, 'training_auto_advance', enabled, revision)
 }
 
 export function scheduleTrainingSave(

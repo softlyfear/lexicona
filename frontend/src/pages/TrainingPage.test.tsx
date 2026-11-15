@@ -250,7 +250,9 @@ describe('TrainingPage', () => {
     await user.keyboard('1')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0)')
     await user.keyboard('{Enter}')
-    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Верно1')
+    expect(results).toHaveTextContent('Неверно1')
   })
 
   it('не показывает кнопку правки без идентификатора слова', async () => {

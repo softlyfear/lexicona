@@ -39,10 +39,13 @@ it('shows only first-answer counts and accuracy in the compact summary', async (
   )
   renderWithClient(<TrainingSummary sessionId="s" onFinish={() => {}} finishing={false} />)
   const results = await screen.findByRole('region', { name: 'Первые ответы' })
-  expect(results).toHaveTextContent('Верно: 42 · Неверно: 8')
-  expect(results).toHaveTextContent('С помощью: 0')
-  expect(results).toHaveTextContent('Точность: 84%')
-  expect(results.querySelectorAll('p')).toHaveLength(3)
+  expect(results).toHaveTextContent('Точность84%')
+  expect(results).toHaveTextContent('Верно42')
+  expect(results).toHaveTextContent('Неверно8')
+  expect(results).toHaveTextContent('С помощью0')
+  expect(results.querySelectorAll('dt')).toHaveLength(4)
+  expect(results.querySelectorAll('dd')).toHaveLength(4)
+  expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   expect(
     screen.queryByText(/Учитывается первый|Способ завершения|Неизвестно:/),
   ).not.toBeInTheDocument()
@@ -81,10 +84,9 @@ it('loads authoritative results, retries once from the keyboard and keeps finish
       ),
     ),
   )
-  expect(await screen.findByText('Точность: 50%')).toBeInTheDocument()
-  expect(screen.getByRole('region', { name: 'Первые ответы' })).toHaveTextContent(
-    'Верно: 1 · Неверно: 1',
-  )
+  expect(await screen.findByText('50%')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Первые ответы' })).toHaveTextContent('Верно1')
+  expect(screen.getByRole('region', { name: 'Первые ответы' })).toHaveTextContent('Неверно1')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   screen.getByRole('button', { name: 'Завершить' }).focus()
   await user.keyboard('{Enter}')
@@ -182,9 +184,11 @@ it.each(['choice', 'input', 'matching'] as const)(
     await user.click(
       screen.getByRole('button', { name: mode === 'matching' ? 'Завершить занятие' : 'Далее' }),
     )
-    expect(await screen.findByText('Верно: 0 · Неверно: 3')).toBeInTheDocument()
-    expect(screen.getByText('Точность: 0%')).toBeInTheDocument()
-    expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Верно0')
+    expect(results).toHaveTextContent('Неверно3')
+    expect(results).toHaveTextContent('Точность0%')
+    expect(results).toHaveTextContent('С помощью0')
     expect(screen.queryByText(/С ответом:|Пропущено:|Учитывается первый/)).not.toBeInTheDocument()
     expect(api.trainingSummary).toHaveBeenCalledExactlyOnceWith('s')
   },
@@ -229,9 +233,11 @@ it.each(['choice', 'matching'] as const)(
         <Run session={session} requestedSize={1} onFinish={() => {}} />
       ),
     )
-    expect(await screen.findByText('Точность: —')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Точность—')
     expect(screen.queryByText(/Неизвестно:/)).not.toBeInTheDocument()
-    expect(screen.getByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+    expect(results).toHaveTextContent('Верно0')
+    expect(results).toHaveTextContent('Неверно0')
     expect(screen.queryByText('1 из 1')).not.toBeInTheDocument()
   },
 )

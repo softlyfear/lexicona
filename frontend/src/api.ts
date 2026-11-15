@@ -67,12 +67,14 @@ export interface SpeechPreferencesDto {
 
 export interface AccountPreferences {
   training_auto_advance?: boolean
+  training_auto_check?: boolean
   training?: TrainingPreferences | null
   speech?: SpeechPreferencesDto | null
 }
 
 export interface SettingsUpdate {
   training_auto_advance?: boolean
+  training_auto_check?: boolean
   difficulty?: Difficulty
   training?: TrainingPreferences | null
   speech?: SpeechPreferencesDto | null

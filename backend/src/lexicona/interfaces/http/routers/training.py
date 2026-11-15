@@ -1050,6 +1050,15 @@ async def answer_item(
         chosen_option = None
         submitted_text = None
         grade = body.grade
+    fully_revealed = (
+        correct is True
+        and isinstance(body, TextAnswerIn)
+        and any(
+            normalize_answer(answer) == normalize_answer(body.text)
+            and item.letter_hints >= len(answer)
+            for answer in item.expected_answers or []
+        )
+    )
     change = progress.with_letter_hint(
         0
         if not first_attempt or grade == "hard"
@@ -1060,6 +1069,7 @@ async def answer_item(
             matching=item.session.mode == "matching",
         ),
         item.letter_hints > 0,
+        fully_revealed,
     )
     now = utcnow()
     current_version = (

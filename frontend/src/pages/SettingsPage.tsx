@@ -17,7 +17,7 @@ import {
 } from '../speech'
 import { forgetSession, getSessionRevision, isCurrentSession, queryClient } from '../session'
 import css from './pages.module.css'
-import { putTrainingAutoAdvance } from '../accountPreferences'
+import { putTrainingFlag } from '../accountPreferences'
 
 const LEVELS: { value: Difficulty; label: string; choice: number; typed: number }[] = [
   { value: 'very_easy', label: 'Очень легко', choice: 10, typed: 20 },
@@ -41,22 +41,6 @@ type Result<T> = { data: T } | { error: unknown }
 export function SettingsPage({ user }: { user: User }) {
   const [difficultyError, setDifficultyError] = useState('')
   const locked = useRef(false)
-  const autoLocked = useRef(false)
-  const [autoError, setAutoError] = useState('')
-  const autoUpdate = useMutation({
-    mutationFn: ({ enabled, revision }: { enabled: boolean; revision: number }) =>
-      putTrainingAutoAdvance(user.id, enabled, revision),
-    onSuccess: (result, { revision }) => {
-      if (!isCurrentSession(revision, user.id)) return
-      if (result.status === 'error') {
-        if (result.error instanceof ApiError && result.error.status === 401) forgetSession()
-        else setAutoError(errorMessage(result.error))
-      }
-    },
-    onSettled: () => {
-      autoLocked.current = false
-    },
-  })
 
   const update = useMutation({
     mutationFn: async ({
@@ -150,39 +134,81 @@ export function SettingsPage({ user }: { user: User }) {
         </table>
       </div>
       <SpeechSettings
-        autoAdvanceControl={
-          <div className={css.stack}>
-            <label className={css.choice}>
-              <input
-                type="checkbox"
-                checked={user.preferences?.training_auto_advance === true}
-                disabled={autoUpdate.isPending}
-                onChange={(event) => {
-                  if (autoLocked.current) return
-                  autoLocked.current = true
-                  setAutoError('')
-                  autoUpdate.mutate({
-                    enabled: event.target.checked,
-                    revision: getSessionRevision(),
-                  })
-                }}
-              />
-              Автоматически переходить после верного ответа
-            </label>
-            {autoUpdate.isPending && <p role="status">Сохраняем автоматический переход…</p>}
-            {autoError && (
-              <p className={ui.error} role="alert">
-                {autoError} Повторите действие.
-              </p>
-            )}
-          </div>
+        trainingControls={
+          <>
+            <TrainingFlagControl
+              user={user}
+              field="training_auto_advance"
+              label="Автоматически переходить после верного ответа"
+              pendingLabel="Сохраняем автоматический переход…"
+            />
+            <TrainingFlagControl
+              user={user}
+              field="training_auto_check"
+              label="Автоматически проверять ввод после паузы"
+              pendingLabel="Сохраняем автопроверку…"
+            />
+          </>
         }
       />
     </section>
   )
 }
 
-function SpeechSettings({ autoAdvanceControl }: { autoAdvanceControl: ReactNode }) {
+function TrainingFlagControl({
+  user,
+  field,
+  label,
+  pendingLabel,
+}: {
+  user: User
+  field: 'training_auto_advance' | 'training_auto_check'
+  label: string
+  pendingLabel: string
+}) {
+  const locked = useRef(false)
+  const [error, setError] = useState('')
+  const update = useMutation({
+    mutationFn: ({ enabled, revision }: { enabled: boolean; revision: number }) =>
+      putTrainingFlag(user.id, field, enabled, revision),
+    onSuccess: (result, { revision }) => {
+      if (!isCurrentSession(revision, user.id)) return
+      if (result.status === 'error') {
+        if (result.error instanceof ApiError && result.error.status === 401) forgetSession()
+        else setError(errorMessage(result.error))
+      }
+    },
+    onSettled: () => {
+      locked.current = false
+    },
+  })
+  return (
+    <div className={css.stack}>
+      <label className={css.choice}>
+        <input
+          type="checkbox"
+          checked={user.preferences?.[field] === true}
+          disabled={update.isPending}
+          onChange={(event) => {
+            if (locked.current) return
+            locked.current = true
+            setError('')
+            update.mutate({ enabled: event.target.checked, revision: getSessionRevision() })
+          }}
+        />
+        {label}
+      </label>
+      {update.isPending && <p role="status">{pendingLabel}</p>}
+      {error && (
+        <p className={ui.error} role="alert">
+          {error} Повторите действие.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
   const { preferences, voices, voiceState, storageError, syncError, serverVoices, serverState } =
     useSpeech()
   const serverReady = serverState === 'ready'
@@ -464,7 +490,7 @@ function SpeechSettings({ autoAdvanceControl }: { autoAdvanceControl: ReactNode 
           />{' '}
           Автоматически озвучивать задание
         </label>
-        {autoAdvanceControl}
+        {trainingControls}
         <SpeechStatus />
       </div>
     </section>

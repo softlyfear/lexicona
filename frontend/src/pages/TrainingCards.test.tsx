@@ -92,7 +92,8 @@ describe('карточки', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Хорошо (+4) · прогресс 4%')
     expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Точность: —')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Точность—')
     expect(screen.queryByText(/С ответом:|Не применяется:/)).not.toBeInTheDocument()
   })
 

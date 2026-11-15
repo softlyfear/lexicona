@@ -110,7 +110,8 @@ describe('помощь и пропуск', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0) · прогресс 50%')
     expect(screen.getByRole('status')).not.toHaveTextContent('Ответ:')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('С помощью: 1')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('С помощью1')
     expect(screen.queryByText(/Пропущено:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/0 из 0|0%/)).not.toBeInTheDocument()
   })
@@ -178,8 +179,10 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Пропустить' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4)')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Верно: 1 · Неверно: 0')).toBeInTheDocument()
-    expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Верно1')
+    expect(results).toHaveTextContent('Неверно0')
+    expect(results).toHaveTextContent('С помощью0')
   })
 
   it('после сетевой ошибки помощи сохраняет ввод и позволяет повторить', async () => {
@@ -310,9 +313,11 @@ describe('помощь и пропуск', () => {
     await user.click(screen.getByRole('button', { name: 'Пропустить' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Пропущено')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Верно1')
+    expect(results).toHaveTextContent('Неверно1')
     expect(screen.queryByText(/С ответом:|Пропущено:/)).not.toBeInTheDocument()
-    expect(screen.getByText('С помощью: 1')).toBeInTheDocument()
+    expect(results).toHaveTextContent('С помощью1')
   })
 
   it('карточный reveal показывает пропуск, сохранённый конкурентным запросом', async () => {
@@ -360,7 +365,9 @@ describe('помощь и пропуск', () => {
       expect(await screen.findByRole('status')).toHaveTextContent('Пропущено (0)')
       expect(screen.getByRole('button', { name: 'Хорошо' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Далее' }))
-      expect(await screen.findByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+      const results = await screen.findByRole('region', { name: 'Первые ответы' })
+      expect(results).toHaveTextContent('Верно0')
+      expect(results).toHaveTextContent('Неверно0')
       expect(screen.queryByText(/С ответом:|Пропущено:/)).not.toBeInTheDocument()
     },
   )

@@ -157,6 +157,20 @@ async def test_letter_hint_reveals_one_character_and_halves_the_gain(alice: Clie
         f"/api/training/items/{item['id']}/answer", json={"text": third.json()["text"]}
     )
     assert answered.json()["correct"] is True
+    assert answered.json()["delta"] == 0
+    assert answered.json()["progress"] == 0
+
+
+async def test_typed_prefix_with_hints_still_earns_half(alice: Client) -> None:
+    await add_word(alice, "cat", "кот")
+    item = await start_input(alice)
+    url = f"/api/training/items/{item['id']}/hint"
+    first = await alice.post(url, json={"text": "к"})
+    assert first.json() == {"text": "ко", "complete": False}
+    second = await alice.post(url, json={"text": "ко"})
+    assert second.json() == {"text": "кот", "complete": True}
+    answered = await alice.post(f"/api/training/items/{item['id']}/answer", json={"text": "кот"})
+    assert answered.json()["correct"] is True
     assert answered.json()["delta"] == 4
     assert answered.json()["progress"] == 4
 

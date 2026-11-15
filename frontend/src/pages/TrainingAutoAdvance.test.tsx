@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { StrictMode } from 'react'
 import { api, type TerminalResult, type TrainingSession } from '../api'
@@ -328,7 +328,7 @@ it('last item opens existing authoritative summary once', async () => {
   await submit()
   await tick(1500)
   await tick()
-  expect(screen.getByRole('heading', { name: 'Готово' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Завершить' })).toBeInTheDocument()
   await tick(5000)
   expect(api.trainingSummary).toHaveBeenCalledExactlyOnceWith('s')
 })
@@ -394,50 +394,6 @@ it('pauses automatic advance while finishing or disabled and resumes afterwards 
   await tick(1)
   expect(screen.getByText('2 / 3')).toBeInTheDocument()
   expect(api.answerText).toHaveBeenCalledOnce()
-})
-
-it.each(['end', 'error', 'watchdog'] as const)(
-  'waits for long manually replayed speech and then advances on %s',
-  async (ending) => {
-    const utterances = browser()
-    run()
-    await submit()
-    expect(utterances).toHaveLength(1)
-    await tick(1000)
-    fireEvent.click(within(screen.getByRole('group', { name: 'Ответ' })).getByRole('button'))
-    expect(isSpeechBusy()).toBe(true)
-    await tick(4000)
-    expect(screen.getByText('1 / 3')).toBeInTheDocument()
-    if (ending === 'watchdog') await tick(20000)
-    else
-      act(() => {
-        if (ending === 'end') utterances[1].onend?.({} as SpeechSynthesisEvent)
-        else utterances[1].onerror?.({} as SpeechSynthesisErrorEvent)
-      })
-    await tick()
-    expect(isSpeechBusy()).toBe(false)
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
-    expect(api.answerText).toHaveBeenCalledOnce()
-  },
-)
-
-it('waits for a second manual replay and ignores the first utterance late completion', async () => {
-  const utterances = browser()
-  run()
-  await submit()
-  const playback = within(screen.getByRole('group', { name: 'Ответ' })).getByRole('button')
-  fireEvent.click(playback)
-  await tick(500)
-  act(() => utterances[1].onend?.({} as SpeechSynthesisEvent))
-  await tick(500)
-  fireEvent.click(playback)
-  await tick(600)
-  act(() => utterances[1].onend?.({} as SpeechSynthesisEvent))
-  expect(isSpeechBusy()).toBe(true)
-  expect(screen.getByText('1 / 3')).toBeInTheDocument()
-  act(() => utterances[2].onend?.({} as SpeechSynthesisEvent))
-  await tick()
-  expect(screen.getByText('2 / 3')).toBeInTheDocument()
 })
 
 it.each(['autoplay', 'watchdog'] as const)(

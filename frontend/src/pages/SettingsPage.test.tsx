@@ -125,6 +125,32 @@ describe('профиль и смена пароля', () => {
     ).toBeChecked()
   })
 
+  it('defaults automatic input check off and saves it as an independent flag', async () => {
+    const update = vi.spyOn(api, 'updateSettings').mockResolvedValue({
+      ...initial.user,
+      preferences: { training_auto_check: true },
+    })
+    const user = userEvent.setup()
+    renderSettings()
+    const autoAdvance = screen.getByRole('checkbox', {
+      name: 'Автоматически переходить после верного ответа',
+    })
+    const toggle = screen.getByRole('checkbox', {
+      name: 'Автоматически проверять ввод после паузы',
+    })
+    expect(toggle).not.toBeChecked()
+    expect(
+      autoAdvance.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('checkbox', { name: 'Автоматически озвучивать задание' }).closest('label')!
+        .parentElement,
+    ).toContainElement(toggle)
+    await user.click(toggle)
+    expect(update).toHaveBeenCalledExactlyOnceWith({ training_auto_check: true })
+    await waitFor(() => expect(toggle).toBeChecked())
+  })
+
   it('keeps the confirmed automatic-next flag on save failure and allows retry', async () => {
     rememberSession({
       ...initial,

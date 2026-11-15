@@ -120,6 +120,7 @@ class AccountPreferences(BaseModel):
     training: TrainingPreferences | None = None
     speech: SpeechPreferences | None = None
     training_auto_advance: StrictBool = False
+    training_auto_check: StrictBool = False
 
 
 def preference_document(raw: object) -> dict[str, Any]:
@@ -145,8 +146,10 @@ def _section[T: BaseModel](model: type[T], value: object) -> T | None:
 def public_preferences(raw: object) -> AccountPreferences:
     document = preference_document(raw)
     auto_advance = document.get("training_auto_advance")
+    auto_check = document.get("training_auto_check")
     return AccountPreferences(
         training=_section(TrainingPreferences, document.get("training")),
         speech=_section(SpeechPreferences, document.get("speech")),
         training_auto_advance=auto_advance if isinstance(auto_advance, bool) else False,
+        training_auto_check=auto_check if isinstance(auto_check, bool) else False,
     )

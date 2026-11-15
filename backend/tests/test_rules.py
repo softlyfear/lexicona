@@ -39,6 +39,13 @@ def test_letter_hint_halves_only_a_positive_reward() -> None:
     assert with_letter_hint(0, True) == 0
 
 
+def test_fully_hinted_answer_earns_nothing() -> None:
+    assert with_letter_hint(8, True, True) == 0
+    assert with_letter_hint(8, False, True) == 0
+    assert with_letter_hint(-4, True, True) == -4
+    assert with_letter_hint(0, True, True) == 0
+
+
 @pytest.mark.parametrize(
     ("current", "answers", "shown", "complete"),
     [

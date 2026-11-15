@@ -48,7 +48,8 @@ users.preferences (миграция b7d4e1a83c90) и приходят в UserOut
 на другом устройстве читает аккаунт. Установка PWA и фильтры словаря не синхронизируются.
 Голос браузера, которого нет на другом устройстве, выбирается запасным. EN-US default,
 rate 0.5/0.75/1/1.25/1.5, autoPrompt default on; недоступность и фактическая замена явно
-показаны.
+показаны. Отдельные независимые флаги training_auto_advance и training_auto_check
+по умолчанию выключены и пишутся тем же PUT отдельным скалярным полем.
 Start/Next озвучивают только публичный prompt текущего item, RU→EN — русский,
 cloze — masked EN. Ошибка/отказ не меняет обучение; route/hidden/logout/user switch
 отменяет pending/active речь; открытие new/edit редактора тоже отменяет речь, сохраняя
@@ -285,11 +286,12 @@ No fuzzy spelling or arbitrary whitespace removal is applied; negation letters
 remain significant.
 
 Choice answers use option highlighting rather than a duplicate answer panel.
-Authorized input answers are spoken automatically; reveal fills the input and
-retains manual playback. Next sits after Skip and is hidden while auto-next is
+Authorized input answers are spoken automatically; reveal fills the input.
+Next sits after Skip and is hidden while auto-next is
 pending. After an error, manual Next closes the item through server skip before
 advancing, preserving the first error. The compact summary uses first-answer
-counts; assistance counts reveal before any objective attempt, not later repair.
+counts as a label/value list; assistance counts reveal before any objective
+attempt, not later repair.
 
 The dictionary filter summary displays the full unpaginated matching word count.
 Deferred searches, placeholder data, active/paused requests and errors do not
@@ -303,6 +305,15 @@ all-correct completed group. Manual and timed transitions share a one-shot guard
 opening the editor, finishing or leaving cancels a pending transition, while a
 temporary disabled/finishing state pauses it. Manual Next is shown after Skip and
 is hidden only while auto-next is armed for the current answer.
+
+preferences.training_auto_check is an independent strict boolean (default false).
+When on, typed input and cloze answers are submitted automatically 2 seconds after
+the last keystroke; the client never decides correctness. The timer restarts on
+every change and does not fire while empty, busy, revealing, finished, after an
+answer exists, or after a letter hint until the user types again. A letter hint
+still halves a positive typed reward, and a correct answer whose characters were
+all revealed by hints earns zero; penalties stay whole and the first-answer
+accuracy event is unchanged.
 
 POST /dictionary/transcription is an authenticated CSRF-protected IPA-only
 draft operation using the existing OpenRouter transcription provider. It performs

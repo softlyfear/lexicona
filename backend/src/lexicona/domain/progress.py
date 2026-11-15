@@ -49,8 +49,13 @@ def apply(progress: int, change: int) -> int:
     return max(MIN_PROGRESS, progress + change)
 
 
-def with_letter_hint(change: int, used: bool) -> int:
-    """A letter hint halves a positive reward once. Penalties stay whole."""
-    if used and change > 0:
-        return change // 2
-    return change
+def with_letter_hint(change: int, used: bool, fully_revealed: bool = False) -> int:
+    """A fully hinted answer earns nothing; other hints halve a positive reward once.
+
+    Penalties stay whole, and a clean answer keeps its full reward.
+    """
+    if change <= 0:
+        return change
+    if fully_revealed:
+        return 0
+    return change // 2 if used else change

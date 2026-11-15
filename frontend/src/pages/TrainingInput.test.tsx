@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api } from '../api'
@@ -31,12 +31,12 @@ vi.mock('../api', async (original) => {
   }
 })
 
-function renderPage() {
+function renderPage(autoCheck = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['training', 'latest'], null)
   return render(
     <QueryClientProvider client={client}>
-      <TrainingPage />
+      <TrainingPage autoCheck={autoCheck} />
     </QueryClientProvider>,
   )
 }
@@ -105,7 +105,6 @@ describe('письменная тренировка', () => {
     await user.keyboard('{Enter}')
     expect(api.answerText).toHaveBeenCalledWith('i1', 'кот 1')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (+8) · прогресс 8%')
-    expect(screen.getByRole('button', { name: 'Произнести RU «кот, кошка»' })).toBeInTheDocument()
     expect(input).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Далее' }))
@@ -120,11 +119,13 @@ describe('письменная тренировка', () => {
     await user.type(retry, 'собака{Enter}')
     expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
     await user.click(screen.getByRole('button', { name: 'Далее' }))
-    expect(await screen.findByText('Верно: 1 · Неверно: 1')).toBeInTheDocument()
-    expect(screen.getByText('Точность: 50%')).toBeInTheDocument()
+    const results = await screen.findByRole('region', { name: 'Первые ответы' })
+    expect(results).toHaveTextContent('Точность50%')
+    expect(results).toHaveTextContent('Верно1')
+    expect(results).toHaveTextContent('Неверно1')
   })
 
-  it('подсказка открывает одну букву и сама отправляет полное слово', async () => {
+  it('подсказка открывает одну букву и сама отправляет полное слово без баллов', async () => {
     const user = userEvent.setup()
     vi.mocked(api.letterHint)
       .mockResolvedValueOnce({ text: 'к', complete: false })
@@ -134,8 +135,8 @@ describe('письменная тренировка', () => {
       correct: true,
       submitted_text: 'кот',
       expected_answers: ['кот'],
-      delta: 4,
-      progress: 4,
+      delta: 0,
+      progress: 0,
     })
     renderPage()
     await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
@@ -147,7 +148,52 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByRole('button', { name: 'Подсказка' }))
     expect(api.letterHint).toHaveBeenLastCalledWith('i1', 'к')
     expect(api.answerText).toHaveBeenCalledWith('i1', 'кот')
-    expect(await screen.findByRole('status')).toHaveTextContent('Верно (+4) · прогресс 4%')
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно (0) · прогресс 0%')
+  })
+
+  it('автоматически проверяет введённый ответ после паузы', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.answerText).mockResolvedValueOnce({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'кот',
+      expected_answers: ['кот'],
+      delta: 8,
+      progress: 8,
+    })
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.type(input, 'кот')
+    expect(api.answerText).not.toHaveBeenCalled()
+    await waitFor(() => expect(api.answerText).toHaveBeenCalledWith('i1', 'кот'), { timeout: 4000 })
+    expect(await screen.findByRole('status')).toHaveTextContent('Верно (+8) · прогресс 8%')
+  })
+
+  it('не проверяет автоматически текст подсказки, пока не начнут печатать', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.letterHint).mockResolvedValueOnce({ text: 'к', complete: false })
+    vi.mocked(api.answerText).mockResolvedValueOnce({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'кот',
+      expected_answers: ['кот'],
+      delta: 4,
+      progress: 4,
+    })
+    renderPage(true)
+    await user.click(screen.getByLabelText('Написание перевода: EN → RU'))
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    const input = await screen.findByRole('textbox', { name: 'Введите перевод' })
+    await user.click(screen.getByRole('button', { name: 'Подсказка' }))
+    expect(input).toHaveValue('к')
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 2300))
+    })
+    expect(api.answerText).not.toHaveBeenCalled()
+    await user.type(input, 'от')
+    await waitFor(() => expect(api.answerText).toHaveBeenCalledWith('i1', 'кот'), { timeout: 4000 })
   })
 
   it('заполняет поле раскрытым ответом и не дублирует его отдельной плашкой', async () => {
@@ -173,9 +219,7 @@ describe('письменная тренировка', () => {
     await user.click(screen.getByRole('button', { name: 'Показать ответ' }))
     expect(input).toHaveValue('moved her stuff out today')
     expect(screen.queryByText(/^Ответ:/)).not.toBeInTheDocument()
-    const answer = screen.getByRole('group', { name: 'Ответ' })
-    expect(answer).not.toHaveTextContent('moved her stuff out today')
-    expect(within(answer).getByRole('button')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Ответ' })).not.toBeInTheDocument()
     vi.mocked(api.skipItem).mockResolvedValue({ outcome: 'skipped', delta: 0, progress: 0 })
     await user.click(screen.getByRole('button', { name: 'Далее' }))
     expect(api.skipItem).toHaveBeenCalledExactlyOnceWith('i')

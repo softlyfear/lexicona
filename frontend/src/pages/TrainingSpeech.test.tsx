@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -15,7 +15,6 @@ import {
   updateSpeechPreferences,
 } from '../speech'
 import { TrainingPage } from './TrainingPage'
-import css from './pages.module.css'
 
 vi.mock('../api', async (original) => {
   const actual = await original<typeof import('../api')>()
@@ -217,7 +216,7 @@ it.each([
   ['en_ru', 'resume'],
   ['ru_en', 'resume'],
 ] as const)(
-  'reveals a prominent authorized %s answer after %s input with adjacent playback and Next',
+  'reveals a prominent authorized %s answer after %s input with Next',
   async (direction, state) => {
     const user = userEvent.setup()
     const answer = direction === 'ru_en' ? 'Poach' : 'браконьерствовать'
@@ -288,18 +287,11 @@ it.each([
     await act(async () =>
       resolve({ outcome: 'assisted', expected_answers: [answer], delta: 0, progress: 0 }),
     )
-    const group = screen.getByRole('group', { name: 'Ответ' })
-    expect(group).not.toHaveClass(css.revealedAnswer)
+    const group = screen.queryByRole('group', { name: 'Ответ' })
+    expect(group).not.toBeInTheDocument()
     expect(input).toHaveAttribute('lang', lang)
     expect(input).toHaveValue(answer)
     expect(screen.queryByText(/^Ответ:/)).not.toBeInTheDocument()
-    expect(speak).toHaveBeenLastCalledWith(answer, lang)
-    const playback = within(group).getByRole('button', {
-      name: `Произнести ${lang.toUpperCase()} «${answer}»`,
-    })
-    expect(group.parentElement).toContainElement(screen.getByRole('button', { name: 'Далее' }))
-    playback.focus()
-    await user.keyboard('{Enter}')
     expect(speak).toHaveBeenLastCalledWith(answer, lang)
     expect(api.revealAnswer).toHaveBeenCalledExactlyOnceWith('i1')
     expect(api.answerText).toHaveBeenCalledTimes(state === 'wrong' ? 1 : 0)
@@ -311,7 +303,7 @@ it.each([
 )
 
 it.each(['en_ru', 'ru_en'] as const)(
-  'shows accepted %s server answer, not submitted text, and respects disabled answer language',
+  'speaks the accepted %s server answer instead of the submitted text',
   async (direction) => {
     const user = userEvent.setup()
     const lang = direction === 'en_ru' ? 'ru' : 'en'
@@ -332,15 +324,41 @@ it.each(['en_ru', 'ru_en'] as const)(
     )
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     await user.type(await screen.findByRole('textbox'), 'accepted spelling{Enter}')
-    const group = await screen.findByRole('group', { name: 'Ответ' })
+    expect(await screen.findByText(/Верно/)).toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveValue('accepted spelling')
     expect(speak).toHaveBeenLastCalledWith('server answer', lang)
+    expect(speak).not.toHaveBeenCalledWith('accepted spelling', lang)
     expect(screen.queryByText(/^Ответ:/)).not.toBeInTheDocument()
-    const playback = within(group).getByRole('button')
-    await user.click(playback)
-    expect(speak).toHaveBeenLastCalledWith('server answer', lang)
+    expect(screen.queryByRole('group', { name: 'Ответ' })).not.toBeInTheDocument()
+    expect(api.answerText).toHaveBeenCalledOnce()
+  },
+)
+
+it.each(['en_ru', 'ru_en'] as const)(
+  'keeps the accepted %s server answer silent when its language is disabled',
+  async (direction) => {
+    const user = userEvent.setup()
+    const lang = direction === 'en_ru' ? 'ru' : 'en'
+    vi.mocked(api.startTraining).mockResolvedValue({ ...session, mode: 'input', direction })
+    vi.mocked(api.answerText).mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'accepted spelling',
+      expected_answers: ['server answer'],
+      delta: 8,
+      progress: 8,
+    })
+    renderPage()
     act(() => updateSpeechPreferences(lang === 'ru' ? { speakRu: false } : { speakEn: false }))
-    expect(within(group).queryByRole('button')).not.toBeInTheDocument()
+    await user.click(
+      screen.getByLabelText(
+        direction === 'ru_en' ? 'Написание слова: RU → EN' : 'Написание перевода: EN → RU',
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Начать' }))
+    await user.type(await screen.findByRole('textbox'), 'accepted spelling{Enter}')
+    expect(await screen.findByText(/Верно/)).toBeInTheDocument()
+    expect(speak).not.toHaveBeenCalledWith('server answer', lang)
     expect(screen.getByRole('textbox')).toHaveValue('accepted spelling')
     expect(api.answerText).toHaveBeenCalledOnce()
   },
@@ -368,9 +386,8 @@ it.each(['next', 'editor', 'finish', 'unmount', 'owner'] as const)(
     await user.click(screen.getByLabelText('Написание слова: RU → EN'))
     await user.click(screen.getByRole('button', { name: 'Начать' }))
     await user.type(await screen.findByRole('textbox'), 'Poach{Enter}')
-    await user.click(
-      within(await screen.findByRole('group', { name: 'Ответ' })).getByRole('button'),
-    )
+    expect(await screen.findByText(/Верно/)).toBeInTheDocument()
+    expect(speak).toHaveBeenLastCalledWith('Poach', 'en')
     const generation = speechGeneration()
     if (action === 'next') await user.click(screen.getByRole('button', { name: 'Далее' }))
     if (action === 'editor')
@@ -417,7 +434,7 @@ it('browser TTS failure leaves the authorized answer, Next and server progress u
   await user.click(screen.getByLabelText('Написание слова: RU → EN'))
   await user.click(screen.getByRole('button', { name: 'Начать' }))
   await user.click(await screen.findByRole('button', { name: 'Показать ответ' }))
-  await user.click(within(await screen.findByRole('group', { name: 'Ответ' })).getByRole('button'))
+  expect(await screen.findByText(/прогресс 25%/)).toBeInTheDocument()
   expect(utterance.text).toBe('Poach')
   act(() => utterance.onerror?.({ error: 'synthesis-failed' } as SpeechSynthesisErrorEvent))
   expect(await screen.findByText(/Не удалось воспроизвести речь/)).toBeInTheDocument()

@@ -59,6 +59,7 @@ class SettingsIn(BaseModel):
     training: TrainingPreferences | None = None
     speech: SpeechPreferences | None = None
     training_auto_advance: StrictBool = False
+    training_auto_check: StrictBool = False
 
     @model_validator(mode="after")
     def has_change(self) -> Self:
@@ -210,7 +211,9 @@ async def me(auth: CurrentAuth) -> SessionOut:
 @router.put("/settings")
 async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOut:
     fields = body.model_fields_set
-    preference_write = bool(fields & {"training", "speech", "training_auto_advance"})
+    preference_write = bool(
+        fields & {"training", "speech", "training_auto_advance", "training_auto_check"}
+    )
     for _attempt in range(_PREFERENCE_ATTEMPTS):
         await db.rollback()
         await db.refresh(auth.user)
@@ -229,6 +232,8 @@ async def update_settings(body: SettingsIn, auth: CurrentAuth, db: Db) -> UserOu
                 document["speech"] = body.speech.model_dump(mode="json")
         if "training_auto_advance" in fields:
             document["training_auto_advance"] = body.training_auto_advance
+        if "training_auto_check" in fields:
+            document["training_auto_check"] = body.training_auto_check
         # Release the read snapshot before waiting, then write only if it is unchanged.
         await db.rollback()
         gate = preference_write_gate

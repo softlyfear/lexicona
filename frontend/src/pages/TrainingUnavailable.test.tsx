@@ -102,11 +102,13 @@ describe('недоступное задание', () => {
       expect(status).not.toHaveTextContent('Ответ:')
       expect(screen.getByRole('button', { name: 'Пропустить' })).toBeDisabled()
       await user.click(screen.getByRole('button', { name: 'Далее' }))
-      expect(await screen.findByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+      const results = await screen.findByRole('region', { name: 'Первые ответы' })
+      expect(results).toHaveTextContent('Верно0')
+      expect(results).toHaveTextContent('Неверно0')
       expect(screen.queryByText(/Недоступно:|Пропущено:/)).not.toBeInTheDocument()
       {
-        expect(screen.getByText('С помощью: 0')).toBeInTheDocument()
-        expect(screen.getByText('Верно: 0 · Неверно: 0')).toBeInTheDocument()
+        expect(results).toHaveTextContent('С помощью0')
+        expect(results).toHaveTextContent('Верно0')
         expect(screen.queryByText('0 из 0')).not.toBeInTheDocument()
       }
     },

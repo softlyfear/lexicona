@@ -63,6 +63,8 @@ function orderHint(purpose: TrainingPurpose, order: TrainingOrder, shuffle: bool
   return 'Подходящие слова идут в выбранном порядке, в пределах размера занятия.'
 }
 
+const AUTO_CHECK_DELAY_MS = 2000
+
 const CARD_GRADES: { value: CardGrade; label: string }[] = [
   { value: 'again', label: 'Повторить' },
   { value: 'hard', label: 'Трудно' },
@@ -74,10 +76,12 @@ export function TrainingPage({
   userId,
   accountTraining,
   autoAdvance = false,
+  autoCheck = false,
 }: {
   userId?: string
   accountTraining?: unknown
   autoAdvance?: boolean
+  autoCheck?: boolean
 } = {}) {
   const { preferences } = useSpeech()
   const queryClient = useQueryClient()
@@ -134,7 +138,7 @@ export function TrainingPage({
           {started.session.mode === 'matching' ? (
             <MatchingRun key={started.session.id} {...props} />
           ) : (
-            <Run key={started.session.id} {...props} />
+            <Run key={started.session.id} {...props} autoCheck={autoCheck} />
           )}
         </div>
       </>
@@ -740,12 +744,14 @@ export function Run({
   onFinish,
   finishing = false,
   autoAdvance = false,
+  autoCheck = false,
 }: {
   session: TrainingSession
   requestedSize: TrainingSize
   onFinish: () => void
   finishing?: boolean
   autoAdvance?: boolean
+  autoCheck?: boolean
 }) {
   const queryClient = useQueryClient()
   const { preferences } = useSpeech()
@@ -853,6 +859,23 @@ export function Run({
   const busy = action.isPending || nextPending
   const disabled = busy || hintPending || (!!result && !canRetry)
 
+  const performRef = useRef(perform)
+  useEffect(() => {
+    performRef.current = perform
+  })
+
+  const typedSinceHint = useRef(false)
+
+  useEffect(() => {
+    if (!autoCheck || (session.mode !== 'input' && session.mode !== 'cloze')) return
+    if (disabled || finishing || result || revealed || !text.trim()) return
+    if (!typedSinceHint.current) return
+    const timer = window.setTimeout(() => {
+      if (!locked.current && typedSinceHint.current) performRef.current({ kind: 'text', text })
+    }, AUTO_CHECK_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [autoCheck, disabled, finishing, result, revealed, session.mode, text])
+
   function perform(value: Action) {
     if (finishing || locked.current || (result && !canRetry)) return
     setHintError('')
@@ -911,6 +934,7 @@ export function Run({
     locked.current = false
     setHintError('')
     action.reset()
+    typedSinceHint.current = false
     const snapshot = snapshots[nextIndex]
     const nextResult = snapshot && resumedResult(snapshot)
     setText(nextResult && 'submitted_text' in nextResult ? nextResult.submitted_text : '')
@@ -932,6 +956,7 @@ export function Run({
     locked.current = true
     try {
       const revealed = await api.letterHint(item.id, text)
+      typedSinceHint.current = false
       setText(revealed.text)
       if (revealed.complete) {
         setHintPending(false)
@@ -986,16 +1011,6 @@ export function Run({
       ? null
       : (revealed ??
         (result?.outcome === 'answered' && 'grade' in result ? result.expected_answers : null))
-  const revealedAnswers = !result
-    ? revealed
-    : result.outcome === 'assisted' ||
-        (result.outcome === 'answered' &&
-          'submitted_text' in result &&
-          (!('correct' in result) || result.correct))
-      ? result.expected_answers
-      : result.outcome === 'answered' && 'correct_option' in result && result.correct
-        ? [item.options[result.correct_option]].filter((answer) => answer !== undefined)
-        : null
   let label = ''
   if (result) {
     if (result.outcome === 'unavailable')
@@ -1160,6 +1175,7 @@ export function Run({
                   lang={answerLang}
                   value={text}
                   onChange={(event) => {
+                    typedSinceHint.current = true
                     setHintError('')
                     setText(event.target.value)
                   }}
@@ -1182,7 +1198,7 @@ export function Run({
                   className={ui.button}
                   onClick={() => void hint()}
                   disabled={disabled}
-                  title="Открывает одну букву. Верный ответ даст половину балла."
+                  title="Открывает одну букву. Ответ, полностью раскрытый подсказками, не даёт баллов."
                 >
                   Подсказка
                 </button>
@@ -1239,16 +1255,6 @@ export function Run({
                 Далее
               </button>
             )}
-            {revealedAnswers &&
-              revealedAnswers.length > 0 &&
-              (session.mode === 'input' || session.mode === 'cloze') && (
-                <span role="group" aria-label="Ответ">
-                  <SpeakButton
-                    text={revealedAnswers.join(', ')}
-                    lang={answerLang === 'en' ? 'en-US' : 'ru-RU'}
-                  />
-                </span>
-              )}
           </div>
           {action.isError && (
             <p className={ui.error} role="alert">

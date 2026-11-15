@@ -37,6 +37,7 @@ export function App() {
                 userId={user.id}
                 accountTraining={user.preferences?.training}
                 autoAdvance={user.preferences?.training_auto_advance === true}
+                autoCheck={user.preferences?.training_auto_check === true}
               />
             }
           />
