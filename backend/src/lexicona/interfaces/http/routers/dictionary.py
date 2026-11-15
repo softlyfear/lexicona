@@ -48,18 +48,17 @@ async def _generated_transcription(settings: AppSettings, headword: str) -> str 
 
 @router.post("/lookup")
 async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
-    if not settings.dictionary_path.is_file():
+    try:
+        result = await asyncio.to_thread(dictionary.lookup, settings.dictionary_path, body.headword)
+    except sqlite3.OperationalError:
+        if settings.dictionary_path.is_file():
+            raise HTTPException(503, "dictionary_unavailable") from None
         # The optional local index is not installed; the machine provider is the hint.
         result = None
-    else:
-        try:
-            result = await asyncio.to_thread(
-                dictionary.lookup, settings.dictionary_path, body.headword
-            )
-        except sqlite3.Error, ValueError, TypeError, KeyError:
-            # A present but broken index must not look like a normal miss: that would
-            # hide a broken deployment and silently spend paid provider calls.
-            raise HTTPException(503, "dictionary_unavailable") from None
+    except sqlite3.Error, ValueError, TypeError, KeyError:
+        # A present but broken index must not look like a normal miss: that would
+        # hide a broken deployment and silently spend paid provider calls.
+        raise HTTPException(503, "dictionary_unavailable") from None
     if result is not None and result["matches"]:
         generated = None
         if not any(match["transcriptions"] for match in result["matches"]):
