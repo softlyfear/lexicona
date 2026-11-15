@@ -86,6 +86,15 @@ export function WordForm({
 }: Props) {
   const [headword, setHeadword] = useState(word?.headword ?? '')
   const [translations, setTranslations] = useState(word?.translations.join('\n') ?? '')
+  const translationsDraft = useRef(translations)
+  const translationsRequestId = useRef(0)
+  const translationsLocked = useRef(false)
+  const [translationsState, setTranslationsState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [translationsMessage, setTranslationsMessage] = useState('')
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+  const translationsHelpId = useId()
   const [transcription, setTranscription] = useState(word?.transcription ?? '')
   const [exampleEn, setExampleEn] = useState(word?.example_en ?? '')
   const [exampleRu, setExampleRu] = useState(word?.example_ru ?? '')
@@ -129,9 +138,24 @@ export function WordForm({
       duplicateRequestId.current++
       transcriptionRequestId.current++
       transcriptionLocked.current = false
+      translationsRequestId.current++
+      translationsLocked.current = false
     },
     [],
   )
+
+  function changeTranslations(value: string) {
+    translationsDraft.current = value
+    setTranslations(value)
+  }
+
+  function invalidateTranslations() {
+    translationsRequestId.current++
+    translationsLocked.current = false
+    setTranslationsState('idle')
+    setTranslationsMessage('')
+    setAiSuggestions([])
+  }
 
   function invalidateTranscription() {
     transcriptionRequestId.current++
@@ -141,6 +165,7 @@ export function WordForm({
   }
 
   function changeHeadword(value: string) {
+    invalidateTranslations()
     invalidateTranscription()
     lookupRequestId.current++
     lookupLocked.current = false
@@ -175,7 +200,13 @@ export function WordForm({
   }
 
   async function findSuggestions(value = headword) {
-    if (transcriptionLocked.current || lookupLocked.current || pending) return
+    if (
+      translationsLocked.current ||
+      transcriptionLocked.current ||
+      lookupLocked.current ||
+      pending
+    )
+      return
     lookupLocked.current = true
     invalidateTranscription()
     void checkEarlyDuplicate(value)
@@ -249,6 +280,7 @@ export function WordForm({
   async function generateTranscription() {
     if (
       transcriptionLocked.current ||
+      translationsLocked.current ||
       !headword.trim() ||
       transcription.trim() ||
       lookupLocked.current ||
@@ -283,6 +315,70 @@ export function WordForm({
   async function selectSpelling(value: string) {
     changeHeadword(value)
     await findSuggestions(value)
+  }
+
+  async function generateTranslations() {
+    if (
+      translationsLocked.current ||
+      lookupLocked.current ||
+      transcriptionLocked.current ||
+      pending ||
+      checkingDuplicate ||
+      !headword.trim() ||
+      parseTranslations(translationsDraft.current).length >= 10
+    )
+      return
+    translationsLocked.current = true
+    const id = ++translationsRequestId.current
+    const currentRevision = getSessionRevision()
+    revision.current = currentRevision
+    setTranslationsState('loading')
+    setTranslationsMessage('')
+    setAiSuggestions([])
+    try {
+      const result = await api.generateTranslations(headword.trim())
+      if (id !== translationsRequestId.current || currentRevision !== getSessionRevision()) return
+      const latest = translationsDraft.current
+      const current = parseTranslations(latest)
+      const seen = new Set(current.map(normalizedAnswer))
+      const additions = result.translations
+        .map((value) => value.trim())
+        .filter((value) => {
+          const key = normalizedAnswer(value)
+          if (!key || seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      if (
+        current.length + additions.length > 10 ||
+        current.some((value) => [...value].length > 200)
+      ) {
+        setAiSuggestions(additions)
+        setTranslationsMessage(
+          'Текст не изменён: максимум 10 переводов по 200 символов. Освободите место или выберите нужные варианты ниже.',
+        )
+      } else if (additions.length === 0) {
+        setTranslationsMessage('Все предложенные переводы уже есть в черновике. Текст не изменён.')
+      } else {
+        changeTranslations(
+          `${latest}${latest && !latest.endsWith('\n') ? '\n' : ''}${additions.join('\n')}`,
+        )
+        setTranslationsMessage(
+          `Добавлено переводов в черновик: ${additions.length}. Проверьте их и сохраните слово.`,
+        )
+      }
+      setTranslationsState('ready')
+    } catch (error) {
+      if (id !== translationsRequestId.current || currentRevision !== getSessionRevision()) return
+      if (error instanceof ApiError && error.status === 401) {
+        forgetSession()
+        return
+      }
+      setTranslationsMessage(errorMessage(error))
+      setTranslationsState('error')
+    } finally {
+      if (id === translationsRequestId.current) translationsLocked.current = false
+    }
   }
 
   async function addExample(mode: 'append' | 'replace' = 'replace') {
@@ -332,9 +428,9 @@ export function WordForm({
     }
   }
 
-  function chooseTranslation(value: string, entryId: number | null) {
+  function chooseTranslation(value: string, entryId: number | null, preserveDraft = false) {
     if (revision.current !== getSessionRevision()) return
-    const current = parseTranslations(translations)
+    const current = parseTranslations(translationsDraft.current)
     if (current.some((item) => normalizedAnswer(item) === normalizedAnswer(value))) {
       setChoiceError('Такой перевод уже добавлен.')
       return
@@ -343,7 +439,12 @@ export function WordForm({
       setChoiceError('Можно добавить не больше 10 переводов.')
       return
     }
-    setTranslations([...current, value].join('\n'))
+    const latest = translationsDraft.current
+    changeTranslations(
+      preserveDraft
+        ? `${latest}${latest && !latest.endsWith('\n') ? '\n' : ''}${value}`
+        : [...current, value].join('\n'),
+    )
     setChoiceError(null)
     if (entryId !== null) {
       setRefs((current) =>
@@ -353,6 +454,7 @@ export function WordForm({
         ].slice(0, 20),
       )
     }
+    return true
   }
 
   function addTag(raw: string) {
@@ -376,6 +478,7 @@ export function WordForm({
   }
 
   function cancel() {
+    invalidateTranslations()
     invalidateTranscription()
     duplicateRequestId.current++
     lookupRequestId.current++
@@ -390,7 +493,8 @@ export function WordForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (submitLock.current || pending || transcriptionLocked.current) return
+    if (submitLock.current || pending || transcriptionLocked.current || translationsLocked.current)
+      return
     submitLock.current = true
     const requestId = ++submitGeneration.current
     const head = headword.trim()
@@ -416,6 +520,11 @@ export function WordForm({
     }
     if (parsed.length > 10) {
       setLocalError('Не больше 10 переводов.')
+      submitLock.current = false
+      return
+    }
+    if (parsed.some((value) => [...value].length > 200)) {
+      setLocalError('Каждый перевод — не больше 200 символов.')
       submitLock.current = false
       return
     }
@@ -465,17 +574,33 @@ export function WordForm({
   const selectedTranslations = new Set(parseTranslations(translations).map(normalizedAnswer))
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
-  function translationChoice(value: string, entryId: number | null) {
+  function translationChoice(value: string, entryId: number | null, generated = false) {
     const added = selectedTranslations.has(normalizedAnswer(value))
+    const full =
+      generated &&
+      (selectedTranslations.size >= 10 ||
+        parseTranslations(translations).some((value) => [...value].length > 200))
     return (
       <button
         type="button"
         className={`${ui.button} ${formCss.dictionaryButton}`}
         key={value}
-        disabled={added}
+        disabled={added || full}
         aria-pressed={added}
-        title={added ? 'Уже в списке' : 'Добавить перевод'}
-        onClick={() => chooseTranslation(value, entryId)}
+        title={
+          added
+            ? 'Уже в списке'
+            : full
+              ? 'Максимум 10 переводов по 200 символов. Сначала исправьте список.'
+              : 'Добавить перевод'
+        }
+        onClick={() => {
+          const added = chooseTranslation(value, entryId, generated)
+          if (generated && added)
+            setTranslationsMessage(
+              'Выбранный вариант добавлен в черновик. Проверьте переводы и сохраните слово.',
+            )
+        }}
       >
         {value}
       </button>
@@ -540,6 +665,7 @@ export function WordForm({
                   !!transcription.trim() ||
                   transcriptionState === 'loading' ||
                   lookupState === 'loading' ||
+                  translationsState === 'loading' ||
                   pending
                 }
                 onClick={() => void generateTranscription()}
@@ -572,7 +698,10 @@ export function WordForm({
             type="button"
             className={`${ui.button} ${formCss.dictionaryButton}`}
             disabled={
-              !headword.trim() || lookupState === 'loading' || transcriptionState === 'loading'
+              !headword.trim() ||
+              lookupState === 'loading' ||
+              transcriptionState === 'loading' ||
+              translationsState === 'loading'
             }
             onClick={() => findSuggestions()}
           >
@@ -596,7 +725,7 @@ export function WordForm({
                       type="button"
                       className={`${ui.button} ${formCss.dictionaryButton}`}
                       key={value}
-                      disabled={transcriptionState === 'loading'}
+                      disabled={transcriptionState === 'loading' || translationsState === 'loading'}
                       onClick={() => selectSpelling(value)}
                     >
                       {value}
@@ -663,7 +792,7 @@ export function WordForm({
             className={ui.input}
             value={translations}
             onChange={(e) => {
-              setTranslations(e.target.value)
+              changeTranslations(e.target.value)
               const values = parseTranslations(e.target.value)
               setRefs((current) =>
                 current.filter((ref) => ref.field !== 'translation' || values.includes(ref.value)),
@@ -674,6 +803,42 @@ export function WordForm({
             required
           />
         </label>
+        <div className={formCss.aiTranslations}>
+          <button
+            type="button"
+            className={`${ui.button} ${formCss.dictionaryButton}`}
+            disabled={
+              !headword.trim() ||
+              pending ||
+              lookupState === 'loading' ||
+              transcriptionState === 'loading' ||
+              translationsState === 'loading' ||
+              selectedTranslations.size >= 10
+            }
+            onClick={() => void generateTranslations()}
+            aria-describedby={translationsHelpId}
+          >
+            Заполнить с помощью ИИ
+          </button>
+          <p id={translationsHelpId} className={ui.muted}>
+            DeepSeek · OpenRouter: 3–5 распространённых значений, иногда меньше. Порядок — оценка
+            ИИ, не проверенная частотность. Ручные переводы сохраняются. Максимум 10 переводов по
+            200 символов.
+          </p>
+          {translationsState !== 'idle' && (
+            <p
+              role={translationsState === 'error' ? 'alert' : 'status'}
+              className={translationsState === 'error' ? ui.error : ui.muted}
+            >
+              {translationsState === 'loading' ? 'ИИ подбирает переводы…' : translationsMessage}
+            </p>
+          )}
+          {aiSuggestions.length > 0 && (
+            <section aria-label="Предложенные переводы ИИ" className={formCss.choices}>
+              {aiSuggestions.map((value) => translationChoice(value, null, true))}
+            </section>
+          )}
+        </div>
         <fieldset className={css.tagField}>
           <legend className={ui.label}>Теги</legend>
           <p className={ui.muted}>До 20 тегов, каждый — до 80 символов.</p>
@@ -832,7 +997,12 @@ export function WordForm({
       <div className={css.actions}>
         <button
           className={ui.primary}
-          disabled={pending || checkingDuplicate || transcriptionState === 'loading'}
+          disabled={
+            pending ||
+            checkingDuplicate ||
+            transcriptionState === 'loading' ||
+            translationsState === 'loading'
+          }
         >
           {word ? 'Сохранить' : 'Добавить'}
         </button>

@@ -17,6 +17,58 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('requests AI translation drafts explicitly through OpenRouter without lookup or word writes', async () => {
+    setCsrfToken('secret')
+    const result = { provider: 'openrouter', translations: ['книга', 'бронировать'] }
+    const fetchMock = mockFetch(200, result)
+    await expect(api.generateTranslations('book')).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/dictionary/translations')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toMatchObject({ 'X-CSRF-Token': 'secret' })
+    expect(JSON.parse(init.body as string)).toEqual({ headword: 'book' })
+  })
+
+  it('accepts five bounded Unicode translations using character rather than UTF-16 length', async () => {
+    const response = {
+      provider: 'openrouter',
+      translations: Array.from({ length: 5 }, (_, i) => `${i}${'😀'.repeat(199)}`),
+    }
+    mockFetch(200, response)
+    await expect(api.generateTranslations('word')).resolves.toEqual(response)
+  })
+
+  it.each([
+    null,
+    { provider: 'deepl', translations: ['книга'] },
+    { provider: 'openrouter', translations: [] },
+    { provider: 'openrouter', translations: Array(6).fill('книга') },
+    { provider: 'openrouter', translations: ['x'.repeat(201)] },
+    { provider: 'openrouter', translations: ['one\ntwo'] },
+    { provider: 'openrouter', translations: ['   '] },
+    { provider: 'openrouter', translations: [null] },
+  ])('rejects malformed or out-of-bounds AI draft output: %j', async (response) => {
+    mockFetch(200, response)
+    await expect(api.generateTranslations('book')).rejects.toMatchObject({
+      status: 503,
+      message: 'translations_unavailable',
+    })
+  })
+
+  it.each([
+    [503, 'translations_unavailable', 'Не удалось получить переводы ИИ'],
+    [504, 'translations_timeout', 'слишком много времени'],
+  ])('maps translation failure %s safely', async (status, detail, message) => {
+    mockFetch(status as number, { detail })
+    try {
+      await api.generateTranslations('book')
+      expect.unreachable()
+    } catch (error) {
+      expect(errorMessage(error)).toContain(message)
+      expect(errorMessage(error)).toContain('вручную')
+    }
+  })
   it('requests only a transcription draft with CSRF without word mutations or translation lookup', async () => {
     setCsrfToken('secret')
     const fetchMock = mockFetch(200, { transcription: '/bʊk/' })

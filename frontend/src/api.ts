@@ -124,6 +124,11 @@ export interface MachineTranslation {
   transcription?: string | null
 }
 
+export interface GeneratedTranslations {
+  provider: 'openrouter'
+  translations: string[]
+}
+
 export interface DictionaryLookup {
   source: DictionarySource
   matches: DictionaryMatch[]
@@ -444,6 +449,26 @@ export const api = {
     }),
   generateTranscription: (headword: string) =>
     request<{ transcription: string }>('POST', '/dictionary/transcription', { headword }),
+  generateTranslations: async (headword: string): Promise<GeneratedTranslations> => {
+    const result = await request<GeneratedTranslations>('POST', '/dictionary/translations', {
+      headword,
+    })
+    if (
+      result?.provider !== 'openrouter' ||
+      !Array.isArray(result.translations) ||
+      result.translations.length < 1 ||
+      result.translations.length > 5 ||
+      result.translations.some(
+        (value) =>
+          typeof value !== 'string' ||
+          !value.trim() ||
+          [...value.trim()].length > 200 ||
+          /[\r\n]/u.test(value),
+      )
+    )
+      throw new ApiError(503, 'translations_unavailable')
+    return result
+  },
   dictionaryNotices: () => request<DictionaryNotices>('GET', '/dictionary/notices'),
   listTags: () => request<Tag[]>('GET', '/tags'),
   createWord: (word: WordInput) => request<Word>('POST', '/words', word),
@@ -528,6 +553,10 @@ const MESSAGES: Record<string, string> = {
     'Не удалось получить транскрипцию. Попробуйте ещё раз или введите её вручную.',
   transcription_timeout:
     'Получение транскрипции заняло слишком много времени. Попробуйте ещё раз или введите её вручную.',
+  translations_unavailable:
+    'Не удалось получить переводы ИИ. Попробуйте ещё раз или добавьте переводы вручную.',
+  translations_timeout:
+    'Получение переводов ИИ заняло слишком много времени. Попробуйте ещё раз или добавьте переводы вручную.',
   not_enough_words: 'Нужно хотя бы 6 подходящих активных слов с различными словами и переводами.',
   no_eligible_cloze_examples:
     'Добавьте английский пример, где слово или выражение встречается ровно один раз целиком.',

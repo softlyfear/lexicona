@@ -313,3 +313,10 @@ POST /dictionary/transcription is an authenticated CSRF-protected IPA-only
 draft operation using the existing OpenRouter transcription provider. It performs
 no dictionary lookup, translation or word mutation; provider failure is 503 and
 timeout is 504. Generated IPA is not attributed to FreeDict.
+
+POST /dictionary/translations explicitly requests OpenRouter-only translation
+drafts, independent of local dictionary hits and the default translation provider.
+It asks for 3–5 common distinct senses but accepts fewer rather than inventing
+meanings; output is deduplicated and bounded to five strings of 200 characters.
+Ordering is an AI estimate, not verified frequency data. Neither draft operation
+saves the word.

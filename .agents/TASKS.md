@@ -84,7 +84,7 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   Mobile fixture smoke add/edit: keyboard Enter adds only IPA, save calls 0,
   width/scrollWidth 390; translation and note preserved. Independent Ship;
   orchestrator accepted.
-- FEEDBACK-007 / AI translation drafts in add/edit / implementation / attempt 1.
+- FEEDBACK-007 / AI translation drafts in add/edit / accepted / attempt 1.
   AC: explicit existing OpenRouter provider; request 3–5 common distinct meanings
   but allow fewer; no verified-frequency claim; preserve manual translations;
   no automatic save; bounded validated output and stale/error/isolation tests.
@@ -97,6 +97,14 @@ in PROJECT.md. Preserve active-ticket workflow/template without stale archive li
   truncation, show limits and estimated AI ordering. No auto-save.
   Check errors/timeouts/malformed output, owner/CSRF, manual/headword/session/
   lookup races, make check, independent review and add/edit fixture smoke.
+  Evidence: backend focused 103 and frontend focused 181 passed; final make check
+  exit 0 (tooling 20 / backend 614 / frontend 374), format/lint/types/build passed.
+  No real paid requests. Shared form preserves latest manual values/provenance;
+  near the ten-translation limit, explicit choices replace silent truncation.
+  Browser fixture add/edit390px: real Enter, preserved manual values/order,
+  IPA/note unchanged, save calls0. At8entries+5suggestions text stays untouched;
+  two explicit choices fill10 and remaining choices disable, no overflow.
+  Independent reviewer: Ship. Orchestrator accepted. All product feedback is done.
 - UBUNTU-001 / duplicate Flatpak Chrome launcher instructions / accepted / attempt 1.
   New user report: README icon script creates a second desktop entry and leaves
   the old iconless launcher. Independent documentation-only slice, disjoint from

@@ -1,6 +1,6 @@
 import asyncio
 import sqlite3
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
@@ -19,6 +19,13 @@ class ExampleIn(LookupIn):
     previous_examples: list[
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     ] = Field(default_factory=list, max_length=20)
+
+
+class TranslationsOut(BaseModel):
+    provider: Literal["openrouter"] = "openrouter"
+    translations: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=5
+    )
 
 
 def _machine_payload(machine: translation.MachineTranslation | None) -> dict[str, Any] | None:
@@ -98,6 +105,21 @@ async def transcription(body: LookupIn, auth: CurrentAuth, settings: AppSettings
     if not generated:
         raise HTTPException(503, "transcription_unavailable")
     return {"transcription": generated}
+
+
+@router.post("/translations")
+async def translations(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> TranslationsOut:
+    try:
+        generated = await asyncio.to_thread(
+            translation.generate_translations, settings, body.headword
+        )
+    except translation.TranslationTimeout:
+        raise HTTPException(504, "translations_timeout") from None
+    except translation.TranslationError:
+        raise HTTPException(503, "translations_unavailable") from None
+    if not generated:
+        raise HTTPException(503, "translations_unavailable")
+    return TranslationsOut(translations=generated)
 
 
 @router.get("/notices")
