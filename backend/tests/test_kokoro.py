@@ -70,6 +70,21 @@ for line in sys.stdin.buffer:
     kokoro.close_worker()
 
 
+def test_closing_the_worker_resets_the_clip_byte_counter() -> None:
+    kokoro._clips.clear()
+    kokoro._clips_bytes = 0
+    kokoro._store_clip(("d", "p", "v", 1.0, "a"), b"xxxx")  # type: ignore[arg-type]
+    kokoro._store_clip(("d", "p", "v", 1.0, "a"), b"yyyyyy")  # type: ignore[arg-type]
+    assert kokoro._clips_bytes == 6
+    kokoro.close_worker()
+    assert kokoro._clips == {}
+    assert kokoro._clips_bytes == 0
+    kokoro._store_clip(("d", "p", "v", 1.0, "b"), b"zz")  # type: ignore[arg-type]
+    assert kokoro._clips_bytes == 2
+    kokoro._clips.clear()
+    kokoro._clips_bytes = 0
+
+
 def test_clip_cache_is_bounded_by_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
     kokoro._clips.clear()
     monkeypatch.setattr(kokoro, "_clips_bytes", 0)

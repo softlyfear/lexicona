@@ -76,6 +76,8 @@ class LoginThrottle:
                 return None
             if len(self._failures) >= self.max_keys:
                 self._evict()
+            if len(self._failures) >= self.max_keys:
+                return None
             failures = deque()
             self._failures[key] = failures
         cutoff = time.monotonic() - self.window
@@ -84,18 +86,44 @@ class LoginThrottle:
         return failures
 
     def _evict(self) -> None:
-        for key in [name for name, failures in self._failures.items() if not failures]:
+        cutoff = time.monotonic() - self.window
+        for key, failures in list(self._failures.items()):
+            while failures and failures[0] < cutoff:
+                failures.popleft()
+            if not failures:
+                del self._failures[key]
+        if len(self._failures) < self.max_keys:
+            return
+        # A flood of fresh names must not flush a targeted account. Evict the
+        # non-blocked key with the fewest failures first; a live lockout is never
+        # removed. If every slot is a live lockout, the caller fails closed.
+        order = {key: index for index, key in enumerate(self._failures)}
+        disposable = sorted(
+            (
+                (len(failures), order[key], key)
+                for key, failures in self._failures.items()
+                if len(failures) < self.attempts
+            )
+        )
+        for _count, _index, key in disposable:
             del self._failures[key]
-        while len(self._failures) >= self.max_keys:
-            self._failures.pop(next(iter(self._failures)))
+            if len(self._failures) < self.max_keys:
+                return
 
     def blocked(self, key: str) -> bool:
+        if key not in self._failures and len(self._failures) >= self.max_keys:
+            self._evict()
+            # The table is full of live lockouts. Unknown names are blocked so
+            # flooding new logins cannot reset a targeted account.
+            if key not in self._failures and len(self._failures) >= self.max_keys:
+                return True
         failures = self._recent(key, create=False)
         return failures is not None and len(failures) >= self.attempts
 
     def fail(self, key: str) -> None:
         failures = self._recent(key, create=True)
-        assert failures is not None
+        if failures is None:
+            return
         failures.append(time.monotonic())
 
     def reset(self, key: str) -> None:

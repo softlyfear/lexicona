@@ -84,6 +84,9 @@ _clips_bytes = 0
 
 def _store_clip(key: tuple[Path, Path, str, float, str], data: bytes) -> None:
     global _clips_bytes
+    previous = _clips.pop(key, None)
+    if previous is not None:
+        _clips_bytes -= len(previous)
     _clips[key] = data
     _clips_bytes += len(data)
     while len(_clips) > 1 and (len(_clips) > 32 or _clips_bytes > MAX_CACHE_BYTES):
@@ -147,10 +150,13 @@ def runtime_available(python: Path) -> bool:
 
 
 def close_worker() -> None:
-    global _worker, _worker_key
+    global _worker, _worker_key, _clips_bytes
     worker, _worker = _worker, None
     _worker_key = None
     _clips.clear()
+    # The byte counter is independent of the dict. Leaving it set makes the next
+    # clip look oversized and collapses the replay cache to a single entry.
+    _clips_bytes = 0
     if worker is None:
         return
     if worker.poll() is None:

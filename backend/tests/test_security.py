@@ -21,6 +21,35 @@ def test_login_throttle_bounds_its_key_table() -> None:
     assert throttle.blocked("a") is False
 
 
+def test_login_throttle_keeps_a_live_lockout_when_the_table_is_flooded() -> None:
+    throttle = security.LoginThrottle(attempts=2, max_keys=3)
+    throttle.fail("victim")
+    throttle.fail("victim")
+    assert throttle.blocked("victim") is True
+    for index in range(8):
+        throttle.fail(f"filler-{index}")
+    assert len(throttle._failures) <= 3
+    assert "victim" in throttle._failures
+    assert throttle.blocked("victim") is True
+
+    near = security.LoginThrottle(attempts=3, max_keys=2)
+    near.fail("victim")
+    near.fail("victim")
+    near.fail("filler")
+    near.fail("other")
+    assert "victim" in near._failures
+    assert len(near._failures["victim"]) == 2
+    assert len(near._failures) <= 2
+
+    locked = security.LoginThrottle(attempts=1, max_keys=2)
+    locked.fail("alice")
+    locked.fail("bob")
+    locked.fail("carol")
+    assert len(locked._failures) <= 2
+    assert locked.blocked("alice") is True
+    assert locked.blocked("never-seen") is True
+
+
 def test_login_throttle_forgets_expired_failures() -> None:
     throttle = security.LoginThrottle(attempts=1, window_seconds=0.01)
     throttle.fail("alice")
