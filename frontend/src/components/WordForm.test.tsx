@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ApiError, api, type DictionaryLookup, type Word } from '../api'
@@ -42,7 +42,7 @@ const word: Word = {
   created_at: '',
   updated_at: '',
 }
-function form(initial = word) {
+function form(initial = word, onDirtyChange?: (dirty: boolean) => void) {
   const submit = vi.fn()
   const view = render(
     <WordForm
@@ -51,6 +51,7 @@ function form(initial = word) {
       error={null}
       onSubmit={submit}
       onCancel={() => {}}
+      onDirtyChange={onDirtyChange}
       availableTags={[]}
       tagsLoading={false}
       tagsError={null}
@@ -702,11 +703,91 @@ it.each([
   const user = userEvent.setup()
   form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
-  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
   expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
+  expect(picker).toHaveValue(expected)
+})
+
+it('выбирает IPA из другого совпадения, сохраняя его источник и прежние переводы', async () => {
+  const match = { ...result.matches[0], headword: 'read', translations: ['читать'] }
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [
+      { ...match, transcriptions: ['/riːd/'] },
+      { ...match, entry_id: 2, transcriptions: ['/rɛd/'] },
+      { ...match, entry_id: 3, transcriptions: ['/riːd/', '/rɛd/'] },
+    ],
+  })
+  const user = userEvent.setup()
+  const onDirtyChange = vi.fn()
+  const translationRef = {
+    source_id: source.id,
+    entry_id: 1,
+    field: 'translation' as const,
+    value: 'читать',
+  }
+  const { submit } = form(
+    { ...word, headword: 'read', translations: ['читать'], source_refs: [translationRef] },
+    onDirtyChange,
+  )
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
   expect(
-    screen.queryByRole('button', { name: /Выбрать транскрипцию|Заменить транскрипцию/ }),
-  ).not.toBeInTheDocument()
+    within(picker)
+      .getAllByRole('option')
+      .map((option) => option.textContent),
+  ).toEqual(['Выберите вариант', '/riːd/', '/rɛd/'])
+  expect(picker).toHaveValue('/riːd/')
+  await user.selectOptions(picker, '/rɛd/')
+  const ipa = screen.getByLabelText('Транскрипция')
+  expect(ipa).toHaveValue('/rɛd/')
+  expect(screen.getByLabelText(/Переводы/)).toHaveValue('читать')
+  expect(onDirtyChange).toHaveBeenCalledExactlyOnceWith(true)
+  expect(submit).not.toHaveBeenCalled()
+
+  const save = screen.getByRole('button', { name: 'Сохранить' })
+  await user.click(save)
+  expect(submit).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      transcription: '/rɛd/',
+      translations: ['читать'],
+      source_refs: [
+        translationRef,
+        { source_id: source.id, entry_id: 2, field: 'transcription', value: '/rɛd/' },
+      ],
+    }),
+  )
+  expect(window.confirm).not.toHaveBeenCalled()
+
+  await user.clear(ipa)
+  expect(picker).toHaveValue('')
+  await user.click(save)
+  expect(submit).toHaveBeenLastCalledWith(
+    expect.objectContaining({ transcription: null, source_refs: [translationRef] }),
+  )
+})
+
+it('скрывает список IPA при новом подборе или изменении слова', async () => {
+  const withVariants = {
+    ...result,
+    matches: [{ ...result.matches[0], transcriptions: ['/bʊk/', '/buːk/'] }],
+  }
+  let finishLookup!: (value: DictionaryLookup) => void
+  vi.spyOn(api, 'lookupDictionary')
+    .mockResolvedValueOnce(withVariants)
+    .mockImplementationOnce(() => new Promise((resolve) => (finishLookup = resolve)))
+  const user = userEvent.setup()
+  form()
+  const lookup = screen.getByRole('button', { name: /Подобрать перевод/ })
+  const name = 'Варианты транскрипции'
+  await user.click(lookup)
+  expect(await screen.findByRole('combobox', { name })).toBeInTheDocument()
+  await user.click(lookup)
+  expect(screen.queryByRole('combobox', { name })).not.toBeInTheDocument()
+  await act(async () => finishLookup(withVariants))
+  expect(screen.getByRole('combobox', { name })).toBeInTheDocument()
+  await user.type(screen.getByLabelText(/Слово или выражение/), 's')
+  expect(screen.queryByRole('combobox', { name })).not.toBeInTheDocument()
 })
 
 it('убирает ударения и объединяет образовавшиеся дубли переводов', async () => {
@@ -871,7 +952,7 @@ it('игнорирует поздний ответ после изменения
   expect(screen.queryByRole('button', { name: 'книга' })).not.toBeInTheDocument()
 })
 
-it('не показывает IPA-варианты и сведения об источнике в редакторе', async () => {
+it('при единственной транскрипции не показывает список IPA и сведения об источнике', async () => {
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue(result)
   const notices = vi.spyOn(api, 'dictionaryNotices').mockResolvedValue({
     source,
@@ -886,9 +967,7 @@ it('не показывает IPA-варианты и сведения об ис
   expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
   expect(screen.queryByText(/Источник:/)).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Сведения об источнике/ })).not.toBeInTheDocument()
-  expect(
-    screen.queryByRole('button', { name: /Выбрать транскрипцию|Заменить транскрипцию/ }),
-  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Варианты транскрипции' })).not.toBeInTheDocument()
   expect(notices).not.toHaveBeenCalled()
 })
 

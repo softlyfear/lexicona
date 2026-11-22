@@ -179,6 +179,18 @@ export function WordForm({
     setTranscriptionError('')
   }
 
+  function applyTranscription(value: string, entryId?: number) {
+    setTranscription(value)
+    setRefs((current) => {
+      const remaining = current.filter((ref) => ref.field !== 'transcription')
+      if (entryId === undefined) return remaining
+      return [
+        ...remaining,
+        { source_id: sourceId, entry_id: entryId, field: 'transcription' as const, value },
+      ].slice(0, 20)
+    })
+  }
+
   function changeHeadword(value: string) {
     invalidateTranslations()
     invalidateTranscription()
@@ -261,21 +273,9 @@ export function WordForm({
       const generated =
         machineTranslation?.transcription?.trim() || result.machine_transcription?.trim() || ''
       if (preferred) {
-        setTranscription(preferred.value)
-        setRefs((current) =>
-          [
-            ...current.filter((ref) => ref.field !== 'transcription'),
-            {
-              source_id: sourceId,
-              entry_id: preferred.entryId,
-              field: 'transcription' as const,
-              value: preferred.value,
-            },
-          ].slice(0, 20),
-        )
+        applyTranscription(preferred.value, preferred.entryId)
       } else if (generated) {
-        setTranscription(generated)
-        setRefs((current) => current.filter((ref) => ref.field !== 'transcription'))
+        applyTranscription(generated)
       }
       setLookupState('idle')
     } catch (error) {
@@ -311,8 +311,7 @@ export function WordForm({
     try {
       const result = await api.generateTranscription(headword.trim())
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
-      setTranscription(result.transcription)
-      setRefs((current) => current.filter((ref) => ref.field !== 'transcription'))
+      applyTranscription(result.transcription)
       setTranscriptionState('ready')
     } catch (error) {
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
@@ -603,6 +602,13 @@ export function WordForm({
   }
 
   const selectedTranslations = new Set(parseTranslations(translations).map(normalizedAnswer))
+  const dictionaryTranscriptions = new Map<string, number>()
+  for (const match of lookup?.matches ?? []) {
+    for (const value of match.transcriptions) {
+      if (!dictionaryTranscriptions.has(value)) dictionaryTranscriptions.set(value, match.entry_id)
+    }
+  }
+  const trimmedTranscription = transcription.trim()
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
   function translationChoice(value: string, entryId: number | null, generated = false) {
@@ -706,6 +712,34 @@ export function WordForm({
                 IPA
               </button>
             </div>
+            {dictionaryTranscriptions.size > 1 && (
+              <label className={ui.field}>
+                <span className={ui.label}>Варианты транскрипции</span>
+                <select
+                  className={ui.input}
+                  value={
+                    dictionaryTranscriptions.has(trimmedTranscription) ? trimmedTranscription : ''
+                  }
+                  disabled={pending}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
+                    const entryId = dictionaryTranscriptions.get(value)
+                    if (entryId === undefined || revision.current !== getSessionRevision()) return
+                    invalidateTranscription()
+                    applyTranscription(value, entryId)
+                  }}
+                >
+                  <option value="" disabled>
+                    Выберите вариант
+                  </option>
+                  {Array.from(dictionaryTranscriptions.keys(), (value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {transcriptionState !== 'idle' && (
               <p
                 id={transcriptionMessageId}
