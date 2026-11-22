@@ -57,6 +57,26 @@ const partsOfSpeech: Record<string, string> = {
 const partOfSpeech = (value: string) => partsOfSpeech[value.toLowerCase()] ?? value
 const optional = (value: string) => value.trim() || null
 const americanScore = (value: string) => Number(/[ɹrɚɝ]/.test(value)) + Number(value.includes('oʊ'))
+const transcriptionDialectNames = {
+  AU: 'австралийская транскрипция',
+  'US/UK': 'американская и британская транскрипция',
+  US: 'американская транскрипция',
+  '≈ US': 'вероятно, американская транскрипция',
+  '≈ UK': 'вероятно, британская транскрипция',
+  '?': 'диалект транскрипции неизвестен',
+}
+
+const documentedTranscriptionDialects = new Map([
+  // Wiktionary: https://en.wiktionary.org/w/index.php?title=coverage&oldid=93538610#Pronunciation
+  [
+    'coverage',
+    new Map<string, 'AU' | 'US/UK'>([
+      ['/ˈkav.(ə.)ɹɪdʒ/', 'AU'],
+      ['/ˈkɐv.(ə.)ɹɪdʒ/', 'AU'],
+      ['/ˈkʌv.(ə.)ɹɪdʒ/', 'US/UK'],
+    ]),
+  ],
+])
 
 function preferredTranscription(matches: DictionaryLookup['matches']) {
   const match = matches.find((item) => item.transcriptions.length > 0)
@@ -85,11 +105,11 @@ function inferTranscriptionDialects(values: Iterable<string>) {
     }
   }
 
-  const dialects = new Map<string, 'US' | 'UK'>()
+  const dialects = new Map<string, '≈ US' | '≈ UK'>()
   for (const value of phonemic) {
     const us = /oʊ|[ɚɝ]/u.test(value) || rhotic.has(value)
     const uk = /əʊ|ɒ/u.test(value) || nonRhotic.has(value)
-    if (us !== uk) dialects.set(value, us ? 'US' : 'UK')
+    if (us !== uk) dialects.set(value, us ? '≈ US' : '≈ UK')
   }
   return dialects
 }
@@ -128,7 +148,8 @@ export function WordForm({
   const [translationsMessage, setTranslationsMessage] = useState('')
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const translationsHelpId = useId()
-  const [transcription, setTranscription] = useState(word?.transcription ?? '')
+  const [{ value: transcription, generated: generatedTranscription }, setTranscriptionDraft] =
+    useState({ value: word?.transcription ?? '', generated: false })
   const [exampleEn, setExampleEn] = useState(word?.example_en ?? '')
   const [exampleRu, setExampleRu] = useState(word?.example_ru ?? '')
   const exampleEnRef = useRef(exampleEn)
@@ -206,14 +227,14 @@ export function WordForm({
     setTranscriptionError('')
   }
 
-  function applyTranscription(value: string, entryId?: number) {
-    setTranscription(value)
+  function applyTranscription(value: string, source: 'generated' | number) {
+    setTranscriptionDraft({ value, generated: source === 'generated' })
     setRefs((current) => {
       const remaining = current.filter((ref) => ref.field !== 'transcription')
-      if (entryId === undefined) return remaining
+      if (source === 'generated') return remaining
       return [
         ...remaining,
-        { source_id: sourceId, entry_id: entryId, field: 'transcription' as const, value },
+        { source_id: sourceId, entry_id: source, field: 'transcription' as const, value },
       ].slice(0, 20)
     })
   }
@@ -221,6 +242,9 @@ export function WordForm({
   function changeHeadword(value: string) {
     invalidateTranslations()
     invalidateTranscription()
+    setTranscriptionDraft((current) =>
+      current.generated ? { ...current, generated: false } : current,
+    )
     lookupRequestId.current++
     lookupLocked.current = false
     exampleRequestId.current++
@@ -263,6 +287,7 @@ export function WordForm({
       return
     lookupLocked.current = true
     invalidateTranscription()
+    const lookupTranscriptionRequestId = transcriptionRequestId.current
     void checkEarlyDuplicate(value)
     const id = ++lookupRequestId.current
     const currentRevision = getSessionRevision()
@@ -296,13 +321,15 @@ export function WordForm({
         }
       }
       setLookup({ ...result, matches, machine_translation: machineTranslation })
-      const preferred = preferredTranscription(matches)
-      const generated =
-        machineTranslation?.transcription?.trim() || result.machine_transcription?.trim() || ''
-      if (preferred) {
-        applyTranscription(preferred.value, preferred.entryId)
-      } else if (generated) {
-        applyTranscription(generated)
+      if (lookupTranscriptionRequestId === transcriptionRequestId.current) {
+        const preferred = preferredTranscription(matches)
+        const generated =
+          machineTranslation?.transcription?.trim() || result.machine_transcription?.trim() || ''
+        if (preferred) {
+          applyTranscription(preferred.value, preferred.entryId)
+        } else if (generated) {
+          applyTranscription(generated, 'generated')
+        }
       }
       setLookupState('idle')
     } catch (error) {
@@ -338,7 +365,7 @@ export function WordForm({
     try {
       const result = await api.generateTranscription(headword.trim())
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
-      applyTranscription(result.transcription)
+      applyTranscription(result.transcription, 'generated')
       setTranscriptionState('ready')
     } catch (error) {
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
@@ -635,8 +662,18 @@ export function WordForm({
       if (!dictionaryTranscriptions.has(value)) dictionaryTranscriptions.set(value, match.entry_id)
     }
   }
-  const transcriptionDialects = inferTranscriptionDialects(dictionaryTranscriptions.keys())
   const trimmedTranscription = transcription.trim()
+  const documentedDialects = documentedTranscriptionDialects.get(headword.trim().toLowerCase())
+  const inferredDialects = inferTranscriptionDialects(dictionaryTranscriptions.keys())
+  const dictionaryDialect = (value: string) =>
+    documentedDialects?.get(value) ?? inferredDialects.get(value)
+  const manualDialect =
+    trimmedTranscription && !dictionaryTranscriptions.has(trimmedTranscription)
+      ? inferTranscriptionDialects([trimmedTranscription]).get(trimmedTranscription)
+      : undefined
+  const currentDialect = generatedTranscription
+    ? 'US'
+    : (dictionaryDialect(trimmedTranscription) ?? manualDialect ?? '?')
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
   function translationChoice(value: string, entryId: number | null, generated = false) {
@@ -707,12 +744,13 @@ export function WordForm({
                 aria-describedby={
                   transcriptionState !== 'idle' ? transcriptionMessageId : undefined
                 }
-                onChange={(e) => {
+                onChange={(event) => {
+                  const value = event.currentTarget.value
                   invalidateTranscription()
-                  setTranscription(e.target.value)
+                  setTranscriptionDraft({ value, generated: false })
                   setRefs((current) =>
                     current.filter(
-                      (ref) => ref.field !== 'transcription' || ref.value === e.target.value.trim(),
+                      (ref) => ref.field !== 'transcription' || ref.value === value.trim(),
                     ),
                   )
                 }}
@@ -721,15 +759,20 @@ export function WordForm({
               <button
                 type="button"
                 className={`${ui.button} ${formCss.transcriptionButton}`}
-                aria-label="Получить транскрипцию"
+                data-filled={trimmedTranscription ? '' : undefined}
+                aria-label={
+                  trimmedTranscription
+                    ? `${currentDialect} — ${transcriptionDialectNames[currentDialect]}`
+                    : 'Получить американскую транскрипцию (US)'
+                }
                 title={
-                  transcription.trim()
+                  trimmedTranscription
                     ? 'Чтобы получить транскрипцию, сначала очистите поле.'
-                    : 'Получить американскую транскрипцию (IPA). Остальные поля не изменятся.'
+                    : 'Получить американскую транскрипцию (IPA)'
                 }
                 disabled={
                   !headword.trim() ||
-                  !!transcription.trim() ||
+                  !!trimmedTranscription ||
                   transcriptionState === 'loading' ||
                   lookupState === 'loading' ||
                   translationsState === 'loading' ||
@@ -737,7 +780,7 @@ export function WordForm({
                 }
                 onClick={() => void generateTranscription()}
               >
-                IPA
+                {trimmedTranscription ? currentDialect : 'US'}
               </button>
             </div>
             {dictionaryTranscriptions.size > 1 && (
@@ -760,14 +803,11 @@ export function WordForm({
                   <option value="" disabled>
                     Выберите вариант
                   </option>
-                  {Array.from(dictionaryTranscriptions.keys(), (value) => {
-                    const dialect = transcriptionDialects.get(value)
-                    return (
-                      <option key={value} value={value}>
-                        {dialect ? `≈ ${dialect} · ${value}` : value}
-                      </option>
-                    )
-                  })}
+                  {Array.from(dictionaryTranscriptions.keys(), (value) => (
+                    <option key={value} value={value}>
+                      {dictionaryDialect(value) ?? 'Без метки'} · {value}
+                    </option>
+                  ))}
                 </select>
               </label>
             )}
@@ -858,9 +898,11 @@ export function WordForm({
           {lookup && lookup.matches.length > 0 && (
             <div>
               <p>Варианты из словаря в порядке источника.</p>
-              {lookup.machine_transcription && !preferredTranscription(lookup.matches) && (
-                <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
-              )}
+              {generatedTranscription &&
+                lookup.machine_transcription?.trim() === trimmedTranscription &&
+                dictionaryTranscriptions.size === 0 && (
+                  <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
+                )}
               {lookup.matches.map((match) => (
                 <section
                   key={match.entry_id}

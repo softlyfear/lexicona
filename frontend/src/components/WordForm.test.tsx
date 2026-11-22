@@ -115,8 +115,8 @@ it.each(['new', 'edit'] as const)(
       await user.type(screen.getByLabelText('Перевод примера'), 'Книга.')
       await user.type(screen.getByLabelText('Заметка'), 'keep note')
     }
-    const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
-    expect(button).toHaveTextContent('IPA')
+    const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
+    expect(button).toHaveTextContent(/^US$/)
     expect(button).toHaveAttribute('type', 'button')
     button.focus()
     await user.keyboard('{Enter}')
@@ -125,6 +125,8 @@ it.each(['new', 'edit'] as const)(
       'status',
     )
     expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
+    expect(button).toHaveAccessibleName('US — американская транскрипция')
+    expect(button).toBeDisabled()
     expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
     expect(screen.getByLabelText('Пример (EN)')).toHaveValue('A book.')
     expect(screen.getByLabelText('Перевод примера')).toHaveValue('Книга.')
@@ -160,16 +162,19 @@ it('requires a headword and protects nonempty manual IPA until explicitly cleare
     .mockResolvedValue({ transcription: '/bʊk/' })
   const user = userEvent.setup()
   newForm()
-  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
   expect(button).toBeDisabled()
   await user.type(screen.getByLabelText(/Слово или выражение/), 'book')
   await user.type(screen.getByLabelText('Транскрипция'), '/manual/')
   expect(button).toBeDisabled()
+  expect(button).toHaveTextContent(/^\?$/)
+  expect(button).toHaveAccessibleName(/диалект транскрипции неизвестен/)
   await user.click(button)
   expect(generate).not.toHaveBeenCalled()
   expect(button).toHaveAttribute('title', expect.stringContaining('очистите поле'))
   await user.clear(screen.getByLabelText('Транскрипция'))
   expect(button).toBeEnabled()
+  expect(button).toHaveTextContent(/^US$/)
   await user.click(button)
   expect(await screen.findByText(/Транскрипция добавлена/)).toBeInTheDocument()
 })
@@ -183,7 +188,7 @@ it('locks repeated IPA requests and Save while loading but keeps manual input an
   )
   const user = userEvent.setup()
   const { submit, cancel } = newForm({ ...word, transcription: null })
-  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
   await user.click(button)
   expect(button).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
@@ -213,7 +218,9 @@ it.each(['headword', 'manual', 'manual-clear', 'unmount'] as const)(
     )
     const user = userEvent.setup()
     const view = newForm({ ...word, transcription: null })
-    await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' }),
+    )
     if (action === 'headword') {
       fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'dog' } })
       fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'book' } })
@@ -252,7 +259,9 @@ it.each(['success', '401'] as const)(
     )
     const user = userEvent.setup()
     newForm({ ...word, transcription: null })
-    await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' }),
+    )
     const other = {
       user: { id: 'b', login: 'bob', difficulty: 'medium' as const, is_admin: false },
       csrf_token: 'new',
@@ -282,7 +291,7 @@ it.each([
     .mockResolvedValueOnce({ transcription: '/bʊk/' })
   const user = userEvent.setup()
   const { submit } = newForm({ ...word, transcription: null })
-  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
   await user.click(button)
   expect(await screen.findByRole('alert')).not.toBeEmptyDOMElement()
   expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
@@ -313,7 +322,7 @@ it('does not run IPA generation alongside lookup and ignores invalidated IPA aft
     .mockResolvedValueOnce(result)
   const user = userEvent.setup()
   const { submit } = newForm({ ...word, transcription: null })
-  const ipa = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const ipa = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
   const translate = screen.getByRole('button', { name: /Подобрать перевод/ })
   await user.click(translate)
   expect(ipa).toBeDisabled()
@@ -331,6 +340,7 @@ it('does not run IPA generation alongside lookup and ignores invalidated IPA aft
   expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
   await act(async () => finishIpa({ transcription: '/stale/' }))
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/bʊk/')
+  expect(ipa).toHaveTextContent(/^\?$/)
   expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
@@ -338,6 +348,51 @@ it('does not run IPA generation alongside lookup and ignores invalidated IPA aft
       source_refs: [{ source_id: source.id, entry_id: 1, field: 'transcription', value: '/bʊk/' }],
     }),
   )
+})
+
+it('retains the generated US badge through a failed lookup and clears its origin on edits', async () => {
+  vi.spyOn(api, 'generateTranscription').mockResolvedValue({ transcription: '/bʊk/' })
+  vi.spyOn(api, 'lookupDictionary').mockRejectedValue(new TypeError('offline'))
+  const user = userEvent.setup()
+  newForm({ ...word, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
+  const ipa = screen.getByLabelText('Транскрипция')
+  await user.click(button)
+  expect(button).toHaveAccessibleName('US — американская транскрипция')
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Словарь недоступен')
+  expect(button).toHaveAccessibleName('US — американская транскрипция')
+
+  fireEvent.change(ipa, { target: { value: '/bʊks/' } })
+  expect(button).toHaveTextContent(/^\?$/)
+  await user.clear(ipa)
+  await user.click(button)
+  expect(button).toHaveAccessibleName('US — американская транскрипция')
+  await user.type(screen.getByLabelText(/Слово или выражение/), 's')
+  expect(ipa).toHaveValue('/bʊk/')
+  expect(button).toHaveTextContent(/^\?$/)
+})
+
+it('keeps a newer manual IPA when a lookup later returns generated IPA', async () => {
+  let finishLookup!: (value: DictionaryLookup) => void
+  vi.spyOn(api, 'lookupDictionary').mockReturnValue(new Promise((done) => (finishLookup = done)))
+  const user = userEvent.setup()
+  newForm({ ...word, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
+  const ipa = screen.getByLabelText('Транскрипция')
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  await user.type(ipa, '/manual/')
+  await act(async () =>
+    finishLookup({
+      ...result,
+      matches: [{ ...result.matches[0], transcriptions: [] }],
+      machine_transcription: '/bʊk/',
+    }),
+  )
+  expect(await screen.findByRole('button', { name: 'книга' })).toBeInTheDocument()
+  expect(ipa).toHaveValue('/manual/')
+  expect(button).toHaveTextContent(/^\?$/)
+  expect(screen.queryByText(/показана американская/)).not.toBeInTheDocument()
 })
 
 it('an obsolete IPA response does not unlock or replace a newer in-flight request', async () => {
@@ -356,7 +411,7 @@ it('an obsolete IPA response does not unlock or replace a newer in-flight reques
     )
   const user = userEvent.setup()
   newForm({ ...word, transcription: null })
-  const button = screen.getByRole('button', { name: 'Получить транскрипцию' })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
   await user.click(button)
   await user.type(screen.getByLabelText('Транскрипция'), 'manual')
   await user.clear(screen.getByLabelText('Транскрипция'))
@@ -375,7 +430,7 @@ it('a current transcription 401 expires the session without changing the draft',
   const user = userEvent.setup()
   newForm({ ...word, transcription: null })
   const revision = getSessionRevision()
-  await user.click(screen.getByRole('button', { name: 'Получить транскрипцию' }))
+  await user.click(screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' }))
   expect(getSessionRevision()).toBe(revision + 1)
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('')
   expect(screen.getByLabelText(/Переводы —/)).toHaveValue('ручной')
@@ -696,7 +751,7 @@ it.each([
   {
     headword: 'hello',
     transcriptions: ['/həˈləʊ/', '/hæˈlaʊ/', '/həˈloʊ/'],
-    labels: ['≈ UK · /həˈləʊ/', '/hæˈlaʊ/', '≈ US · /həˈloʊ/'],
+    labels: ['≈ UK · /həˈləʊ/', 'Без метки · /hæˈlaʊ/', '≈ US · /həˈloʊ/'],
     expected: '/həˈloʊ/',
   },
   {
@@ -720,6 +775,9 @@ it.each([
     expect(options.slice(1).map((option) => option.textContent)).toEqual(labels)
     expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
     expect(picker).toHaveValue(expected)
+    expect(
+      screen.getByRole('button', { name: /вероятно, американская транскрипция/ }),
+    ).toBeDisabled()
   },
 )
 
@@ -731,18 +789,18 @@ it('помечает различимые IPA и оставляет спорны
     ['/kɑr/', '≈ US · /kɑr/'],
     ['/kɑː/', '≈ UK · /kɑː/'],
     ['/ɡoʊ kɑr/', '≈ US · /ɡoʊ kɑr/'],
-    ['/ɡoʊ kɑː/', '/ɡoʊ kɑː/'],
-    ['/ɒn kɑr/', '/ɒn kɑr/'],
+    ['/ɡoʊ kɑː/', 'Без метки · /ɡoʊ kɑː/'],
+    ['/ɒn kɑr/', 'Без метки · /ɒn kɑr/'],
     ['/ɒn kɑː/', '≈ UK · /ɒn kɑː/'],
-    ['/oʊ sɒk/', '/oʊ sɒk/'],
-    ['/rʌn/', '/rʌn/'],
-    ['/kɑrd/', '/kɑrd/'],
-    ['/fɔːr ˈæp.əlz/', '/fɔːr ˈæp.əlz/'],
-    ['/fɔː ˈæp.əlz/', '/fɔː ˈæp.əlz/'],
-    ['[oʊ]', '[oʊ]'],
-    ['/əʊ/ (UK)', '/əʊ/ (UK)'],
-    ['/oʊ (US)/', '/oʊ (US)/'],
-    ['/əʊ/ /oʊ/', '/əʊ/ /oʊ/'],
+    ['/oʊ sɒk/', 'Без метки · /oʊ sɒk/'],
+    ['/rʌn/', 'Без метки · /rʌn/'],
+    ['/kɑrd/', 'Без метки · /kɑrd/'],
+    ['/fɔːr ˈæp.əlz/', 'Без метки · /fɔːr ˈæp.əlz/'],
+    ['/fɔː ˈæp.əlz/', 'Без метки · /fɔː ˈæp.əlz/'],
+    ['[oʊ]', 'Без метки · [oʊ]'],
+    ['/əʊ/ (UK)', 'Без метки · /əʊ/ (UK)'],
+    ['/oʊ (US)/', 'Без метки · /oʊ (US)/'],
+    ['/əʊ/ /oʊ/', 'Без метки · /əʊ/ /oʊ/'],
   ]
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
     ...result,
@@ -758,6 +816,49 @@ it('помечает различимые IPA и оставляет спорны
       .slice(1)
       .map((option) => [option.value, option.textContent]),
   ).toEqual(options)
+})
+
+it('показывает проверенные диалекты coverage и сохраняет исходную IPA', async () => {
+  const headword = 'coverage'
+  const transcriptions = ['/ˈkav.(ə.)ɹɪdʒ/', '/ˈkɐv.(ə.)ɹɪdʒ/', '/ˈkʌv.(ə.)ɹɪdʒ/']
+  vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [{ ...result.matches[0], entry_id: 22, headword, transcriptions }],
+  })
+  const user = userEvent.setup()
+  const { submit } = form({ ...word, headword, transcription: null })
+  const button = screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' })
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
+  const options = within(picker).getAllByRole('option')
+  expect(options.slice(1).map((option) => option.textContent)).toEqual([
+    'AU · /ˈkav.(ə.)ɹɪdʒ/',
+    'AU · /ˈkɐv.(ə.)ɹɪdʒ/',
+    'US/UK · /ˈkʌv.(ə.)ɹɪdʒ/',
+  ])
+  expect(button).toHaveAccessibleName('AU — австралийская транскрипция')
+  expect(button).toBeDisabled()
+  await user.selectOptions(picker, transcriptions[2])
+  expect(button).toHaveAccessibleName('US/UK — американская и британская транскрипция')
+  expect(button).toHaveTextContent(/^US\/UK$/)
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      transcription: transcriptions[2],
+      source_refs: [
+        { source_id: source.id, entry_id: 22, field: 'transcription', value: transcriptions[2] },
+      ],
+    }),
+  )
+
+  const ipa = screen.getByLabelText('Транскрипция')
+  fireEvent.change(ipa, { target: { value: '/koʊ/' } })
+  expect(button).toHaveTextContent(/^≈ US$/)
+  fireEvent.change(ipa, { target: { value: transcriptions[1] } })
+  expect(button).toHaveTextContent(/^AU$/)
+  await user.type(screen.getByLabelText(/Слово или выражение/), 's')
+  expect(ipa).toHaveValue(transcriptions[1])
+  expect(button).toHaveTextContent(/^\?$/)
 })
 
 it('выбирает IPA из другого совпадения, сохраняя его источник и прежние переводы', async () => {
@@ -790,8 +891,11 @@ it('выбирает IPA из другого совпадения, сохран�
       .map((option) => option.textContent),
   ).toEqual(['Выберите вариант', '≈ UK · /hɑːd/', '≈ US · /hɑɹd/'])
   expect(picker).toHaveValue('/hɑːd/')
+  const badge = screen.getByRole('button', { name: /вероятно, британская транскрипция/ })
+  expect(badge).toHaveTextContent(/^≈ UK$/)
   await user.selectOptions(picker, '/hɑɹd/')
   const ipa = screen.getByLabelText('Транскрипция')
+  expect(badge).toHaveTextContent(/^≈ US$/)
   expect(ipa).toHaveValue('/hɑɹd/')
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('трудный')
   expect(onDirtyChange).toHaveBeenCalledExactlyOnceWith(true)
@@ -911,6 +1015,7 @@ it('показывает варианты DeepSeek и автоматически
   expect(screen.getByRole('button', { name: 'второй перевод' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'третий перевод' })).toBeInTheDocument()
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/feɪk ɪt tɪl ju meɪk ɪt/')
+  expect(screen.getByRole('button', { name: 'US — американская транскрипция' })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: 'второй перевод' }))
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(
@@ -948,6 +1053,7 @@ it('подставляет американскую IPA для словарно�
   ).toBeInTheDocument()
   expect(screen.queryByText(/Машинный перевод/)).not.toBeInTheDocument()
   expect(screen.getByLabelText('Транскрипция')).toHaveValue('/ˌkʌt tə ðə ˈtʃeɪs/')
+  expect(screen.getByRole('button', { name: 'US — американская транскрипция' })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: 'перейти к делу' }))
   await user.click(screen.getByRole('button', { name: 'Сохранить' }))
   expect(submit).toHaveBeenCalledWith(

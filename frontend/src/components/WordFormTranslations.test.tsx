@@ -333,7 +333,7 @@ it.each(['lookup', 'ipa', 'ai'] as const)(
     form({ ...word, transcription: null })
     const buttons = {
       lookup: screen.getByRole('button', { name: /Подобрать перевод/ }),
-      ipa: screen.getByRole('button', { name: 'Получить транскрипцию' }),
+      ipa: screen.getByRole('button', { name: 'Получить американскую транскрипцию (US)' }),
       ai: ai(),
     }
     await user.click(buttons[first])

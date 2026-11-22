@@ -31,10 +31,14 @@
 
 .transcriptionButton {
   flex: none;
-  min-width: 2.75rem;
+  min-width: 3.5rem;
   min-height: 2.75rem;
   padding: 0.35rem 0.5rem;
   font-size: 0.85rem;
+}
+
+button.transcriptionButton[data-filled]:disabled {
+  opacity: 1;
 }
 
 .dictionary {

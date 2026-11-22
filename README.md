@@ -231,4 +231,9 @@ docker compose run --rm lexicona-admin create-user me --admin
 f3dadcc29d7df6e77edb13b98a2ba2c3fac002852eddd8b557637f0b13d39c39
 ```
 
+Пометки произношения для `coverage` основаны на
+[статье участников Wiktionary](https://en.wiktionary.org/w/index.php?title=coverage&oldid=93538610#Pronunciation),
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Названия вариантов
+сокращены до региональных кодов.
+
 Модель [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) распространяется по лицензии Apache 2.0; [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) — по лицензии MIT.
