@@ -368,7 +368,12 @@ export function WordsPage({ userId }: { userId: string }) {
             <div className={css.wordMain}>
               <div className={css.wordHead}>
                 <strong lang="en">{word.headword}</strong>
-                {word.transcription && <span className={ui.muted}>{word.transcription}</span>}
+                {word.transcription && (
+                  <span className={ui.muted}>
+                    {word.transcription_dialect === 'US' && 'US · '}
+                    {word.transcription}
+                  </span>
+                )}
                 <SpeakButton text={word.headword} lang="en-US" />
               </div>
               <div lang="ru">

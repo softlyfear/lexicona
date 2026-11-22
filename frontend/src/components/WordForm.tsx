@@ -149,8 +149,10 @@ export function WordForm({
   const [translationsMessage, setTranslationsMessage] = useState('')
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const translationsHelpId = useId()
-  const [{ value: transcription, generated: generatedTranscription }, setTranscriptionDraft] =
-    useState({ value: word?.transcription ?? '', generated: false })
+  const [{ value: transcription, confirmedUs }, setTranscriptionDraft] = useState({
+    value: word?.transcription ?? '',
+    confirmedUs: word?.transcription_dialect === 'US' && !!word.transcription?.trim(),
+  })
   const [exampleEn, setExampleEn] = useState(word?.example_en ?? '')
   const [exampleRu, setExampleRu] = useState(word?.example_ru ?? '')
   const exampleEnRef = useRef(exampleEn)
@@ -229,7 +231,7 @@ export function WordForm({
   }
 
   function applyTranscription(value: string, source: 'generated' | number) {
-    setTranscriptionDraft({ value, generated: source === 'generated' })
+    setTranscriptionDraft({ value, confirmedUs: source === 'generated' })
     setRefs((current) => {
       const remaining = current.filter((ref) => ref.field !== 'transcription')
       if (source === 'generated') return remaining
@@ -244,7 +246,7 @@ export function WordForm({
     invalidateTranslations()
     invalidateTranscription()
     setTranscriptionDraft((current) =>
-      current.generated ? { ...current, generated: false } : current,
+      current.confirmedUs ? { ...current, confirmedUs: false } : current,
     )
     lookupRequestId.current++
     lookupLocked.current = false
@@ -639,18 +641,20 @@ export function WordForm({
       submitLock.current = false
       return
     }
+    const ipa = optional(transcription)
+    const dialect =
+      ipa && confirmedUs ? 'US' : word?.transcription_dialect === 'US' ? null : undefined
     onSubmit({
       headword: head,
       translations: parsed,
-      transcription: optional(transcription),
+      transcription: ipa,
+      ...(dialect !== undefined && { transcription_dialect: dialect }),
       example_en: optional(exampleEn),
       example_ru: optional(exampleRu),
       note: optional(note),
       tags,
       source_refs: refs.filter((ref) =>
-        ref.field === 'translation'
-          ? parsed.includes(ref.value)
-          : optional(transcription) === ref.value,
+        ref.field === 'translation' ? parsed.includes(ref.value) : ipa === ref.value,
       ),
     })
     if (requestId === submitGeneration.current) submitLock.current = false
@@ -672,7 +676,7 @@ export function WordForm({
     trimmedTranscription && !dictionaryTranscriptions.has(trimmedTranscription)
       ? inferTranscriptionDialects([trimmedTranscription]).get(trimmedTranscription)
       : undefined
-  const currentDialect = generatedTranscription
+  const currentDialect = confirmedUs
     ? 'US'
     : (dictionaryDialect(trimmedTranscription) ?? manualDialect ?? '?')
   const currentDialectLabel = displayDialect(currentDialect)
@@ -749,7 +753,7 @@ export function WordForm({
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   invalidateTranscription()
-                  setTranscriptionDraft({ value, generated: false })
+                  setTranscriptionDraft({ value, confirmedUs: false })
                   setRefs((current) =>
                     current.filter(
                       (ref) => ref.field !== 'transcription' || ref.value === value.trim(),
@@ -916,7 +920,7 @@ export function WordForm({
           {lookup && lookup.matches.length > 0 && (
             <div>
               <p>Варианты из словаря в порядке источника.</p>
-              {generatedTranscription &&
+              {confirmedUs &&
                 lookup.machine_transcription?.trim() === trimmedTranscription &&
                 dictionaryTranscriptions.size === 0 && (
                   <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>

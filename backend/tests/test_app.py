@@ -340,3 +340,29 @@ def test_progress_cap_migration_clamps_legacy_values(tmp_path: Path) -> None:
     with sqlite3.connect(file) as db:
         rows = dict(db.execute("SELECT id, progress FROM words").fetchall())
     assert rows == {"high": 100, "max": 100, "low": 40}
+
+
+def test_transcription_dialect_upgrade_preserves_legacy_ipa(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "dialect.db"
+    config = alembic_config(f"sqlite+aiosqlite:///{path}")
+    command.upgrade(config, "7a6666654fbe")
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "INSERT INTO users (id, login, password_hash, is_admin, difficulty, created_at) "
+            "VALUES ('u', 'alice', 'hash', 0, 'medium', '2020-01-01')"
+        )
+        db.execute(
+            "INSERT INTO words (id, owner_id, headword, normalized_headword, transcription, "
+            "progress, content_version, created_at, updated_at) "
+            "VALUES ('w', 'u', 'cat', 'cat', '/kæt/', 40, 2, '2020-01-01', '2020-01-01')"
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT transcription, transcription_dialect, progress, content_version FROM words"
+        ).fetchone() == ("/kæt/", None, 40, 2)
+        db.execute("UPDATE words SET transcription_dialect = 'US'")
+    with pytest.raises(RuntimeError, match="transcription dialects"):
+        command.downgrade(config, "7a6666654fbe")

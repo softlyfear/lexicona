@@ -55,11 +55,18 @@ class WordIn(BaseModel):
     headword: Text200
     translations: list[Text200] = Field(min_length=1, max_length=10)
     transcription: Annotated[Text300 | None, Blank] = None
+    transcription_dialect: Literal["US"] | None = None
     example_en: Annotated[Text2000 | None, Blank] = None
     example_ru: Annotated[Text2000 | None, Blank] = None
     note: Annotated[Text4000 | None, Blank] = None
     tags: list[str] = Field(default_factory=list, max_length=20)
     source_refs: list[SourceRef] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def valid_transcription_dialect(self) -> Self:
+        if self.transcription_dialect is not None and self.transcription is None:
+            raise ValueError("transcription dialect requires a transcription")
+        return self
 
     @model_validator(mode="after")
     def valid_refs(self) -> Self:
@@ -111,6 +118,7 @@ class WordOut(BaseModel):
     source_refs: list[SourceRef]
     translations: list[str]
     transcription: str | None
+    transcription_dialect: Literal["US"] | None
     example_en: str | None
     example_ru: str | None
     note: str | None
@@ -129,6 +137,7 @@ class WordOut(BaseModel):
             source_refs=word.source_refs or [],
             translations=[t.text for t in word.translations],
             transcription=word.transcription,
+            transcription_dialect=word.transcription_dialect,
             example_en=word.example_en,
             example_ru=word.example_ru,
             note=word.note,
@@ -178,8 +187,15 @@ def _meaning(word: Word) -> tuple[str, frozenset[str]]:
 
 
 def _fill(word: Word, body: WordIn) -> None:
+    normalized_headword = normalize(body.headword)
+    if (
+        "transcription_dialect" in body.model_fields_set
+        or normalized_headword != word.normalized_headword
+        or body.transcription != ((word.transcription or "").strip() or None)
+    ):
+        word.transcription_dialect = body.transcription_dialect
     word.headword = body.headword
-    word.normalized_headword = normalize(body.headword)
+    word.normalized_headword = normalized_headword
     word.transcription = body.transcription
     word.example_en = body.example_en
     word.example_ru = body.example_ru

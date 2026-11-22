@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -72,6 +72,7 @@ class Word(Base):
     normalized_headword: Mapped[str] = mapped_column(String(200), index=True)
     source_refs: Mapped[list[dict[str, object]] | None] = mapped_column(JSON, nullable=True)
     transcription: Mapped[str | None] = mapped_column(String(300))
+    transcription_dialect: Mapped[Literal["US"] | None] = mapped_column(String(2))
     example_en: Mapped[str | None] = mapped_column(Text)
     example_ru: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)

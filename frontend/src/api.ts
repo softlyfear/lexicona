@@ -150,6 +150,7 @@ export interface WordInput {
   headword: string
   translations: string[]
   transcription: string | null
+  transcription_dialect?: 'US' | null
   example_en: string | null
   example_ru: string | null
   note: string | null

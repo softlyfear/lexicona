@@ -21,6 +21,7 @@ async def test_create_and_list(alice: Client) -> None:
     assert word["headword"] == "cat"
     assert word["translations"] == ["кот", "кошка"]
     assert word["transcription"] == "kæt"
+    assert word["transcription_dialect"] is None
     assert word["note"] is None
     assert word["progress"] == 0
     listed = (await alice.get("/api/words")).json()
@@ -73,6 +74,64 @@ async def test_cosmetic_edit_keeps_progress(app: FastAPI, alice: Client) -> None
     )
     assert response.json()["progress"] == 40
     assert response.json()["note"] == "pet"
+
+
+async def test_saved_transcription_dialect_keeps_progress_and_is_private(
+    app: FastAPI, alice: Client, bob: Client
+) -> None:
+    word = await add_word(alice, "cat", "кот", transcription="/kæt/", transcription_dialect="US")
+    assert word["transcription_dialect"] == "US"
+    await set_progress(app, word["id"], 40)
+    path = f"/api/words/{word['id']}"
+    assert (await alice.get("/api/words")).json()[0]["transcription_dialect"] == "US"
+    assert (await bob.get(path)).status_code == 404
+
+    payload = {"headword": "Cat", "translations": ["кот"], "transcription": " /kæt/ "}
+    legacy = await alice.put(path, json=payload)
+    assert legacy.status_code == 200
+    assert legacy.json()["transcription_dialect"] == "US"
+
+    edited = await alice.put(path, json={**payload, "transcription": "/kætʰ/"})
+    assert edited.status_code == 200
+    assert edited.json()["transcription_dialect"] is None
+    assert edited.json()["progress"] == 40
+
+    marked = await alice.put(path, json={**payload, "transcription_dialect": "US"})
+    assert marked.status_code == 200
+    assert marked.json()["transcription_dialect"] == "US"
+    cleared = await alice.put(path, json={**payload, "transcription_dialect": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["transcription_dialect"] is None
+    database: Database = app.state.db
+    async with database.sessions() as db:
+        saved = await db.get(Word, word["id"])
+        assert saved is not None
+        assert (saved.progress, saved.content_version, saved.training_version) == (40, 1, 1)
+
+
+async def test_legacy_headword_change_clears_transcription_dialect(alice: Client) -> None:
+    word = await add_word(alice, "cat", "кот", transcription="/kæt/", transcription_dialect="US")
+    edited = await alice.put(
+        f"/api/words/{word['id']}",
+        json={"headword": "catkin", "translations": ["кот"], "transcription": "/kæt/"},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["transcription_dialect"] is None
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"transcription_dialect": "US"},
+        {"transcription_dialect": "US", "transcription": "  "},
+        {"transcription_dialect": "UK", "transcription": "/kæt/"},
+    ],
+)
+async def test_rejects_invalid_transcription_dialect(alice: Client, extra: dict[str, str]) -> None:
+    response = await alice.post(
+        "/api/words", json={"headword": "cat", "translations": ["кот"], **extra}
+    )
+    assert response.status_code == 422
 
 
 async def test_meaning_edit_resets_progress(app: FastAPI, alice: Client) -> None:

@@ -104,6 +104,35 @@ describe('сортировка словаря', () => {
     vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat'), word('2', 'dog')])
   })
 
+  it('показывает сохранённую метку US в списке и сохраняет её при правке заметки', async () => {
+    const saved: Word = {
+      ...word('1', 'book'),
+      transcription: '/bʊk/',
+      transcription_dialect: 'US',
+    }
+    const legacy: Word = { ...word('2', 'books'), transcription: '/bʊks/' }
+    vi.mocked(api.listWords).mockResolvedValue([saved, legacy])
+    vi.mocked(api.updateWord).mockResolvedValue({ ...saved, note: 'Новая заметка' })
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByText('US · /bʊk/')).toBeInTheDocument()
+    expect(screen.getByText('/bʊks/')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Действия со словом «book»'))
+    await user.click(screen.getByRole('button', { name: 'Изменить «book»' }))
+    expect(screen.getByRole('button', { name: 'US — американская транскрипция' })).toBeDisabled()
+    await user.type(screen.getByLabelText('Заметка'), 'Новая заметка')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(api.updateWord).toHaveBeenCalledWith(
+      '1',
+      expect.objectContaining({
+        transcription: '/bʊk/',
+        transcription_dialect: 'US',
+        note: 'Новая заметка',
+      }),
+    )
+    expect(await screen.findByText('US · /bʊk/')).toBeInTheDocument()
+  })
+
   it.each(['active', 'excluded', 'learned', 'all'] as const)(
     'counts the full server search/scope/OR-tag result for %s including words with both tags only once',
     async (training) => {

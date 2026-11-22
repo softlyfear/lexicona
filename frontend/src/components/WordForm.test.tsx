@@ -144,6 +144,7 @@ it.each(['new', 'edit'] as const)(
       headword: 'book',
       translations: ['ручной'],
       transcription: '/bʊk/',
+      transcription_dialect: 'US',
       example_en: 'A book.',
       example_ru: 'Книга.',
       note: 'keep note',
@@ -153,6 +154,33 @@ it.each(['new', 'edit'] as const)(
           ? [{ source_id: source.id, entry_id: 1, field: 'translation', value: 'ручной' }]
           : [],
     })
+  },
+)
+
+it.each(['manual', 'headword', 'dictionary'] as const)(
+  'clears a saved US label after a %s edit even when normalized values are unchanged',
+  async (edit) => {
+    const user = userEvent.setup()
+    const { submit } = form({ ...word, transcription: '/bʊk/', transcription_dialect: 'US' })
+    const badge = screen.getByRole('button', { name: 'US — американская транскрипция' })
+    if (edit === 'manual') {
+      fireEvent.change(screen.getByLabelText('Транскрипция'), { target: { value: ' /bʊk/ ' } })
+    } else if (edit === 'headword') {
+      fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'Book' } })
+    } else {
+      vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+        ...result,
+        matches: [{ ...result.matches[0], transcriptions: ['/buːk/', '/bʊk/'] }],
+      })
+      await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+      const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
+      await user.selectOptions(picker, '/bʊk/')
+    }
+    expect(badge).toHaveAccessibleName(/диалект транскрипции неизвестен/)
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(submit).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ transcription: '/bʊk/', transcription_dialect: null }),
+    )
   },
 )
 
@@ -914,6 +942,7 @@ it('выбирает IPA из другого совпадения, сохран�
       ],
     }),
   )
+  expect(submit.mock.calls[0][0]).not.toHaveProperty('transcription_dialect')
   expect(window.confirm).not.toHaveBeenCalled()
 
   await user.clear(ipa)
@@ -1023,6 +1052,7 @@ it('показывает варианты DeepSeek и автоматически
     expect.objectContaining({
       translations: ['ручной', 'второй перевод'],
       transcription: '/feɪk ɪt tɪl ju meɪk ɪt/',
+      transcription_dialect: 'US',
       source_refs: [],
     }),
   )
@@ -1062,6 +1092,7 @@ it('подставляет американскую IPA для словарно�
       headword: 'cut to the chase',
       translations: ['ручной', 'перейти к делу'],
       transcription: '/ˌkʌt tə ðə ˈtʃeɪs/',
+      transcription_dialect: 'US',
       source_refs: [
         { source_id: source.id, entry_id: 7, field: 'translation', value: 'перейти к делу' },
       ],
