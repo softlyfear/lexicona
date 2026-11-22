@@ -455,14 +455,14 @@ it.each([
     lookupButton.focus()
     await user.keyboard('{Enter}')
     const warning = await screen.findByText(duplicateMessage)
+    const lookupStatus = screen.getByText('Ищем в словаре…')
     expect(warning).toHaveAttribute('role', 'status')
     expect(
-      warning.compareDocumentPosition(lookupButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+      warning.compareDocumentPosition(lookupStatus) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0)
     expect(screen.getByLabelText(/Слово или выражение/)).toHaveAccessibleDescription(
       duplicateMessage,
     )
-    expect(screen.getByText('Ищем в словаре…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Добавить' })).toBeEnabled()
     expect(api.listWords).toHaveBeenCalledWith(headword.trim(), 'created_desc', 'all')
     fireEvent.change(screen.getByLabelText(/Слово или выражение/), { target: { value: 'new' } })
@@ -751,13 +751,13 @@ it.each([
   {
     headword: 'hello',
     transcriptions: ['/həˈləʊ/', '/hæˈlaʊ/', '/həˈloʊ/'],
-    labels: ['≈ UK · /həˈləʊ/', 'Без метки · /hæˈlaʊ/', '≈ US · /həˈloʊ/'],
+    labels: ['UK · /həˈləʊ/', 'Без метки · /hæˈlaʊ/', 'US · /həˈloʊ/'],
     expected: '/həˈloʊ/',
   },
   {
     headword: 'good morning',
     transcriptions: ['/ˌɡʊd ˈmɔːnɪŋ/', '/ˌɡʊd ˈmɔɹnɪŋ/'],
-    labels: ['≈ UK · /ˌɡʊd ˈmɔːnɪŋ/', '≈ US · /ˌɡʊd ˈmɔɹnɪŋ/'],
+    labels: ['UK · /ˌɡʊd ˈmɔːnɪŋ/', 'US · /ˌɡʊd ˈmɔɹnɪŋ/'],
     expected: '/ˌɡʊd ˈmɔɹnɪŋ/',
   },
 ])(
@@ -773,25 +773,26 @@ it.each([
     const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
     const options = within(picker).getAllByRole('option')
     expect(options.slice(1).map((option) => option.textContent)).toEqual(labels)
+    expect(options[1]).toHaveAccessibleName(/^UK · .* — вероятно, британская транскрипция$/)
     expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
     expect(picker).toHaveValue(expected)
-    expect(
-      screen.getByRole('button', { name: /вероятно, американская транскрипция/ }),
-    ).toBeDisabled()
+    const badge = screen.getByRole('button', { name: 'US — вероятно, американская транскрипция' })
+    expect(badge).toHaveTextContent(/^US$/)
+    expect(badge).toBeDisabled()
   },
 )
 
 it('помечает различимые IPA и оставляет спорные варианты без догадки', async () => {
   const options = [
-    ['/sɒk/', '≈ UK · /sɒk/'],
-    ['/bɝd/', '≈ US · /bɝd/'],
-    ['/ˈsɪstɚ/', '≈ US · /ˈsɪstɚ/'],
-    ['/kɑr/', '≈ US · /kɑr/'],
-    ['/kɑː/', '≈ UK · /kɑː/'],
-    ['/ɡoʊ kɑr/', '≈ US · /ɡoʊ kɑr/'],
+    ['/sɒk/', 'UK · /sɒk/'],
+    ['/bɝd/', 'US · /bɝd/'],
+    ['/ˈsɪstɚ/', 'US · /ˈsɪstɚ/'],
+    ['/kɑr/', 'US · /kɑr/'],
+    ['/kɑː/', 'UK · /kɑː/'],
+    ['/ɡoʊ kɑr/', 'US · /ɡoʊ kɑr/'],
     ['/ɡoʊ kɑː/', 'Без метки · /ɡoʊ kɑː/'],
     ['/ɒn kɑr/', 'Без метки · /ɒn kɑr/'],
-    ['/ɒn kɑː/', '≈ UK · /ɒn kɑː/'],
+    ['/ɒn kɑː/', 'UK · /ɒn kɑː/'],
     ['/oʊ sɒk/', 'Без метки · /oʊ sɒk/'],
     ['/rʌn/', 'Без метки · /rʌn/'],
     ['/kɑrd/', 'Без метки · /kɑrd/'],
@@ -853,7 +854,7 @@ it('показывает проверенные диалекты coverage и с�
 
   const ipa = screen.getByLabelText('Транскрипция')
   fireEvent.change(ipa, { target: { value: '/koʊ/' } })
-  expect(button).toHaveTextContent(/^≈ US$/)
+  expect(button).toHaveTextContent(/^US$/)
   fireEvent.change(ipa, { target: { value: transcriptions[1] } })
   expect(button).toHaveTextContent(/^AU$/)
   await user.type(screen.getByLabelText(/Слово или выражение/), 's')
@@ -889,13 +890,13 @@ it('выбирает IPA из другого совпадения, сохран�
     within(picker)
       .getAllByRole('option')
       .map((option) => option.textContent),
-  ).toEqual(['Выберите вариант', '≈ UK · /hɑːd/', '≈ US · /hɑɹd/'])
+  ).toEqual(['Выберите вариант', 'UK · /hɑːd/', 'US · /hɑɹd/'])
   expect(picker).toHaveValue('/hɑːd/')
   const badge = screen.getByRole('button', { name: /вероятно, британская транскрипция/ })
-  expect(badge).toHaveTextContent(/^≈ UK$/)
+  expect(badge).toHaveTextContent(/^UK$/)
   await user.selectOptions(picker, '/hɑɹd/')
   const ipa = screen.getByLabelText('Транскрипция')
-  expect(badge).toHaveTextContent(/^≈ US$/)
+  expect(badge).toHaveTextContent(/^US$/)
   expect(ipa).toHaveValue('/hɑɹd/')
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('трудный')
   expect(onDirtyChange).toHaveBeenCalledExactlyOnceWith(true)

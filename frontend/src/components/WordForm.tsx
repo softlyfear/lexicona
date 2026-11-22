@@ -65,6 +65,7 @@ const transcriptionDialectNames = {
   '≈ UK': 'вероятно, британская транскрипция',
   '?': 'диалект транскрипции неизвестен',
 }
+const displayDialect = (dialect: string) => dialect.replace(/^≈ /u, '')
 
 const documentedTranscriptionDialects = new Map([
   // Wiktionary: https://en.wiktionary.org/w/index.php?title=coverage&oldid=93538610#Pronunciation
@@ -674,6 +675,7 @@ export function WordForm({
   const currentDialect = generatedTranscription
     ? 'US'
     : (dictionaryDialect(trimmedTranscription) ?? manualDialect ?? '?')
+  const currentDialectLabel = displayDialect(currentDialect)
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
   function translationChoice(value: string, entryId: number | null, generated = false) {
@@ -714,7 +716,7 @@ export function WordForm({
       aria-label="Слово"
     >
       <fieldset className={formCss.fields} disabled={checkingDuplicate}>
-        <div className={css.formRow}>
+        <div className={formCss.lookupFields}>
           <div className={formCss.headword}>
             <label className={ui.field}>
               <span className={ui.label}>Слово или выражение (EN)</span>
@@ -762,7 +764,7 @@ export function WordForm({
                 data-filled={trimmedTranscription ? '' : undefined}
                 aria-label={
                   trimmedTranscription
-                    ? `${currentDialect} — ${transcriptionDialectNames[currentDialect]}`
+                    ? `${currentDialectLabel} — ${transcriptionDialectNames[currentDialect]}`
                     : 'Получить американскую транскрипцию (US)'
                 }
                 title={
@@ -780,61 +782,13 @@ export function WordForm({
                 }
                 onClick={() => void generateTranscription()}
               >
-                {trimmedTranscription ? currentDialect : 'US'}
+                {trimmedTranscription ? currentDialectLabel : 'US'}
               </button>
             </div>
-            {dictionaryTranscriptions.size > 1 && (
-              <label className={ui.field}>
-                <span className={ui.label}>Варианты транскрипции</span>
-                <select
-                  className={ui.input}
-                  value={
-                    dictionaryTranscriptions.has(trimmedTranscription) ? trimmedTranscription : ''
-                  }
-                  disabled={pending}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
-                    const entryId = dictionaryTranscriptions.get(value)
-                    if (entryId === undefined || revision.current !== getSessionRevision()) return
-                    invalidateTranscription()
-                    applyTranscription(value, entryId)
-                  }}
-                >
-                  <option value="" disabled>
-                    Выберите вариант
-                  </option>
-                  {Array.from(dictionaryTranscriptions.keys(), (value) => (
-                    <option key={value} value={value}>
-                      {dictionaryDialect(value) ?? 'Без метки'} · {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {transcriptionState !== 'idle' && (
-              <p
-                id={transcriptionMessageId}
-                className={transcriptionState === 'error' ? ui.error : ui.muted}
-                role={transcriptionState === 'error' ? 'alert' : 'status'}
-              >
-                {transcriptionState === 'loading'
-                  ? 'Получаем транскрипцию…'
-                  : transcriptionState === 'error'
-                    ? transcriptionError
-                    : 'Транскрипция добавлена в черновик. Проверьте её и сохраните слово.'}
-              </p>
-            )}
           </div>
-        </div>
-        {duplicateWarning && (
-          <p id={duplicateWarningId} role="status" className={ui.error}>
-            {errorMessage(new ApiError(409, 'word_exists'))}
-          </p>
-        )}
-        <div className={formCss.dictionary}>
           <button
             type="button"
-            className={`${ui.button} ${formCss.dictionaryButton}`}
+            className={`${ui.button} ${formCss.dictionaryButton} ${formCss.lookupButton}`}
             disabled={
               !headword.trim() ||
               lookupState === 'loading' ||
@@ -845,6 +799,70 @@ export function WordForm({
           >
             Подобрать перевод и транскрипцию
           </button>
+          {(dictionaryTranscriptions.size > 1 || transcriptionState !== 'idle') && (
+            <div className={`${ui.field} ${formCss.transcriptionDetails}`}>
+              {dictionaryTranscriptions.size > 1 && (
+                <label className={ui.field}>
+                  <span className={ui.label}>Варианты транскрипции</span>
+                  <select
+                    className={ui.input}
+                    value={
+                      dictionaryTranscriptions.has(trimmedTranscription) ? trimmedTranscription : ''
+                    }
+                    disabled={pending}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value
+                      const entryId = dictionaryTranscriptions.get(value)
+                      if (entryId === undefined || revision.current !== getSessionRevision()) return
+                      invalidateTranscription()
+                      applyTranscription(value, entryId)
+                    }}
+                  >
+                    <option value="" disabled>
+                      Выберите вариант
+                    </option>
+                    {Array.from(dictionaryTranscriptions.keys(), (value) => {
+                      const dialect = dictionaryDialect(value)
+                      const label = `${displayDialect(dialect ?? 'Без метки')} · ${value}`
+                      return (
+                        <option
+                          key={value}
+                          value={value}
+                          aria-label={
+                            dialect === '≈ US' || dialect === '≈ UK'
+                              ? `${label} — ${transcriptionDialectNames[dialect]}`
+                              : undefined
+                          }
+                        >
+                          {label}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </label>
+              )}
+              {transcriptionState !== 'idle' && (
+                <p
+                  id={transcriptionMessageId}
+                  className={transcriptionState === 'error' ? ui.error : ui.muted}
+                  role={transcriptionState === 'error' ? 'alert' : 'status'}
+                >
+                  {transcriptionState === 'loading'
+                    ? 'Получаем транскрипцию…'
+                    : transcriptionState === 'error'
+                      ? transcriptionError
+                      : 'Транскрипция добавлена в черновик. Проверьте её и сохраните слово.'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className={formCss.dictionary}>
+          {duplicateWarning && (
+            <p id={duplicateWarningId} role="status" className={ui.error}>
+              {errorMessage(new ApiError(409, 'word_exists'))}
+            </p>
+          )}
           {lookupState === 'loading' && <p role="status">Ищем в словаре…</p>}
           {lookupState === 'error' && (
             <p role="alert">

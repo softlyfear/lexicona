@@ -17,6 +17,17 @@
   min-inline-size: 0;
 }
 
+.lookupFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.lookupButton {
+  justify-self: start;
+}
+
 .transcriptionRow {
   display: flex;
   align-items: center;
@@ -41,9 +52,22 @@ button.transcriptionButton[data-filled]:disabled {
   opacity: 1;
 }
 
+.transcriptionDetails > p {
+  margin: 0;
+}
+
 .dictionary {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.dictionary:empty {
+  display: none;
+}
+
+.dictionary > p:first-child,
+.dictionary > :first-child > p:first-child {
+  margin-block-start: 0;
 }
 
 .aiTranslations {
@@ -79,6 +103,10 @@ button.dictionaryButton:disabled {
 }
 
 @media (min-width: 720px) {
+  .lookupFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dictionaryButton {
     width: auto;
   }
