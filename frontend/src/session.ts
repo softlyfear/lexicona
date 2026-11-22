@@ -143,18 +143,18 @@ export function useSession() {
 export async function verifyOfflineSession(revision: number, ownerId: string) {
   try {
     const session = await api.me()
-    if (!isCurrentSession(revision, ownerId)) return false
+    if (!isCurrentSession(revision, ownerId)) return null
     if (session.user.id !== ownerId) {
       forgetSession()
-      return false
+      return null
     }
     setCsrfToken(session.csrf_token)
-    return true
+    return session.user
   } catch (error) {
-    if (!isCurrentSession(revision, ownerId)) return false
+    if (!isCurrentSession(revision, ownerId)) return null
     if (error instanceof ApiError && [401, 403].includes(error.status)) {
       revokeLocalSession()
-      return false
+      return null
     }
     throw error
   }

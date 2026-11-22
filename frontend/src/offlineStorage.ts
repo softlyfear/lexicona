@@ -1,4 +1,4 @@
-import { type OfflinePack } from './api'
+import { type OfflinePack, type TrainingSize } from './api'
 
 export type AttemptResult = 'pending' | 'correct' | 'incorrect' | 'skipped' | 'conflict'
 
@@ -20,7 +20,7 @@ export interface OfflineRecord {
   key: string
   nextKey: string | null
   preparedAt: number
-  pack: OfflinePack | null
+  pack: (Omit<OfflinePack, 'requested_size'> & { requested_size?: TrainingSize }) | null
   attempts: OfflineAttempt[]
   report: OfflineReport | null
 }

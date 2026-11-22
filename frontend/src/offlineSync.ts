@@ -1,4 +1,4 @@
-import { ApiError, api } from './api'
+import { ApiError, api, type TrainingSize } from './api'
 import {
   clearOfflineDiscard,
   offlineDiscardRequested,
@@ -63,7 +63,12 @@ export async function recordOfflineAnswer(
   })
 }
 
-export async function syncOffline(ownerId: string, allowed: () => boolean, onApplied: () => void) {
+export async function syncOffline(
+  ownerId: string,
+  desiredSize: TrainingSize,
+  allowed: () => boolean,
+  onApplied: () => void,
+) {
   const current = () => allowed() && !offlineSignedOut()
   let discarded = false
   await updateOffline((record) => {
@@ -156,13 +161,13 @@ export async function syncOffline(ownerId: string, allowed: () => boolean, onApp
   }
 
   await updateOffline((latest) => {
+    if (!current() || latest?.ownerId !== ownerId) return
+    if (latest.attempts.length) return latest.nextKey ? { ...latest, nextKey: null } : undefined
     if (
-      !current() ||
-      latest?.ownerId !== ownerId ||
       latest.nextKey ||
-      latest.attempts.length ||
       !latest.preparedAt ||
-      Date.now() - latest.preparedAt < (latest.pack?.items.length ? DAY : 60_000)
+      (Date.now() - latest.preparedAt < (latest.pack?.items.length ? DAY : 60_000) &&
+        (!latest.pack || latest.pack.requested_size === desiredSize))
     )
       return
     return { ...latest, nextKey: newKey() }
@@ -170,8 +175,9 @@ export async function syncOffline(ownerId: string, allowed: () => boolean, onApp
   record = await readOffline()
   if (!current() || record?.ownerId !== ownerId) return
   const renewing = !!record.pack && !packAvailable(record)
-  if (!record.nextKey && record.preparedAt && !renewing) return
-  const requestKey = record.nextKey ?? record.key
+  const nextKey = record.attempts.length ? null : record.nextKey
+  if (!nextKey && record.preparedAt && !renewing) return
+  const requestKey = nextKey ?? record.key
   const packResponse = await api.offlinePack(requestKey)
   if (
     packResponse &&
@@ -180,18 +186,22 @@ export async function syncOffline(ownerId: string, allowed: () => boolean, onApp
     throw new Error('invalid_offline_pack')
   await updateOffline((latest) => {
     if (!current() || latest?.ownerId !== ownerId) return
-    if (latest.nextKey === requestKey) {
-      if (latest.attempts.length) return { ...latest, nextKey: null }
-      return {
-        ...latest,
-        key: requestKey,
-        nextKey: null,
-        pack: packResponse,
-        preparedAt: Date.now(),
-      }
+    const preparing = latest.nextKey === requestKey
+    if (!preparing && latest.key !== requestKey) return
+    if (latest.attempts.length) {
+      if (preparing) return { ...latest, nextKey: null }
+      if (latest.pack?.id !== packResponse?.id) return
+    } else if (packResponse && packResponse.requested_size !== desiredSize) {
+      if (preparing || !latest.nextKey) return { ...latest, nextKey: newKey() }
+      return
     }
-    if (latest.key !== requestKey) return
-    if (latest.pack && latest.pack.id !== packResponse?.id) return
-    return { ...latest, pack: packResponse, preparedAt: Date.now() }
+    if (!preparing && latest.pack && latest.pack.id !== packResponse?.id) return
+    return {
+      ...latest,
+      key: requestKey,
+      nextKey: preparing ? null : latest.nextKey,
+      pack: packResponse,
+      preparedAt: Date.now(),
+    }
   })
 }

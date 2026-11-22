@@ -33,12 +33,12 @@ from lexicona.infrastructure.models import (
     WordTag,
 )
 from lexicona.interfaces.http.deps import CurrentAuth, Db
+from lexicona.interfaces.http.preferences import public_preferences
 
 router = APIRouter(prefix="/training", tags=["training"])
 
 OPTION_COUNT = 6
-OFFLINE_EXERCISE_LIMIT = 10
-OFFLINE_STUDY_LIMIT = 10
+DEFAULT_TRAINING_SIZE = 10
 _rng = random.SystemRandom()
 
 
@@ -47,7 +47,7 @@ class SessionIn(BaseModel):
     direction: Literal["en_ru", "ru_en", "en_en"] = "en_ru"
     purpose: Literal["scheduled", "free"] = "free"
     include_new: StrictBool = True
-    size: Annotated[int, Field(ge=1, strict=True)] | Literal["all"] = 10
+    size: Annotated[int, Field(ge=1, strict=True)] | Literal["all"] = DEFAULT_TRAINING_SIZE
     tag_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=32, strict=True)]] = (
         Field(default_factory=list, max_length=20)
     )
@@ -125,6 +125,7 @@ class OfflinePackOut(BaseModel):
     owner_id: str
     expires_at: datetime
     id: str
+    requested_size: int | Literal["all"]
     study: list[OfflineStudyWord]
     items: list[OfflineExercise]
 
@@ -627,6 +628,8 @@ async def prepare_offline_pack(
     body: OfflinePackIn, auth: CurrentAuth, db: Db
 ) -> OfflinePackOut | None:
     owner_id = auth.user.id
+    preferences = public_preferences(auth.user.preferences).training
+    configured_size = preferences.size if preferences else DEFAULT_TRAINING_SIZE
     session_id = sha256(f"offline-training/{owner_id}/{body.key}".encode()).hexdigest()[:32]
     created_id = await db.scalar(
         sqlite_insert(TrainingSession)
@@ -637,7 +640,7 @@ async def prepare_offline_pack(
             direction="en_ru",
             purpose="free",
             difficulty=auth.user.difficulty,
-            requested_size=str(OFFLINE_EXERCISE_LIMIT),
+            requested_size=str(configured_size),
             is_offline=True,
         )
         .on_conflict_do_nothing(index_elements=[TrainingSession.id])
@@ -654,56 +657,55 @@ async def prepare_offline_pack(
     if session is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "offline_pack_key_conflict")
 
-    exercise_word_ids = [item.word_id for item in session.items if item.word_id is not None]
-    active_words = list(
-        await db.scalars(
-            select(Word)
-            .where(
-                Word.owner_id == owner_id,
-                Word.is_excluded.is_(False),
-                Word.is_learned.is_(False),
-                Word.id.not_in(exercise_word_ids),
-            )
-            .order_by(Word.progress, Word.created_at, Word.id)
-            .limit(
-                OFFLINE_EXERCISE_LIMIT + OFFLINE_STUDY_LIMIT if created_id else OFFLINE_STUDY_LIMIT
-            )
-        )
+    size: int | Literal["all"] = (
+        "all"
+        if session.requested_size == "all"
+        else int(session.requested_size or DEFAULT_TRAINING_SIZE)
     )
-    if created_id and not active_words:
-        await db.rollback()
-        return None
+    eligible_words = (
+        select(Word)
+        .where(Word.owner_id == owner_id, Word.is_excluded.is_(False), Word.is_learned.is_(False))
+        .order_by(Word.progress, Word.created_at, Word.id)
+        .limit(None if size == "all" else size)
+    )
 
     if created_id:
-        # Keep study translations separate from the words in exercises.
-        split = min(OFFLINE_EXERCISE_LIMIT, len(active_words) // 2)
-        exercises, active_words = active_words[:split], active_words[split:]
-        schedules = {
-            schedule.word_id: schedule
-            for schedule in await db.scalars(
-                select(WordProgress).where(
-                    WordProgress.owner_id == owner_id,
-                    WordProgress.word_id.in_(word.id for word in exercises),
-                )
+        exercises = await db.execute(
+            eligible_words.add_columns(WordProgress).outerjoin(
+                WordProgress,
+                (WordProgress.owner_id == Word.owner_id) & (WordProgress.word_id == Word.id),
             )
-        }
-        for position, word in enumerate(exercises):
-            schedule = schedules.get(word.id)
+        )
+        for position, (word, schedule) in enumerate(exercises):
             if schedule is None:
                 schedule = WordProgress(owner_id=owner_id, word_id=word.id, progress_version=1)
                 db.add(schedule)
             session.items.append(_input_item(word, session.direction, position, schedule))
+        if not session.items:
+            await db.rollback()
+            return None
+
+    study_words: list[Word] = []
+    if size != "all":
+        exercise_exists = (
+            select(TrainingItem.id)
+            .where(TrainingItem.session_id == session.id, TrainingItem.word_id == Word.id)
+            .exists()
+        )
+        # The query autoflushes new items before looking up study translations.
+        study_words = list(await db.scalars(eligible_words.where(~exercise_exists)))
 
     await db.commit()
     return OfflinePackOut(
         owner_id=owner_id,
         expires_at=auth.session.expires_at.replace(tzinfo=UTC),
         id=session.id,
+        requested_size=size,
         study=[
             OfflineStudyWord(
                 headword=word.headword, translations=[t.text for t in word.translations]
             )
-            for word in active_words
+            for word in study_words
         ],
         items=[OfflineExercise(id=item.id, prompt=item.prompt) for item in session.items],
     )

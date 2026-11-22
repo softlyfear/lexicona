@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ApiError } from './api'
+import { DEFAULT_TRAINING, listenTrainingSaved } from './accountPreferences'
+import { ApiError, type TrainingSize } from './api'
 import {
   getSessionRevision,
   forgetSession,
@@ -37,6 +38,11 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   const [status, setStatus] = useState<'ready' | 'offline' | 'problem'>('ready')
   const [shellReady, setShellReady] = useState(false)
   const [checkedAt, setCheckedAt] = useState(Date.now)
+  const [desired, setDesired] = useState<{
+    ownerId: string
+    revision: number
+    size: TrainingSize
+  }>()
   const [startupOwner] = useState(offlineOwner)
   const ownerId = session.data?.user.id
   const coldOffline = session.isError && networkUnavailable(session.error)
@@ -87,6 +93,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     if (!enabled || (!ownerId && !coldOffline)) return
     let active = true
     let running = false
+    let refreshAfterSave = false
     let wasDisconnected = false
     const disconnected = () => {
       wasDisconnected = true
@@ -112,13 +119,16 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
           if (active && result.isSuccess) setStatus('ready')
           return
         }
-        if (!(await verifyOfflineSession(revision, ownerId)) || !allowed()) return
+        const user = await verifyOfflineSession(revision, ownerId)
+        if (!user || !allowed()) return
+        const size = user.preferences?.training?.size ?? DEFAULT_TRAINING.size
+        setDesired({ ownerId, revision, size })
         setStatus('ready')
         if (wasDisconnected) {
           wasDisconnected = false
           refreshServerVoices()
         }
-        await syncOffline(ownerId, allowed, () => {
+        await syncOffline(ownerId, size, allowed, () => {
           void queryClient.invalidateQueries({ queryKey: ['words'] })
           void queryClient.invalidateQueries({ queryKey: ['statistics'] })
         })
@@ -128,10 +138,20 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
         else if (active) setStatus('problem')
       } finally {
         running = false
+        if (refreshAfterSave) {
+          refreshAfterSave = false
+          pulse()
+        }
       }
     }
 
     const pulse = () => void refresh()
+    const unlisten = listenTrainingSaved((savedOwner, size) => {
+      if (savedOwner !== ownerId || !isCurrentSession(revision, ownerId)) return
+      setDesired({ ownerId, revision, size })
+      if (running) refreshAfterSave = true
+      else pulse()
+    })
     pulse()
     const timer = window.setInterval(pulse, 20_000)
     window.addEventListener('offline', disconnected)
@@ -139,6 +159,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     document.addEventListener('visibilitychange', pulse)
     return () => {
       active = false
+      unlisten()
       clearInterval(timer)
       window.removeEventListener('offline', disconnected)
       window.removeEventListener('online', pulse)
@@ -159,6 +180,14 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     packAvailable(ownRecord) && Date.parse(ownRecord?.pack?.expires_at ?? '') > checkedAt
       ? ownRecord
       : undefined
+  const desiredSize =
+    desired?.ownerId === ownerId && desired?.revision === revision
+      ? desired.size
+      : (session.data?.user.preferences?.training?.size ?? DEFAULT_TRAINING.size)
+  const shellAndPackReady =
+    shellReady &&
+    !!readyPack &&
+    (offline || readyPack.attempts.length > 0 || readyPack.pack?.requested_size === desiredSize)
   const pending = pendingOffline(ownRecord)
   const report = ownRecord?.attempts.some((attempt) => attempt.result !== 'pending')
     ? {
@@ -175,8 +204,8 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       : pending
         ? `Ждут отправки: ${pending}.`
         : report
-          ? `Офлайн: верных — ${report.correct}, неверных — ${report.incorrect}, пропущенных — ${report.skipped}.${report.conflicts ? ` Не засчитано из-за изменений: ${report.conflicts}.` : ''}${!offline && shellReady && readyPack ? ' Готово к офлайну.' : ''}`
-          : shellReady && readyPack
+          ? `Офлайн: верных — ${report.correct}, неверных — ${report.incorrect}, пропущенных — ${report.skipped}.${report.conflicts ? ` Не засчитано из-за изменений: ${report.conflicts}.` : ''}${!offline && shellAndPackReady ? ' Готово к офлайну.' : ''}`
+          : shellAndPackReady
             ? 'Готово к офлайну'
             : null
 

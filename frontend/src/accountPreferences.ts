@@ -220,6 +220,18 @@ let trainingEpoch = 0
 let trainingChain: Promise<void> = Promise.resolve()
 let trainingSyncError = false
 const trainingListeners = new Set<() => void>()
+const trainingSavedListeners = new Set<
+  (userId: string, size: TrainingPreferences['size']) => void
+>()
+
+export function listenTrainingSaved(
+  listener: (userId: string, size: TrainingPreferences['size']) => void,
+) {
+  trainingSavedListeners.add(listener)
+  return () => {
+    trainingSavedListeners.delete(listener)
+  }
+}
 
 function setTrainingSyncError(value: boolean) {
   if (trainingSyncError === value) return
@@ -328,6 +340,8 @@ export function putTrainingPreferences(userId: string, training: TrainingPrefere
       const user = await api.updateSettings({ training })
       if (token !== trainingGeneration || epoch !== trainingEpoch || user.id !== userId) return
       patchPreference(userId, 'training', user.preferences?.training ?? training)
+      const savedSize = user.preferences?.training?.size ?? DEFAULT_TRAINING.size
+      trainingSavedListeners.forEach((listener) => listener(userId, savedSize))
       setTrainingSyncError(false)
     } catch (error) {
       if (token !== trainingGeneration || epoch !== trainingEpoch) return

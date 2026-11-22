@@ -197,6 +197,7 @@ export interface OfflinePack {
   id: string
   owner_id: string
   expires_at: string
+  requested_size: TrainingSize
   study: { headword: string; translations: string[] }[]
   items: { id: string; prompt: string }[]
 }

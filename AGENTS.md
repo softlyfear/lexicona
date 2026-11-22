@@ -70,7 +70,7 @@ either way.
   DeepSeek/OpenRouter, and additional local voices. New modes, collections,
   import/export, themes, signup/account deletion, and server backups are deferred.
 - Approved offline scope: automatically prepared study words and written EN→RU
-  exercises. Keep only a bounded package and pending attempts in IndexedDB.
+  exercises. Keep the package sized by saved training settings and pending attempts in IndexedDB.
   The server verifies and applies queued attempts. Offline dictionary editing is deferred.
 
 ## Engineering invariants
