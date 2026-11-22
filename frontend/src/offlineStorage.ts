@@ -30,6 +30,7 @@ const EVENT = 'change'
 const LOGOUT_KEY = 'lexicona-offline-signed-out'
 const OWNER_KEY = 'lexicona-offline-owner'
 const DISCARD_KEY = 'lexicona-offline-discard'
+const OPT_IN_KEY = 'lexicona-offline-opt-in'
 const listeners = new EventTarget()
 let channel: BroadcastChannel | undefined
 
@@ -40,6 +41,35 @@ export function offlineStorageAvailable() {
     return true
   } catch {
     return false
+  }
+}
+
+export function offlineOptIn(ownerId: string | null | undefined): string | null {
+  if (!ownerId || !offlineStorageAvailable()) return null
+  try {
+    return localStorage.getItem(`${OPT_IN_KEY}:${ownerId}`)
+  } catch {
+    return null
+  }
+}
+
+export function setOfflineOptIn(ownerId: string, enabled: boolean) {
+  const key = `${OPT_IN_KEY}:${ownerId}`
+  if (enabled) localStorage.setItem(key, crypto.randomUUID())
+  else localStorage.removeItem(key)
+  listeners.dispatchEvent(new Event(key))
+}
+
+export function listenOfflineOptIn(ownerId: string, listener: () => void) {
+  const key = `${OPT_IN_KEY}:${ownerId}`
+  const changed = (event: StorageEvent) => {
+    if (event.key === key || event.key === null) listener()
+  }
+  listeners.addEventListener(key, listener)
+  window.addEventListener('storage', changed)
+  return () => {
+    listeners.removeEventListener(key, listener)
+    window.removeEventListener('storage', changed)
   }
 }
 

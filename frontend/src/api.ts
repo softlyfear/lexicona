@@ -568,8 +568,8 @@ export const api = {
       ...filters,
     }),
   latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
-  offlinePack: (key: string) =>
-    request<OfflinePack | null>('POST', '/training/offline-pack', { key }),
+  offlinePack: (key: string, signal?: AbortSignal) =>
+    request<OfflinePack | null>('POST', '/training/offline-pack', { key }, undefined, signal),
   getTraining: (id: string) => request<ResumedSession>('GET', `/training/sessions/${id}`),
   trainingSummary: (id: string) =>
     request<TrainingSummary>('GET', `/training/sessions/${id}/summary`),

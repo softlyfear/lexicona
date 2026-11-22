@@ -8,12 +8,6 @@ import './theme.css'
 
 listenForInstall()
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  void navigator.serviceWorker.register('/service-worker.js').catch(() => {
-    // The online app also works when browser policy blocks service workers.
-  })
-}
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

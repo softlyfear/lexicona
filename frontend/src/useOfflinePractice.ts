@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { DEFAULT_TRAINING, listenTrainingSaved } from './accountPreferences'
 import { ApiError, type TrainingSize } from './api'
 import {
@@ -13,19 +13,24 @@ import {
   verifyOfflineSession,
 } from './session'
 import {
+  listenOfflineOptIn,
   listenOfflineSignOut,
   listenOfflineStorage,
   markOfflineSignedOut,
   offlineDiscardRequested,
+  offlineOptIn,
   offlineOwner,
   offlineStorageAvailable,
   readOffline,
   requestOfflineDiscard,
+  setOfflineOptIn,
   updateOffline,
   type OfflineRecord,
 } from './offlineStorage'
 import {
+  clearUnusedOffline,
   networkUnavailable,
+  offlineReport,
   packAvailable,
   pendingOffline,
   recordOfflineAnswer,
@@ -33,10 +38,34 @@ import {
 } from './offlineSync'
 import { refreshServerVoices } from './speech'
 
+let shellRegistration: Promise<boolean> | undefined
+
+function registerOfflineShell() {
+  shellRegistration ??= navigator.serviceWorker.register('/service-worker.js').then(
+    (registration) => {
+      if (registration.active) return true
+      const worker = registration.installing ?? registration.waiting
+      if (!worker) return false
+      return new Promise<boolean>((resolve) => {
+        const changed = () => {
+          if (worker.state !== 'activated' && worker.state !== 'redundant') return
+          worker.removeEventListener('statechange', changed)
+          resolve(worker.state === 'activated')
+        }
+        worker.addEventListener('statechange', changed)
+        changed()
+      })
+    },
+    () => false,
+  )
+  return shellRegistration
+}
+
 export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   const [record, setRecord] = useState<OfflineRecord>()
   const [status, setStatus] = useState<'ready' | 'offline' | 'problem'>('ready')
-  const [shellReady, setShellReady] = useState(false)
+  const [shellState, setShellState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [settingError, setSettingError] = useState('')
   const [checkedAt, setCheckedAt] = useState(Date.now)
   const [desired, setDesired] = useState<{
     ownerId: string
@@ -48,11 +77,20 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   const coldOffline = session.isError && networkUnavailable(session.error)
   const { refetch } = session
   const revision = getSessionRevision()
-  const enabled = offlineStorageAvailable()
-  const offline = enabled && (status === 'offline' || coldOffline)
+  const storageAvailable = offlineStorageAvailable()
+  const settingsOwner = ownerId ?? (coldOffline ? startupOwner : undefined)
+  const subscribeOptIn = useCallback(
+    (listener: () => void) =>
+      settingsOwner ? listenOfflineOptIn(settingsOwner, listener) : () => {},
+    [settingsOwner],
+  )
+  const optedIn = useSyncExternalStore(subscribeOptIn, () => !!offlineOptIn(settingsOwner))
+  const supported = storageAvailable && import.meta.env.PROD && !!navigator.serviceWorker
+  const shellReady = shellState === 'ready'
+  const offline = optedIn && (status === 'offline' || coldOffline)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!storageAvailable) return
     let active = true
     let version = 0
     const refresh = () => {
@@ -76,24 +114,24 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       unsubscribe()
       unlisten()
     }
-  }, [enabled, ownerId, coldOffline, startupOwner])
+  }, [storageAvailable, ownerId, coldOffline, startupOwner])
 
   useEffect(() => {
-    if (!enabled || !navigator.serviceWorker) return
+    if (!supported) return
     let active = true
-    void navigator.serviceWorker.ready.then(() => {
-      if (active) setShellReady(true)
+    void registerOfflineShell().then((ready) => {
+      if (active) setShellState(ready ? 'ready' : 'unavailable')
     })
     return () => {
       active = false
     }
-  }, [enabled])
+  }, [supported])
 
   useEffect(() => {
-    if (!enabled || (!ownerId && !coldOffline)) return
+    if (!storageAvailable || (!ownerId && !coldOffline)) return
     let active = true
     let running = false
-    let refreshAfterSave = false
+    let refreshAgain = false
     let wasDisconnected = false
     const disconnected = () => {
       wasDisconnected = true
@@ -103,10 +141,6 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
 
     async function refresh() {
       if (!active || running || document.hidden || requiresExplicitLogin()) return
-      if (!navigator.onLine) {
-        disconnected()
-        return
-      }
       running = true
       const allowed = () =>
         active &&
@@ -114,6 +148,26 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
         offlineOwner() === ownerId &&
         isCurrentSession(revision, ownerId)
       try {
+        if (ownerId && !offlineOptIn(ownerId)) {
+          const stored = await readOffline()
+          if (!allowed()) return
+          const pending = stored?.ownerId === ownerId && pendingOffline(stored) > 0
+          if (
+            !pending &&
+            stored?.ownerId === ownerId &&
+            (stored.pack || stored.preparedAt || stored.nextKey)
+          )
+            await clearUnusedOffline(ownerId, allowed)
+          if (!pending && !offlineOptIn(ownerId)) {
+            if (navigator.onLine) setStatus('ready')
+            else disconnected()
+            return
+          }
+        }
+        if (!navigator.onLine) {
+          disconnected()
+          return
+        }
         if (!ownerId) {
           const result = await refetch()
           if (active && result.isSuccess) setStatus('ready')
@@ -128,30 +182,40 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
           wasDisconnected = false
           refreshServerVoices()
         }
-        await syncOffline(ownerId, size, allowed, () => {
-          void queryClient.invalidateQueries({ queryKey: ['words'] })
-          void queryClient.invalidateQueries({ queryKey: ['statistics'] })
-        })
+        await syncOffline(
+          ownerId,
+          size,
+          allowed,
+          () => {
+            void queryClient.invalidateQueries({ queryKey: ['words'] })
+            void queryClient.invalidateQueries({ queryKey: ['statistics'] })
+          },
+          shellReady,
+        )
       } catch (error) {
         if (error instanceof ApiError && error.status === 401 && allowed()) revokeLocalSession()
         else if (active && networkUnavailable(error)) disconnected()
         else if (active) setStatus('problem')
       } finally {
         running = false
-        if (refreshAfterSave) {
-          refreshAfterSave = false
+        if (refreshAgain) {
+          refreshAgain = false
           pulse()
         }
       }
     }
 
     const pulse = () => void refresh()
+    const requestRefresh = () => {
+      if (running) refreshAgain = true
+      else pulse()
+    }
     const unlisten = listenTrainingSaved((savedOwner, size) => {
       if (savedOwner !== ownerId || !isCurrentSession(revision, ownerId)) return
       setDesired({ ownerId, revision, size })
-      if (running) refreshAfterSave = true
-      else pulse()
+      requestRefresh()
     })
+    const unlistenOptIn = ownerId ? listenOfflineOptIn(ownerId, requestRefresh) : undefined
     pulse()
     const timer = window.setInterval(pulse, 20_000)
     window.addEventListener('offline', disconnected)
@@ -160,12 +224,13 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     return () => {
       active = false
       unlisten()
+      unlistenOptIn?.()
       clearInterval(timer)
       window.removeEventListener('offline', disconnected)
       window.removeEventListener('online', pulse)
       document.removeEventListener('visibilitychange', pulse)
     }
-  }, [enabled, ownerId, coldOffline, refetch, revision])
+  }, [storageAvailable, ownerId, coldOffline, refetch, revision, shellReady])
 
   const ownRecord =
     !requiresExplicitLogin() &&
@@ -177,7 +242,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       ? record
       : undefined
   const readyPack =
-    packAvailable(ownRecord) && Date.parse(ownRecord?.pack?.expires_at ?? '') > checkedAt
+    optedIn && packAvailable(ownRecord) && Date.parse(ownRecord?.pack?.expires_at ?? '') > checkedAt
       ? ownRecord
       : undefined
   const desiredSize =
@@ -189,28 +254,37 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     !!readyPack &&
     (offline || readyPack.attempts.length > 0 || readyPack.pack?.requested_size === desiredSize)
   const pending = pendingOffline(ownRecord)
-  const report = ownRecord?.attempts.some((attempt) => attempt.result !== 'pending')
-    ? {
-        correct: ownRecord.attempts.filter((attempt) => attempt.result === 'correct').length,
-        incorrect: ownRecord.attempts.filter((attempt) => attempt.result === 'incorrect').length,
-        skipped: ownRecord.attempts.filter((attempt) => attempt.result === 'skipped').length,
-        conflicts: ownRecord.attempts.filter((attempt) => attempt.result === 'conflict').length,
-      }
-    : ownRecord?.report
-
-  const message: ReactNode =
-    status === 'problem'
+  const report = offlineReport(ownRecord)
+  const syncMessage =
+    status === 'problem' && (optedIn || pending > 0 || ownRecord?.pack)
       ? 'Не удалось синхронизировать офлайн-данные. Приложение повторит попытку.'
       : pending
         ? `Ждут отправки: ${pending}.`
         : report
-          ? `Офлайн: верных — ${report.correct}, неверных — ${report.incorrect}, пропущенных — ${report.skipped}.${report.conflicts ? ` Не засчитано из-за изменений: ${report.conflicts}.` : ''}${!offline && shellAndPackReady ? ' Готово к офлайну.' : ''}`
-          : shellAndPackReady
-            ? 'Готово к офлайну'
-            : null
+          ? `Верных — ${report.correct}, неверных — ${report.incorrect}, пропущенных — ${report.skipped}.${report.conflicts ? ` Не засчитано из-за изменений: ${report.conflicts}.` : ''}`
+          : ''
+  const readiness =
+    optedIn && !offline && !pending && status !== 'problem' && shellState !== 'unavailable'
+      ? shellAndPackReady
+        ? 'Готово к офлайну'
+        : ownRecord?.preparedAt && !ownRecord.pack
+          ? 'Добавьте слова для офлайн-тренировки.'
+          : 'Подготавливаем слова и упражнения…'
+      : ''
+  const message = [syncMessage, readiness].filter(Boolean).join(' ')
+
+  function changeOptIn(next: boolean) {
+    if (!ownerId || !isCurrentSession(revision, ownerId)) return
+    setSettingError('')
+    try {
+      setOfflineOptIn(ownerId, next)
+    } catch {
+      setSettingError('Не удалось сохранить настройку офлайн-режима.')
+    }
+  }
 
   async function signOut() {
-    if (!enabled) {
+    if (!storageAvailable) {
       await logoutSession()
       return
     }
@@ -272,5 +346,22 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       setRecord(stored)
   }
 
-  return { offline, readyPack, message, signOut, save }
+  return {
+    offline,
+    readyPack,
+    message,
+    signOut,
+    save,
+    settings: {
+      supported,
+      optedIn,
+      message,
+      settingError:
+        settingError ||
+        (optedIn && shellState === 'unavailable'
+          ? 'Не удалось подготовить запуск без сети. Обновите страницу.'
+          : ''),
+      changeOptIn,
+    },
+  }
 }

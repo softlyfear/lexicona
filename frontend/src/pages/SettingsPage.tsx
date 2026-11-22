@@ -40,7 +40,15 @@ function levelRates(choice: number, typed: number) {
 
 type Result<T> = { data: T } | { error: unknown }
 
-export function SettingsPage({ user }: { user: User }) {
+interface OfflineSetting {
+  supported: boolean
+  optedIn: boolean
+  message: string
+  settingError: string
+  changeOptIn: (enabled: boolean) => void
+}
+
+export function SettingsPage({ user, offline }: { user: User; offline?: OfflineSetting }) {
   const [difficultyError, setDifficultyError] = useState('')
   const locked = useRef(false)
 
@@ -88,6 +96,32 @@ export function SettingsPage({ user }: { user: User }) {
   return (
     <section className={css.stack}>
       <h1 className={css.title}>Настройки</h1>
+      {offline && (
+        <div className={`${ui.card} ${css.stack}`}>
+          <label className={css.choice}>
+            <input
+              type="checkbox"
+              checked={offline.optedIn}
+              disabled={!offline.supported}
+              onChange={(event) => offline.changeOptIn(event.target.checked)}
+            />
+            Офлайн-режим
+          </label>
+          {!offline.supported && (
+            <p className={ui.muted}>Офлайн-режим недоступен в этом браузере.</p>
+          )}
+          {offline.settingError && (
+            <p className={ui.error} role="alert">
+              {offline.settingError}
+            </p>
+          )}
+          {offline.message && (
+            <p className={ui.muted} role="status">
+              {offline.message}
+            </p>
+          )}
+        </div>
+      )}
       <div className={`${ui.card} ${css.difficultyPanel}`}>
         <div className={css.difficultyControl}>
           <label className={ui.field}>

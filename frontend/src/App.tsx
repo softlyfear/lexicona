@@ -49,11 +49,7 @@ export function App() {
         {/* A different account gets a fresh tree with no leftover component state. */}
         <BrowserRouter key={user.id}>
           <Routes>
-            <Route
-              element={
-                <Layout user={user} offlineMessage={offline.message} onLogout={offline.signOut} />
-              }
-            >
+            <Route element={<Layout user={user} onLogout={offline.signOut} />}>
               <Route index element={<WordsPage userId={user.id} />} />
               <Route
                 path="training"
@@ -69,7 +65,10 @@ export function App() {
               />
               <Route path="statistics" element={<StatisticsPage />} />
               <Route path="account" element={<AccountPage user={user} />} />
-              <Route path="settings" element={<SettingsPage user={user} />} />
+              <Route
+                path="settings"
+                element={<SettingsPage user={user} offline={offline.settings} />}
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

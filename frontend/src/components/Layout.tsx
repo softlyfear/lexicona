@@ -17,11 +17,9 @@ const LINKS = [
 
 export function Layout({
   user,
-  offlineMessage,
   onLogout = logoutSession,
 }: {
   user: User
-  offlineMessage?: ReactNode
   onLogout?: () => Promise<void>
 }) {
   const location = useLocation()
@@ -104,13 +102,6 @@ export function Layout({
         {notice && pathname !== '/settings' && (
           <div className={css.speechStatus}>
             <p role="status">{notice}</p>
-          </div>
-        )}
-        {offlineMessage && (
-          <div className={css.speechStatus}>
-            <p className={ui.muted} role="status">
-              {offlineMessage}
-            </p>
           </div>
         )}
       </header>
