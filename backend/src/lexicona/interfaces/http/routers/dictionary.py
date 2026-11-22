@@ -15,6 +15,10 @@ class LookupIn(BaseModel):
     headword: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
+class PronunciationIn(LookupIn):
+    dialect: translation.Dialect = "US"
+
+
 class ExampleIn(LookupIn):
     previous_examples: list[
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
@@ -39,15 +43,17 @@ def _machine_payload(machine: translation.MachineTranslation | None) -> dict[str
     }
 
 
-async def _generated_transcription(settings: AppSettings, headword: str) -> str | None:
+async def _generated_transcription(settings: AppSettings, body: PronunciationIn) -> str | None:
     try:
-        return await asyncio.to_thread(translation.transcribe, settings, headword)
+        return await asyncio.to_thread(
+            translation.transcribe, settings, body.headword, body.dialect
+        )
     except translation.TranslationError:
         return None
 
 
 @router.post("/lookup")
-async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
+async def lookup(body: PronunciationIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, Any]:
     try:
         result = await asyncio.to_thread(dictionary.lookup, settings.dictionary_path, body.headword)
     except sqlite3.OperationalError:
@@ -62,10 +68,12 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
     if result is not None and result["matches"]:
         generated = None
         if not any(match["transcriptions"] for match in result["matches"]):
-            generated = await _generated_transcription(settings, body.headword)
+            generated = await _generated_transcription(settings, body)
         return {**result, "machine_translation": None, "machine_transcription": generated}
     try:
-        machine = await asyncio.to_thread(translation.translate, settings, body.headword)
+        machine = await asyncio.to_thread(
+            translation.translate, settings, body.headword, body.dialect
+        )
     except translation.TranslationTimeout:
         raise HTTPException(504, "dictionary_timeout") from None
     except translation.TranslationError:
@@ -73,7 +81,7 @@ async def lookup(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> di
     if result is None and machine is None:
         raise HTTPException(503, "dictionary_unavailable")
     if machine is not None and not machine.transcription:
-        generated = await _generated_transcription(settings, body.headword)
+        generated = await _generated_transcription(settings, body)
         if generated:
             machine = translation.MachineTranslation(
                 machine.provider, machine.text, machine.alternatives, generated
@@ -102,9 +110,13 @@ async def example(body: ExampleIn, auth: CurrentAuth, settings: AppSettings) -> 
 
 
 @router.post("/transcription")
-async def transcription(body: LookupIn, auth: CurrentAuth, settings: AppSettings) -> dict[str, str]:
+async def transcription(
+    body: PronunciationIn, auth: CurrentAuth, settings: AppSettings
+) -> dict[str, str]:
     try:
-        generated = await asyncio.to_thread(translation.transcribe, settings, body.headword)
+        generated = await asyncio.to_thread(
+            translation.transcribe, settings, body.headword, body.dialect
+        )
     except translation.TranslationTimeout:
         raise HTTPException(504, "transcription_timeout") from None
     except translation.TranslationError:

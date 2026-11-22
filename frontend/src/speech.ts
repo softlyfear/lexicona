@@ -4,9 +4,12 @@ import { api, ApiError, type ServerVoice } from './api'
 export const SPEECH_RATES = [0.5, 0.75, 1, 1.25, 1.5] as const
 export type SpeechRate = (typeof SPEECH_RATES)[number]
 export type SpeechEngine = 'auto' | 'server' | 'browser'
+export type EnglishAccentLocale = 'en-US' | 'en-GB'
 export type SpeechPreferences = {
   enLocale: string
   enVoiceURI: string | null
+  enUSVoiceURI: string | null
+  enGBVoiceURI: string | null
   ruVoiceURI: string | null
   rate: SpeechRate
   autoPrompt: boolean
@@ -21,6 +24,8 @@ export type SpeechPreferences = {
 const defaults: SpeechPreferences = {
   enLocale: 'en-US',
   enVoiceURI: null,
+  enUSVoiceURI: null,
+  enGBVoiceURI: null,
   ruVoiceURI: null,
   rate: 1,
   autoPrompt: true,
@@ -87,6 +92,41 @@ const synthesis = () =>
   typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null
 const primary = (lang: string) => lang.toLowerCase().split('-')[0]
 
+export function englishAccentLocale(locale: string): EnglishAccentLocale | undefined {
+  switch (locale.toLowerCase()) {
+    case 'en-us':
+      return 'en-US'
+    case 'en-gb':
+      return 'en-GB'
+  }
+}
+
+export function restoreAccentVoices(
+  locale: string,
+  legacy: string | null,
+  us: string | null | undefined,
+  gb: string | null | undefined,
+) {
+  const accent = englishAccentLocale(locale)
+  return {
+    enUSVoiceURI: us !== undefined ? us : accent === 'en-US' ? legacy : null,
+    enGBVoiceURI: gb !== undefined ? gb : accent === 'en-GB' ? legacy : null,
+  }
+}
+
+export function browserVoiceKey(lang: 'en' | 'ru', locale: string) {
+  if (lang === 'ru') return 'ruVoiceURI'
+  const accent = englishAccentLocale(locale)
+  if (accent === 'en-US') return 'enUSVoiceURI'
+  if (accent === 'en-GB') return 'enGBVoiceURI'
+  return 'enVoiceURI'
+}
+
+export function serverVoiceKey(lang: 'en' | 'ru', locale: string) {
+  if (lang === 'ru') return 'serverRu'
+  return englishAccentLocale(locale) === 'en-GB' ? 'serverEnGB' : 'serverEnUS'
+}
+
 export function languageEngine(
   lang: 'en' | 'ru',
   preferences: SpeechPreferences = snapshot.preferences,
@@ -107,8 +147,8 @@ export function hasServerLocale(
   voices: ServerVoice[],
   lang: 'en' | 'ru',
   preferences: SpeechPreferences,
+  locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale,
 ) {
-  const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
   return voices.some((voice) => voice.language.toLowerCase() === locale.toLowerCase())
 }
 
@@ -116,14 +156,9 @@ export function selectServerVoice(
   voices: ServerVoice[],
   lang: 'en' | 'ru',
   preferences: SpeechPreferences,
+  locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale,
 ) {
-  const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
-  const requested =
-    lang === 'ru'
-      ? preferences.serverRu
-      : locale.toLowerCase() === 'en-gb'
-        ? preferences.serverEnGB
-        : preferences.serverEnUS
+  const requested = preferences[serverVoiceKey(lang, locale)]
   const candidates = voices.filter((voice) => voice.language.toLowerCase() === locale.toLowerCase())
   if (candidates.length === 0) return null
   if (requested && candidates.some((voice) => voice.id === requested)) {
@@ -136,13 +171,16 @@ export function selectVoice(
   voices: SpeechSynthesisVoice[],
   lang: 'en' | 'ru',
   preferences: SpeechPreferences,
+  locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale,
 ) {
   const candidates = voices.filter((voice) => primary(voice.lang) === lang)
-  const uri = lang === 'en' ? preferences.enVoiceURI : preferences.ruVoiceURI
-  const locale = lang === 'en' ? preferences.enLocale : 'ru-RU'
+  const key = browserVoiceKey(lang, locale)
+  const uri = preferences[key]
+  const exact = candidates.filter((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
+  const requested = key === 'enUSVoiceURI' || key === 'enGBVoiceURI' ? exact : candidates
   return (
-    candidates.find((voice) => uri && voice.voiceURI === uri) ??
-    candidates.find((voice) => voice.lang.toLowerCase() === locale.toLowerCase()) ??
+    requested.find((voice) => uri && voice.voiceURI === uri) ??
+    exact[0] ??
     candidates.find((voice) => voice.default) ??
     candidates[0] ??
     null
@@ -222,6 +260,12 @@ function readStoredSpeech(
     typeof p.enLocale !== 'string' ||
     !/^en(?:-[a-z0-9]+)*$/iu.test(p.enLocale) ||
     !(p.enVoiceURI === null || typeof p.enVoiceURI === 'string') ||
+    (p.enUSVoiceURI !== undefined &&
+      p.enUSVoiceURI !== null &&
+      typeof p.enUSVoiceURI !== 'string') ||
+    (p.enGBVoiceURI !== undefined &&
+      p.enGBVoiceURI !== null &&
+      typeof p.enGBVoiceURI !== 'string') ||
     !(p.ruVoiceURI === null || typeof p.ruVoiceURI === 'string') ||
     !isSpeechRate(p.rate) ||
     typeof p.autoPrompt !== 'boolean' ||
@@ -240,6 +284,7 @@ function readStoredSpeech(
     preferences: {
       enLocale: p.enLocale,
       enVoiceURI: p.enVoiceURI,
+      ...restoreAccentVoices(p.enLocale, p.enVoiceURI, p.enUSVoiceURI, p.enGBVoiceURI),
       ruVoiceURI: p.ruVoiceURI,
       rate: p.rate,
       autoPrompt: p.autoPrompt,
@@ -368,11 +413,16 @@ export function updateSpeechPreferences(patch: Partial<SpeechPreferences>) {
   }
   if (currentOwner) publisher?.(currentOwner, preferences)
 }
-export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boolean }) {
+export function speak(
+  text: string,
+  lang: 'en' | 'ru',
+  options?: { force?: boolean; locale?: EnglishAccentLocale },
+) {
   if (!options?.force && !speechEnabled(lang)) return
   const choice = languageEngine(lang)
+  const locale = lang === 'ru' ? 'ru-RU' : (options?.locale ?? snapshot.preferences.enLocale)
   if (audio && readyFingerprint && choice !== 'browser') {
-    const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences)
+    const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences, locale)
     const fingerprint = JSON.stringify([text, lang, voice?.id, snapshot.preferences.rate])
     if (fingerprint === readyFingerprint) {
       const current = audio
@@ -392,9 +442,10 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
     }
     if (
       snapshot.serverState === 'ready' &&
-      (choice === 'server' || hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences))
+      (choice === 'server' ||
+        hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences, locale))
     ) {
-      speakServer(text, lang, token)
+      speakServer(text, lang, token, locale)
       return
     }
     if (choice === 'server') {
@@ -414,12 +465,12 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
     const exactLocale =
       choice === 'auto' &&
       snapshot.serverState === 'ready' &&
-      !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences)
-    const locale = lang === 'ru' ? 'ru-RU' : snapshot.preferences.enLocale
+      !englishAccentLocale(locale) &&
+      !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences, locale)
     const available = exactLocale
       ? snapshot.voices.filter((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
       : snapshot.voices
-    const voice = selectVoice(available, lang, snapshot.preferences)
+    const voice = selectVoice(available, lang, snapshot.preferences, locale)
     if (!voice) {
       problem(`Подходящий ${lang.toUpperCase()} голос не найден. Попробуйте ещё раз.`)
       return
@@ -487,8 +538,8 @@ export function speak(text: string, lang: 'en' | 'ru', options?: { force?: boole
   }
 }
 
-function speakServer(text: string, lang: 'en' | 'ru', token: number) {
-  const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences)
+function speakServer(text: string, lang: 'en' | 'ru', token: number, locale: string) {
+  const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences, locale)
   if (!voice) {
     problem(
       `Выбранный серверный ${lang.toUpperCase()} голос недоступен. Выберите другой в настройках.`,

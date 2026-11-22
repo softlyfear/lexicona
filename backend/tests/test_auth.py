@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select
 
 from lexicona.infrastructure.db import utcnow
@@ -192,6 +193,35 @@ TRAINING = {
     "order": "created_asc",
     "shuffle": True,
 }
+
+
+@pytest.mark.parametrize(
+    ("locale", "us", "gb"),
+    [("en-US", "old voice", None), ("en-GB", None, "old voice"), ("en-AU", None, None)],
+)
+async def test_speech_saves_regional_voices_and_seeds_legacy_voice(
+    alice: Client, bob: Client, locale: str, us: str | None, gb: str | None
+) -> None:
+    legacy = {**SPEECH, "en_locale": locale, "en_voice_uri": "old voice"}
+    path = "/api/auth/settings"
+    response = await alice.put(path, json={"speech": legacy})
+    assert response.status_code == 200
+    assert response.json()["preferences"]["speech"] == {
+        **legacy,
+        "en_us_voice_uri": us,
+        "en_gb_voice_uri": gb,
+    }
+
+    selected = {**legacy, "en_us_voice_uri": "American", "en_gb_voice_uri": "British"}
+    response = await alice.put(path, json={"speech": selected})
+    assert response.status_code == 200
+    assert response.json()["preferences"]["speech"] == selected
+
+    cleared = {**selected, "en_us_voice_uri": None, "en_gb_voice_uri": None}
+    response = await alice.put(path, json={"speech": cleared})
+    assert response.status_code == 200
+    assert (await alice.get("/api/auth/me")).json()["user"]["preferences"]["speech"] == cleared
+    assert (await bob.get("/api/auth/me")).json()["user"]["preferences"]["speech"] is None
 
 
 async def test_preferences_merge_per_account(alice: Client, bob: Client, app: object) -> None:

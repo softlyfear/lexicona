@@ -370,11 +370,21 @@ export function WordsPage({ userId }: { userId: string }) {
                 <strong lang="en">{word.headword}</strong>
                 {word.transcription && (
                   <span className={ui.muted}>
-                    {word.transcription_dialect === 'US' && 'US · '}
+                    {word.transcription_dialect && `${word.transcription_dialect} · `}
                     {word.transcription}
                   </span>
                 )}
-                <SpeakButton text={word.headword} lang="en-US" />
+                <SpeakButton
+                  text={word.headword}
+                  lang="en-US"
+                  locale={
+                    word.transcription_dialect === 'UK'
+                      ? 'en-GB'
+                      : word.transcription_dialect === 'US'
+                        ? 'en-US'
+                        : undefined
+                  }
+                />
               </div>
               <div lang="ru">
                 {word.translations.map((translation, i) => (

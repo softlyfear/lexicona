@@ -8,7 +8,7 @@ import {
   type AccountPreferences,
 } from './api'
 import { forgetSession, getSessionRevision, isCurrentSession, queryClient } from './session'
-import { reportSpeechSyncError, type SpeechPreferences } from './speech'
+import { reportSpeechSyncError, restoreAccentVoices, type SpeechPreferences } from './speech'
 
 const TAG_ID = /^[A-Za-z0-9_-]{1,32}$/
 const LOCALE = /^en(?:-[A-Za-z0-9]{2,8}){0,3}$/
@@ -154,6 +154,8 @@ export function speechToDto(preferences: SpeechPreferences): SpeechPreferencesDt
   return {
     en_locale: preferences.enLocale,
     en_voice_uri: preferences.enVoiceURI,
+    en_us_voice_uri: preferences.enUSVoiceURI,
+    en_gb_voice_uri: preferences.enGBVoiceURI,
     ru_voice_uri: preferences.ruVoiceURI,
     rate: preferences.rate,
     auto_prompt: preferences.autoPrompt,
@@ -175,6 +177,8 @@ export function speechFromAccount(value: unknown): SpeechPreferences | null {
     raw.en_locale.length > 32 ||
     !LOCALE.test(raw.en_locale) ||
     !isVoiceUri(raw.en_voice_uri) ||
+    (raw.en_us_voice_uri !== undefined && !isVoiceUri(raw.en_us_voice_uri)) ||
+    (raw.en_gb_voice_uri !== undefined && !isVoiceUri(raw.en_gb_voice_uri)) ||
     !isVoiceUri(raw.ru_voice_uri) ||
     !isRate(raw.rate) ||
     typeof raw.auto_prompt !== 'boolean' ||
@@ -192,6 +196,12 @@ export function speechFromAccount(value: unknown): SpeechPreferences | null {
   return {
     enLocale: raw.en_locale,
     enVoiceURI: raw.en_voice_uri,
+    ...restoreAccentVoices(
+      raw.en_locale,
+      raw.en_voice_uri,
+      raw.en_us_voice_uri,
+      raw.en_gb_voice_uri,
+    ),
     ruVoiceURI: raw.ru_voice_uri,
     rate: raw.rate,
     autoPrompt: raw.auto_prompt,

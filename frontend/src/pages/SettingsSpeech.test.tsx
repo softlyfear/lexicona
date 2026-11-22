@@ -10,6 +10,7 @@ afterEach(() => {
   act(() => setSpeechOwner(null))
   vi.restoreAllMocks()
   localStorage.clear()
+  Reflect.deleteProperty(window, 'speechSynthesis')
 })
 it('показывает установленные голоса по акценту и позволяет явно выбрать браузер', async () => {
   vi.spyOn(api, 'listSpeechVoices').mockResolvedValue({
@@ -43,12 +44,12 @@ it('показывает установленные голоса по акцен
   ).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Остановить речь' })).toBeInTheDocument()
   expect(
-    within(screen.getByLabelText('Голос EN')).getByRole('option', {
+    within(screen.getByLabelText('Голос US')).getByRole('option', {
       name: 'Lessac (en-US, женский)',
     }),
   ).toBeInTheDocument()
   expect(
-    within(screen.getByLabelText('Голос EN')).getByRole('option', {
+    within(screen.getByLabelText('Голос US')).getByRole('option', {
       name: 'Sam (en-US, небинарный)',
     }),
   ).toBeInTheDocument()
@@ -57,17 +58,21 @@ it('показывает установленные голоса по акцен
       name: 'Denis (ru-RU, мужской)',
     }),
   ).toBeInTheDocument()
-  await user.selectOptions(screen.getByLabelText('Вариант английского'), 'en-GB')
   expect(
-    within(screen.getByLabelText('Голос EN')).getByRole('option', {
+    within(screen.getByLabelText('Голос UK')).getByRole('option', {
       name: 'Alan (en-GB, мужской)',
     }),
   ).toBeInTheDocument()
   expect(
-    within(screen.getByLabelText('Голос EN')).queryByRole('option', { name: /Lessac/ }),
+    within(screen.getByLabelText('Голос UK')).queryByRole('option', { name: /Lessac/ }),
   ).not.toBeInTheDocument()
-  await user.selectOptions(screen.getByLabelText('Голос EN'), 'gb')
-  expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).serverEnGB).toBe('gb')
+  await user.selectOptions(screen.getByLabelText('Голос US'), 'sam')
+  await user.selectOptions(screen.getByLabelText('Голос UK'), 'gb')
+  await user.selectOptions(screen.getByLabelText('Вариант английского'), 'en-GB')
+  expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!)).toMatchObject({
+    serverEnUS: 'sam',
+    serverEnGB: 'gb',
+  })
   expect(screen.getByRole('option', { name: 'Очень медленная' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'Быстрая' })).toBeInTheDocument()
   await user.selectOptions(screen.getByLabelText('Скорость'), '1.5')
@@ -75,13 +80,53 @@ it('показывает установленные голоса по акцен
   await user.selectOptions(screen.getByLabelText('Источник RU'), 'browser')
   expect(screen.getByLabelText('Источник EN')).toHaveValue('auto')
   expect(screen.getByLabelText('Источник RU')).toHaveValue('browser')
-  expect(screen.getByLabelText('Голос EN')).toHaveValue('gb')
+  expect(screen.getByLabelText('Голос US')).toHaveValue('sam')
+  expect(screen.getByLabelText('Голос UK')).toHaveValue('gb')
   expect(screen.getByLabelText('Английский')).toBeChecked()
   expect(screen.getByLabelText('Русский')).toBeChecked()
   await user.click(screen.getByLabelText('Русский'))
   expect(screen.getByLabelText('Русский')).not.toBeChecked()
   expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!).speakRu).toBe(false)
   expect(screen.getByRole('button', { name: 'Проверить RU' })).toBeEnabled()
+})
+
+it('сохраняет два браузерных голоса при смене варианта английского', async () => {
+  vi.spyOn(api, 'listSpeechVoices').mockResolvedValue({ available: false, voices: [] })
+  Object.defineProperty(window, 'speechSynthesis', {
+    configurable: true,
+    value: {
+      getVoices: () => [
+        { lang: 'en-US', voiceURI: 'browser-us', name: 'American', localService: true },
+        { lang: 'en-GB', voiceURI: 'browser-gb', name: 'British', localService: true },
+      ],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      cancel: vi.fn(),
+    },
+  })
+  await act(async () => setSpeechOwner('a'))
+  const client = new QueryClient()
+  render(
+    <QueryClientProvider client={client}>
+      <SettingsPage user={{ id: 'a', login: 'a', is_admin: false, difficulty: 'medium' }} />
+    </QueryClientProvider>,
+  )
+  const user = userEvent.setup()
+  await user.selectOptions(screen.getByLabelText('Источник EN'), 'browser')
+  const us = screen.getByLabelText('Голос US')
+  const uk = screen.getByLabelText('Голос UK')
+  expect(within(us).queryByRole('option', { name: /British/ })).not.toBeInTheDocument()
+  expect(within(uk).queryByRole('option', { name: /American/ })).not.toBeInTheDocument()
+  await user.selectOptions(us, 'browser-us')
+  await user.selectOptions(uk, 'browser-gb')
+  await user.selectOptions(screen.getByLabelText('Вариант английского'), 'en-GB')
+  expect(us).toHaveValue('browser-us')
+  expect(uk).toHaveValue('browser-gb')
+  expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!)).toMatchObject({
+    enLocale: 'en-GB',
+    enUSVoiceURI: 'browser-us',
+    enGBVoiceURI: 'browser-gb',
+  })
 })
 
 it('показывает браузерный en-AU и серверный RU для старых настроек', async () => {
@@ -139,5 +184,4 @@ it('показывает браузерный en-AU и серверный RU д�
   expect(
     screen.getByText('Для этого языка нет серверного голоса. Используется голос браузера.'),
   ).toBeInTheDocument()
-  Reflect.deleteProperty(window, 'speechSynthesis')
 })

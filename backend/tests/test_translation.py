@@ -147,7 +147,7 @@ def test_deepl_failure_falls_back_to_openrouter(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         translation,
         "_openrouter",
-        lambda key, model, text: translation.MachineTranslation(
+        lambda key, model, text, dialect: translation.MachineTranslation(
             "openrouter", "основной", ("альтернатива",), "/ˈfɹeɪz/"
         ),
     )
@@ -236,7 +236,9 @@ async def test_external_used_only_after_empty_local_lookup(
     app.state.settings.dictionary_path = path
     calls = []
 
-    def external(settings: Settings, text: str) -> translation.MachineTranslation:
+    def external(
+        settings: Settings, text: str, dialect: translation.Dialect
+    ) -> translation.MachineTranslation:
         calls.append(text)
         return translation.MachineTranslation("deepl", "внешний перевод")
 
@@ -266,12 +268,12 @@ async def test_external_can_cover_missing_local_index(
     monkeypatch.setattr(
         translation,
         "translate",
-        lambda settings, text: translation.MachineTranslation(
+        lambda settings, text, dialect: translation.MachineTranslation(
             "openrouter", "перевод", ("вариант",), "/ˈfɹeɪz/"
         ),
     )
 
-    def unexpected(settings: Settings, text: str) -> str:
+    def unexpected(settings: Settings, text: str, dialect: translation.Dialect) -> str:
         raise AssertionError("IPA is already present")
 
     monkeypatch.setattr(translation, "transcribe", unexpected)
@@ -287,8 +289,43 @@ async def test_external_can_cover_missing_local_index(
     assert body["machine_transcription"] is None
 
 
+async def test_uk_lookup_requests_combined_translation_and_ipa_once(
+    app: FastAPI, alice: Client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.state.settings.dictionary_path = tmp_path / "missing.sqlite3"
+    app.state.settings.translation_provider = "openrouter"
+    from pydantic import SecretStr
+
+    app.state.settings.openrouter_api_key = SecretStr("test-secret")
+    calls = []
+
+    def request(*args: Any) -> dict[str, Any]:
+        _, _, _, prompt, schema = args
+        calls.append(schema["required"])
+        assert "Standard British" in prompt
+        return {"translations": ["телефон"], "transcription_uk": "/fəʊn/"}
+
+    monkeypatch.setattr(translation, "_openrouter_request", request)
+    response = await alice.post(
+        "/api/dictionary/lookup", json={"headword": "phone", "dialect": "UK"}
+    )
+    assert response.status_code == 200
+    assert response.json()["machine_translation"] == {
+        "provider": "openrouter",
+        "text": "телефон",
+        "alternatives": [],
+        "transcription": "/fəʊn/",
+    }
+    assert calls == [["translations", "transcription_uk"]]
+
+
+@pytest.mark.parametrize(("payload", "dialect"), [({}, "US"), ({"dialect": "UK"}, "UK")])
 async def test_dictionary_phrase_without_ipa_gets_generated_transcription(
-    app: FastAPI, alice: Client, monkeypatch: pytest.MonkeyPatch
+    app: FastAPI,
+    alice: Client,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, str],
+    dialect: str,
 ) -> None:
     def lookup(path: Path, headword: str) -> dict[str, Any]:
         return {
@@ -308,24 +345,28 @@ async def test_dictionary_phrase_without_ipa_gets_generated_transcription(
 
     monkeypatch.setattr(dictionary, "lookup", lookup)
 
-    def unexpected(settings: Settings, text: str) -> translation.MachineTranslation:
+    def unexpected(
+        settings: Settings, text: str, dialect: translation.Dialect
+    ) -> translation.MachineTranslation:
         raise AssertionError("dictionary hit")
 
     monkeypatch.setattr(translation, "translate", unexpected)
-    seen: list[str] = []
+    seen: list[tuple[str, str]] = []
 
-    def transcribe(settings: Settings, text: str) -> str:
-        seen.append(text)
+    def transcribe(settings: Settings, text: str, accent: translation.Dialect) -> str:
+        seen.append((text, accent))
         return "/ˌkʌt tə ðə ˈtʃeɪs/"
 
     monkeypatch.setattr(translation, "transcribe", transcribe)
-    response = await alice.post("/api/dictionary/lookup", json={"headword": "cut to the chase"})
+    response = await alice.post(
+        "/api/dictionary/lookup", json={"headword": "cut to the chase", **payload}
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["machine_translation"] is None
     assert body["machine_transcription"] == "/ˌkʌt tə ðə ˈtʃeɪs/"
     assert body["matches"][0]["translations"] == ["перейти к делу"]
-    assert seen == ["cut to the chase"]
+    assert seen == [("cut to the chase", dialect)]
 
 
 async def test_dictionary_ipa_skips_generation(
@@ -335,7 +376,7 @@ async def test_dictionary_ipa_skips_generation(
     build_fixture(monkeypatch, path, archive())
     app.state.settings.dictionary_path = path
 
-    def unexpected(settings: Settings, text: str) -> str:
+    def unexpected(settings: Settings, text: str, dialect: translation.Dialect) -> str:
         raise AssertionError("dictionary IPA exists")
 
     monkeypatch.setattr(translation, "transcribe", unexpected)
@@ -369,7 +410,7 @@ async def test_transcription_failure_keeps_dictionary_phrase(
         },
     )
 
-    def timeout(settings: Settings, text: str) -> None:
+    def timeout(settings: Settings, text: str, dialect: translation.Dialect) -> None:
         raise translation.TranslationTimeout
 
     monkeypatch.setattr(translation, "transcribe", timeout)
@@ -387,9 +428,11 @@ async def test_deepl_translation_receives_generated_ipa(
     monkeypatch.setattr(
         translation,
         "translate",
-        lambda settings, text: translation.MachineTranslation("deepl", "перейти к делу"),
+        lambda settings, text, dialect: translation.MachineTranslation("deepl", "перейти к делу"),
     )
-    monkeypatch.setattr(translation, "transcribe", lambda settings, text: "/ˌkʌt tə ðə ˈtʃeɪs/")
+    monkeypatch.setattr(
+        translation, "transcribe", lambda settings, text, dialect: "/ˌkʌt tə ðə ˈtʃeɪs/"
+    )
     response = await alice.post("/api/dictionary/lookup", json={"headword": "cut to the chase"})
     assert response.status_code == 200
     body = response.json()

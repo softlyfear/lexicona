@@ -4,11 +4,13 @@ import { ApiError, api, errorMessage, type Difficulty, type Session, type User }
 import ui from '../components/ui.module.css'
 import { SpeechStatus } from '../components/ui'
 import {
-  hasServerLocale,
+  browserVoiceKey,
+  englishAccentLocale,
   languageEngine,
   refreshServerVoices,
   selectServerVoice,
   selectVoice,
+  serverVoiceKey,
   SPEECH_RATES,
   speak,
   updateSpeechPreferences,
@@ -212,13 +214,16 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
   const { preferences, voices, voiceState, storageError, syncError, serverVoices, serverState } =
     useSpeech()
   const serverReady = serverState === 'ready'
+  const englishLocale = englishAccentLocale(preferences.enLocale) ?? preferences.enLocale
   const locales = [
     ...new Set([
       'en-US',
       'en-GB',
       ...(preferences.engineEn === 'server'
         ? []
-        : voices.filter((v) => v.lang.toLowerCase().split('-')[0] === 'en').map((v) => v.lang)),
+        : voices
+            .filter((v) => v.lang.toLowerCase().split('-')[0] === 'en')
+            .map((v) => englishAccentLocale(v.lang) ?? v.lang)),
     ]),
   ]
   const describe = (v: SpeechSynthesisVoice) =>
@@ -228,12 +233,10 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
       <span className={css.settingLabel}>Вариант английского</span>
       <select
         className={ui.input}
-        value={preferences.enLocale}
+        value={englishLocale}
         onChange={(e) => updateSpeechPreferences({ enLocale: e.target.value, enVoiceURI: null })}
       >
-        {!locales.includes(preferences.enLocale) && (
-          <option value={preferences.enLocale}>{preferences.enLocale}</option>
-        )}
+        {!locales.includes(englishLocale) && <option value={englishLocale}>{englishLocale}</option>}
         {locales.map((locale) => (
           <option key={locale} value={locale}>
             {locale === 'en-US'
@@ -246,6 +249,141 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
       </select>
     </label>
   )
+  function source(lang: 'en' | 'ru') {
+    return (
+      <label className={css.setting}>
+        <span className={css.settingLabel}>Источник {lang.toUpperCase()}</span>
+        <select
+          className={ui.input}
+          value={languageEngine(lang, preferences)}
+          onChange={(event) => {
+            const next = event.target.value
+            if (next !== 'auto' && next !== 'browser' && !(lang === 'en' && next === 'server'))
+              return
+            updateSpeechPreferences(lang === 'en' ? { engineEn: next } : { engineRu: next })
+          }}
+        >
+          <option value="auto">Автоматически</option>
+          {lang === 'en' && <option value="server">Сервер</option>}
+          <option value="browser">Браузер</option>
+        </select>
+      </label>
+    )
+  }
+
+  function voiceSettings(lang: 'en' | 'ru', locale: string, label: string) {
+    const accent = englishAccentLocale(locale)
+    const choice = languageEngine(lang, preferences)
+    const isLocale = (voiceLocale: string) => voiceLocale.toLowerCase() === locale.toLowerCase()
+    const serverOptions = serverVoices.filter((voice) => isLocale(voice.language))
+    const check = (
+      <div>
+        <button
+          type="button"
+          className={ui.button}
+          onClick={() =>
+            speak(
+              lang === 'en' ? 'Hello. This is an English voice test.' : 'Проверка русского голоса.',
+              lang,
+              { force: true, locale: accent },
+            )
+          }
+        >
+          Проверить {label}
+        </button>
+      </div>
+    )
+    if (choice === 'server' && !serverReady) return check
+    if (choice !== 'browser' && serverReady && (choice === 'server' || serverOptions.length)) {
+      const key = serverVoiceKey(lang, locale)
+      const uri = preferences[key]
+      const selected = selectServerVoice(serverVoices, lang, preferences, locale)
+      const storedMissing = Boolean(uri && !serverOptions.some((voice) => voice.id === uri))
+      const upgraded = storedMissing && selected ? selected.id : null
+      const genderLabel = { female: 'женский', male: 'мужской', nonbinary: 'небинарный' } as const
+      const describeServer = (voice: (typeof serverVoices)[number]) =>
+        `${voice.name} (${voice.language}, ${genderLabel[voice.gender]})`
+      return (
+        <>
+          <label className={css.setting}>
+            <span className={css.settingLabel}>Голос {label}</span>
+            <select
+              className={ui.input}
+              value={upgraded ?? uri ?? ''}
+              onChange={(event) => updateSpeechPreferences({ [key]: event.target.value || null })}
+            >
+              <option value="">Автоматически</option>
+              {uri && storedMissing && !upgraded && (
+                <option value={uri}>Сохранённый голос недоступен</option>
+              )}
+              {serverOptions.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {describeServer(voice)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={ui.muted}>
+            {selected
+              ? `Используется: ${describeServer(selected)}`
+              : `Подходящий серверный ${label} голос не найден.`}
+          </p>
+          {check}
+        </>
+      )
+    }
+
+    const key = browserVoiceKey(lang, locale)
+    const uri = preferences[key]
+    const serverAccentMissing = choice === 'auto' && serverReady && !serverOptions.length
+    const options = voices.filter((voice) =>
+      accent || serverAccentMissing
+        ? isLocale(voice.lang)
+        : voice.lang.toLowerCase().split('-')[0] === lang,
+    )
+    const selected = selectVoice(
+      serverAccentMissing && !accent ? options : voices,
+      lang,
+      preferences,
+      locale,
+    )
+    return (
+      <>
+        {serverAccentMissing && (
+          <p className={ui.muted}>
+            Для {accent ? label : 'этого языка'} нет серверного голоса. Используется голос браузера.
+          </p>
+        )}
+        <label className={css.setting}>
+          <span className={css.settingLabel}>Голос {label}</span>
+          <select
+            className={ui.input}
+            value={uri ?? ''}
+            onChange={(event) => updateSpeechPreferences({ [key]: event.target.value || null })}
+          >
+            <option value="">Автоматически</option>
+            {uri && !options.some((voice) => voice.voiceURI === uri) && (
+              <option value={uri}>Сохранённый голос недоступен</option>
+            )}
+            {options.map((voice) => (
+              <option key={voice.voiceURI} value={voice.voiceURI}>
+                {describe(voice)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className={ui.muted}>
+          {selected
+            ? `${uri && selected.voiceURI !== uri ? 'Запрошенный голос недоступен. ' : ''}Используется: ${describe(selected)}`
+            : voiceState === 'loading'
+              ? 'Ожидание голосов…'
+              : `Подходящий ${label} голос не найден.`}
+        </p>
+        {check}
+      </>
+    )
+  }
+
   return (
     <section className={`${ui.card} ${css.form}`} aria-labelledby="speech-heading">
       <h2 id="speech-heading">Озвучивание</h2>
@@ -275,173 +413,17 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
           сохранены.
         </p>
       )}
-      {(['en', 'ru'] as const).map((lang) => {
-        const choice = languageEngine(lang, preferences)
-        const useServer =
-          choice !== 'browser' &&
-          serverReady &&
-          (choice === 'server' || hasServerLocale(serverVoices, lang, preferences))
-        const source = (
-          <label className={css.setting}>
-            <span className={css.settingLabel}>Источник {lang.toUpperCase()}</span>
-            <select
-              className={ui.input}
-              value={choice}
-              onChange={(event) => {
-                const next = event.target.value
-                if (next !== 'auto' && next !== 'browser' && !(lang === 'en' && next === 'server'))
-                  return
-                updateSpeechPreferences(lang === 'en' ? { engineEn: next } : { engineRu: next })
-              }}
-            >
-              <option value="auto">Автоматически</option>
-              {lang === 'en' && <option value="server">Сервер</option>}
-              <option value="browser">Браузер</option>
-            </select>
-          </label>
-        )
-        const check = (
-          <div>
-            <button
-              type="button"
-              className={ui.button}
-              onClick={() =>
-                speak(
-                  lang === 'en'
-                    ? 'Hello. This is an English voice test.'
-                    : 'Проверка русского голоса.',
-                  lang,
-                  { force: true },
-                )
-              }
-            >
-              Проверить {lang.toUpperCase()}
-            </button>
-          </div>
-        )
-        if (choice === 'server' && !serverReady) {
-          return (
-            <div key={lang} className={css.group}>
-              {lang === 'en' && englishVariant}
-              {source}
-              <p className={ui.muted}>
-                {serverState === 'loading'
-                  ? 'Загружаем серверные голоса…'
-                  : 'Серверный голос недоступен. Можно выбрать браузер.'}
-              </p>
-              {check}
-            </div>
-          )
-        }
-        if (useServer) {
-          const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
-          const key =
-            lang === 'ru'
-              ? 'serverRu'
-              : locale.toLowerCase() === 'en-gb'
-                ? 'serverEnGB'
-                : 'serverEnUS'
-          const uri = preferences[key]
-          const available = serverVoices.filter(
-            (voice) => voice.language.toLowerCase() === locale.toLowerCase(),
-          )
-          const selected = selectServerVoice(serverVoices, lang, preferences)
-          const storedMissing = Boolean(uri && !available.some((voice) => voice.id === uri))
-          const upgraded = storedMissing && selected ? selected.id : null
-          const genderLabel = {
-            female: 'женский',
-            male: 'мужской',
-            nonbinary: 'небинарный',
-          } as const
-          const describeServer = (voice: (typeof serverVoices)[number]) =>
-            `${voice.name} (${voice.language}, ${genderLabel[voice.gender]})`
-          return (
-            <div key={lang} className={css.group}>
-              {lang === 'en' && englishVariant}
-              {source}
-              <label className={css.setting}>
-                <span className={css.settingLabel}>Голос {lang.toUpperCase()}</span>
-                <select
-                  className={ui.input}
-                  value={upgraded ?? uri ?? ''}
-                  onChange={(event) =>
-                    updateSpeechPreferences({ [key]: event.target.value || null })
-                  }
-                >
-                  <option value="">Автоматически</option>
-                  {uri && storedMissing && !upgraded && (
-                    <option value={uri}>Сохранённый голос недоступен</option>
-                  )}
-                  {available.map((voice) => (
-                    <option key={voice.id} value={voice.id}>
-                      {describeServer(voice)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className={ui.muted}>
-                {selected
-                  ? `Используется: ${describeServer(selected)}`
-                  : `Подходящий серверный ${lang.toUpperCase()} голос не найден.`}
-              </p>
-              {check}
-            </div>
-          )
-        }
-        const uri = lang === 'en' ? preferences.enVoiceURI : preferences.ruVoiceURI
-        const exactLocale =
-          choice === 'auto' && serverReady && !hasServerLocale(serverVoices, lang, preferences)
-        const locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale
-        const available = voices.filter((v) =>
-          exactLocale
-            ? v.lang.toLowerCase() === locale.toLowerCase()
-            : v.lang.toLowerCase().split('-')[0] === lang,
-        )
-        const selected = selectVoice(available, lang, preferences)
-        return (
-          <div key={lang} className={css.group}>
-            {lang === 'en' && englishVariant}
-            {source}
-            {exactLocale && (
-              <p className={ui.muted}>
-                Для этого языка нет серверного голоса. Используется голос браузера.
-              </p>
-            )}
-            <label className={css.setting}>
-              <span className={css.settingLabel}>Голос {lang.toUpperCase()}</span>
-              <select
-                className={ui.input}
-                value={uri ?? ''}
-                onChange={(e) =>
-                  updateSpeechPreferences(
-                    lang === 'en'
-                      ? { enVoiceURI: e.target.value || null }
-                      : { ruVoiceURI: e.target.value || null },
-                  )
-                }
-              >
-                <option value="">Автоматически</option>
-                {uri && !available.some((v) => v.voiceURI === uri) && (
-                  <option value={uri}>Сохранённый голос недоступен</option>
-                )}
-                {available.map((v) => (
-                  <option key={v.voiceURI} value={v.voiceURI}>
-                    {describe(v)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className={ui.muted}>
-              {selected
-                ? `${uri && selected.voiceURI !== uri ? 'Запрошенный голос недоступен. ' : ''}Используется: ${describe(selected)}`
-                : voiceState === 'loading'
-                  ? 'Ожидание голосов…'
-                  : `Подходящий ${lang.toUpperCase()} голос не найден.`}
-            </p>
-            {check}
-          </div>
-        )
-      })}
+      <div className={css.group}>
+        {englishVariant}
+        {source('en')}
+        {voiceSettings('en', 'en-US', 'US')}
+        {voiceSettings('en', 'en-GB', 'UK')}
+        {!englishAccentLocale(englishLocale) && voiceSettings('en', englishLocale, 'EN')}
+      </div>
+      <div className={css.group}>
+        {source('ru')}
+        {voiceSettings('ru', 'ru-RU', 'RU')}
+      </div>
       {voiceState === 'unavailable' && voices.length === 0 && <p>Голоса не найдены.</p>}
       <div className={css.group}>
         <label className={css.setting}>

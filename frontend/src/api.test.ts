@@ -86,6 +86,17 @@ describe('api', () => {
   })
 
   it.each([
+    ['lookup', api.lookupDictionary],
+    ['transcription', api.generateTranscription],
+  ] as const)('sends an explicit UK pronunciation preference to %s', async (path, request) => {
+    const fetchMock = mockFetch(200, {})
+    await request('schedule', 'UK')
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(`/api/dictionary/${path}`)
+    expect(JSON.parse(init.body as string)).toEqual({ headword: 'schedule', dialect: 'UK' })
+  })
+
+  it.each([
     [503, 'transcription_unavailable', 'Не удалось получить транскрипцию'],
     [504, 'transcription_timeout', 'слишком много времени'],
   ])(

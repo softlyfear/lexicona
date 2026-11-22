@@ -206,7 +206,9 @@ async def test_broken_index_does_not_call_the_machine_provider(
     app.state.settings.dictionary_path = path
     calls: list[str] = []
 
-    def fake_translate(_settings: object, headword: str) -> translation.MachineTranslation:
+    def fake_translate(
+        _settings: object, headword: str, dialect: translation.Dialect
+    ) -> translation.MachineTranslation:
         calls.append(headword)
         return translation.MachineTranslation("openrouter", "яблоко")
 
@@ -224,7 +226,9 @@ async def test_missing_index_keeps_the_machine_fallback(
     app.state.settings.dictionary_path = tmp_path / "missing.sqlite3"
     calls: list[str] = []
 
-    def fake_translate(_settings: object, headword: str) -> translation.MachineTranslation:
+    def fake_translate(
+        _settings: object, headword: str, dialect: translation.Dialect
+    ) -> translation.MachineTranslation:
         calls.append(headword)
         return translation.MachineTranslation("openrouter", "яблоко")
 

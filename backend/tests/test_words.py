@@ -76,29 +76,30 @@ async def test_cosmetic_edit_keeps_progress(app: FastAPI, alice: Client) -> None
     assert response.json()["note"] == "pet"
 
 
+@pytest.mark.parametrize("dialect", ["US", "UK"])
 async def test_saved_transcription_dialect_keeps_progress_and_is_private(
-    app: FastAPI, alice: Client, bob: Client
+    app: FastAPI, alice: Client, bob: Client, dialect: str
 ) -> None:
-    word = await add_word(alice, "cat", "кот", transcription="/kæt/", transcription_dialect="US")
-    assert word["transcription_dialect"] == "US"
+    word = await add_word(alice, "cat", "кот", transcription="/kæt/", transcription_dialect=dialect)
+    assert word["transcription_dialect"] == dialect
     await set_progress(app, word["id"], 40)
     path = f"/api/words/{word['id']}"
-    assert (await alice.get("/api/words")).json()[0]["transcription_dialect"] == "US"
+    assert (await alice.get("/api/words")).json()[0]["transcription_dialect"] == dialect
     assert (await bob.get(path)).status_code == 404
 
     payload = {"headword": "Cat", "translations": ["кот"], "transcription": " /kæt/ "}
     legacy = await alice.put(path, json=payload)
     assert legacy.status_code == 200
-    assert legacy.json()["transcription_dialect"] == "US"
+    assert legacy.json()["transcription_dialect"] == dialect
 
     edited = await alice.put(path, json={**payload, "transcription": "/kætʰ/"})
     assert edited.status_code == 200
     assert edited.json()["transcription_dialect"] is None
     assert edited.json()["progress"] == 40
 
-    marked = await alice.put(path, json={**payload, "transcription_dialect": "US"})
+    marked = await alice.put(path, json={**payload, "transcription_dialect": dialect})
     assert marked.status_code == 200
-    assert marked.json()["transcription_dialect"] == "US"
+    assert marked.json()["transcription_dialect"] == dialect
     cleared = await alice.put(path, json={**payload, "transcription_dialect": None})
     assert cleared.status_code == 200
     assert cleared.json()["transcription_dialect"] is None
@@ -124,7 +125,8 @@ async def test_legacy_headword_change_clears_transcription_dialect(alice: Client
     [
         {"transcription_dialect": "US"},
         {"transcription_dialect": "US", "transcription": "  "},
-        {"transcription_dialect": "UK", "transcription": "/kæt/"},
+        {"transcription_dialect": "UK"},
+        {"transcription_dialect": "AU", "transcription": "/kæt/"},
     ],
 )
 async def test_rejects_invalid_transcription_dialect(alice: Client, extra: dict[str, str]) -> None:

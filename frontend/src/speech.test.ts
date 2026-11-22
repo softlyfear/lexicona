@@ -87,7 +87,7 @@ describe('браузерная речь', () => {
     voices = [voice('ru-RU', 'ru'), voice('en-GB', 'gb'), voice('en-US', 'us')]
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())
-    act(() => updateSpeechPreferences({ enVoiceURI: 'ru', enLocale: 'en-GB' }))
+    act(() => updateSpeechPreferences({ enGBVoiceURI: 'ru', enLocale: 'en-GB' }))
     act(() => browserSpeak('first', 'en'))
     expect(isSpeechBusy()).toBe(true)
     const old = current
@@ -109,6 +109,8 @@ describe('браузерная речь', () => {
       version: 1,
       enLocale: 'en-US',
       enVoiceURI: null,
+      enUSVoiceURI: null,
+      enGBVoiceURI: null,
       ruVoiceURI: null,
       rate: 0.75,
       autoPrompt: false,
@@ -125,6 +127,50 @@ describe('браузерная речь', () => {
     expect(result.current.preferences.autoPrompt).toBe(true)
     act(() => setSpeechOwner('a'))
     expect(result.current.preferences.rate).toBe(0.75)
+  })
+
+  it('сохраняет оба акцента, восстанавливает старый голос UK и не подменяет отсутствующий URI', () => {
+    const savedUs = voice('en-US', 'my-us')
+    const savedGb = voice('en-GB', 'my-gb')
+    const defaultUs = voice('en-US', 'default-us', true)
+    const fallbackGb = voice('en-GB', 'fallback-gb')
+    voices = [defaultUs, fallbackGb, savedUs, savedGb]
+    localStorage.setItem(
+      'lexicona:speech:v1:a',
+      JSON.stringify({
+        version: 1,
+        enLocale: 'en-GB',
+        enVoiceURI: savedGb.voiceURI,
+        ruVoiceURI: null,
+        rate: 1,
+        autoPrompt: true,
+      }),
+    )
+    setSpeechOwner('a')
+    updateSpeechPreferences({ engineEn: 'browser', enUSVoiceURI: savedUs.voiceURI })
+    speak('first', 'en', { locale: 'en-US' })
+    expect(current.voice).toBe(savedUs)
+    speak('second', 'en')
+    expect(current.voice).toBe(savedGb)
+    updateSpeechPreferences({ enLocale: 'en-US' })
+    setSpeechOwner('a')
+    speak('third', 'en', { locale: 'en-GB' })
+    expect(current.voice).toBe(savedGb)
+    voices = [defaultUs, fallbackGb]
+    speak('fourth', 'en', { locale: 'en-GB' })
+    expect(current.voice).toBe(fallbackGb)
+    voices = [defaultUs, voice('ru-RU', 'ru', true)]
+    speak('fifth', 'en', { locale: 'en-GB' })
+    expect(current.voice).toBe(defaultUs)
+    expect(renderHook(() => useSpeech()).result.current.preferences).toMatchObject({
+      enLocale: 'en-US',
+      enUSVoiceURI: 'my-us',
+      enGBVoiceURI: 'my-gb',
+    })
+    expect(JSON.parse(localStorage.getItem('lexicona:speech:v1:a')!)).toMatchObject({
+      enUSVoiceURI: 'my-us',
+      enGBVoiceURI: 'my-gb',
+    })
   })
 
   it('ограничивает ожидание длинного текста с учётом скорости и позволяет повторить', () => {
@@ -290,6 +336,8 @@ describe('синхронизация озвучивания', () => {
   const account: SpeechPreferences = {
     enLocale: 'en-GB',
     enVoiceURI: null,
+    enUSVoiceURI: null,
+    enGBVoiceURI: null,
     ruVoiceURI: null,
     rate: 1.25,
     autoPrompt: false,
@@ -360,6 +408,8 @@ describe('серверный голос', () => {
   const preferences = {
     enLocale: 'en-US',
     enVoiceURI: null,
+    enUSVoiceURI: null,
+    enGBVoiceURI: null,
     ruVoiceURI: null,
     rate: 1,
     autoPrompt: true,

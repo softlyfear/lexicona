@@ -96,6 +96,27 @@ it('скрывает русскую кнопку, если русский вык
   expect(screen.queryByRole('button', { name: 'Произнести RU «кот»' })).not.toBeInTheDocument()
 })
 
+it('озвучивает английское слово с сохранённой британской IPA британским голосом', async () => {
+  const british = { ...voice, lang: 'en-GB', voiceURI: 'gb', default: false }
+  voices = [voice, british]
+  vi.mocked(api.listWords).mockResolvedValue([
+    { ...word, transcription: '/kæt/', transcription_dialect: 'UK' },
+  ])
+  setSpeechOwner('a')
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <WordsPage userId="a" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('UK · /kæt/')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Произнести EN «cat»' }))
+  expect(current).toMatchObject({ text: 'cat', lang: 'en-GB', voice: british })
+})
+
 it.each(['Добавить слово', 'Изменить «cat»'])('%s отменяет текущую речь', async (action) => {
   voices = [voice]
   setSpeechOwner('a')

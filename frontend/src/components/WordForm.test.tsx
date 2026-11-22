@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ApiError, api, type DictionaryLookup, type Word } from '../api'
 import { forgetSession, getSessionRevision, queryClient, rememberSession } from '../session'
+import * as speech from '../speech'
 import { WordForm } from './WordForm'
 
 const source = {
@@ -61,6 +62,7 @@ function form(initial = word, onDirtyChange?: (dirty: boolean) => void) {
 }
 beforeEach(() => {
   vi.restoreAllMocks()
+  speech.updateSpeechPreferences({ enLocale: 'en-US' })
   vi.spyOn(api, 'listWords').mockResolvedValue([])
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
@@ -84,6 +86,53 @@ function newForm(initial?: Word) {
   )
   return { submit, cancel, ...view }
 }
+
+it('requests and saves a UK draft when British English is the default', async () => {
+  speech.updateSpeechPreferences({ enLocale: 'en-GB' })
+  const generate = vi
+    .spyOn(api, 'generateTranscription')
+    .mockResolvedValue({ transcription: '/bʊk/' })
+  const user = userEvent.setup()
+  const { submit } = form({ ...word, transcription: null })
+  await user.click(screen.getByRole('button', { name: 'Получить британскую транскрипцию (UK)' }))
+  expect(generate).toHaveBeenCalledExactlyOnceWith('book', 'UK')
+  expect(await screen.findByRole('button', { name: 'UK — британская транскрипция' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(submit).toHaveBeenCalledWith(
+    expect.objectContaining({ transcription: '/bʊk/', transcription_dialect: 'UK' }),
+  )
+})
+
+it('prefers UK from dictionary matches and pronounces the headword in the selected accent', async () => {
+  speech.updateSpeechPreferences({ enLocale: 'en-GB' })
+  const lookup = vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+    ...result,
+    matches: [
+      { ...result.matches[0], headword: 'phone', transcriptions: ['/foʊ̯n/'] },
+      { ...result.matches[0], headword: 'phone', entry_id: 2, transcriptions: ['/fəʊ̯n/'] },
+    ],
+  })
+  const speak = vi.spyOn(speech, 'speak').mockImplementation(() => {})
+  const user = userEvent.setup()
+  form({ ...word, headword: 'phone', transcription: '' })
+  await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+  expect(lookup).toHaveBeenCalledExactlyOnceWith('phone', 'UK')
+  const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
+  expect(picker).toHaveValue('/fəʊ̯n/')
+  await user.click(screen.getByRole('button', { name: 'Произнести «phone» (UK)' }))
+  expect(speak).toHaveBeenLastCalledWith(
+    'phone',
+    'en',
+    expect.objectContaining({ locale: 'en-GB' }),
+  )
+  await user.selectOptions(picker, '/foʊ̯n/')
+  await user.click(screen.getByRole('button', { name: 'Произнести «phone» (US)' }))
+  expect(speak).toHaveBeenLastCalledWith(
+    'phone',
+    'en',
+    expect.objectContaining({ locale: 'en-US' }),
+  )
+})
 
 it.each(['new', 'edit'] as const)(
   'generates only IPA in the %s draft and requires explicit Save',
@@ -865,8 +914,10 @@ it('показывает проверенные диалекты coverage и с�
     'AU · /ˈkɐv.(ə.)ɹɪdʒ/',
     'US/UK · /ˈkʌv.(ə.)ɹɪdʒ/',
   ])
-  expect(button).toHaveAccessibleName('AU — австралийская транскрипция')
+  expect(button).toHaveAccessibleName('US/UK — американская и британская транскрипция')
   expect(button).toBeDisabled()
+  await user.selectOptions(picker, transcriptions[0])
+  expect(button).toHaveAccessibleName('AU — австралийская транскрипция')
   await user.selectOptions(picker, transcriptions[2])
   expect(button).toHaveAccessibleName('US/UK — американская и британская транскрипция')
   expect(button).toHaveTextContent(/^US\/UK$/)
@@ -895,8 +946,8 @@ it('выбирает IPA из другого совпадения, сохран�
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
     ...result,
     matches: [
-      { ...match, transcriptions: ['/hɑːd/'] },
-      { ...match, entry_id: 2, transcriptions: ['/hɑɹd/'] },
+      { ...match, transcriptions: ['/hɑɹd/'] },
+      { ...match, entry_id: 2, transcriptions: ['/hɑːd/'] },
       { ...match, entry_id: 3, transcriptions: ['/hɑːd/', '/hɑɹd/'] },
     ],
   })
@@ -918,14 +969,14 @@ it('выбирает IPA из другого совпадения, сохран�
     within(picker)
       .getAllByRole('option')
       .map((option) => option.textContent),
-  ).toEqual(['Выберите вариант', 'UK · /hɑːd/', 'US · /hɑɹd/'])
-  expect(picker).toHaveValue('/hɑːd/')
-  const badge = screen.getByRole('button', { name: /вероятно, британская транскрипция/ })
-  expect(badge).toHaveTextContent(/^UK$/)
-  await user.selectOptions(picker, '/hɑɹd/')
-  const ipa = screen.getByLabelText('Транскрипция')
+  ).toEqual(['Выберите вариант', 'US · /hɑɹd/', 'UK · /hɑːd/'])
+  expect(picker).toHaveValue('/hɑɹd/')
+  const badge = screen.getByRole('button', { name: /вероятно, американская транскрипция/ })
   expect(badge).toHaveTextContent(/^US$/)
-  expect(ipa).toHaveValue('/hɑɹd/')
+  await user.selectOptions(picker, '/hɑːd/')
+  const ipa = screen.getByLabelText('Транскрипция')
+  expect(badge).toHaveTextContent(/^UK$/)
+  expect(ipa).toHaveValue('/hɑːd/')
   expect(screen.getByLabelText(/Переводы/)).toHaveValue('трудный')
   expect(onDirtyChange).toHaveBeenCalledExactlyOnceWith(true)
   expect(submit).not.toHaveBeenCalled()
@@ -934,11 +985,11 @@ it('выбирает IPA из другого совпадения, сохран�
   await user.click(save)
   expect(submit).toHaveBeenLastCalledWith(
     expect.objectContaining({
-      transcription: '/hɑɹd/',
+      transcription: '/hɑːd/',
       translations: ['трудный'],
       source_refs: [
         translationRef,
-        { source_id: source.id, entry_id: 2, field: 'transcription', value: '/hɑɹd/' },
+        { source_id: source.id, entry_id: 2, field: 'transcription', value: '/hɑːd/' },
       ],
     }),
   )

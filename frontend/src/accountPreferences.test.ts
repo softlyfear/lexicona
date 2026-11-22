@@ -14,6 +14,8 @@ afterEach(() => {
 const speech: SpeechPreferences = {
   enLocale: 'en-AU',
   enVoiceURI: null,
+  enUSVoiceURI: 'browser-us',
+  enGBVoiceURI: 'browser-gb',
   ruVoiceURI: 'ru',
   rate: 1,
   autoPrompt: false,
@@ -55,10 +57,33 @@ describe('настройки аккаунта', () => {
   it('переводит озвучивание в поля API и обратно', () => {
     const dto = speechToDto(speech)
     expect(dto.en_locale).toBe('en-AU')
+    expect(dto.en_us_voice_uri).toBe('browser-us')
+    expect(dto.en_gb_voice_uri).toBe('browser-gb')
     expect(dto.rate).toBe(1)
     expect(speechFromAccount(dto)).toEqual(speech)
     expect(speechFromAccount({ ...dto, en_locale: 'fr-FR' })).toBeNull()
     expect(speechFromAccount({ ...dto, en_voice_uri: '' })).toBeNull()
     expect(speechFromAccount({ ...dto, rate: 2 })).toBeNull()
   })
+
+  it.each(['US', 'GB', 'AU'])(
+    'переносит старый голос по en-%s только в отсутствующее поле',
+    (region) => {
+      const legacy = speechToDto({ ...speech, enLocale: `en-${region}`, enVoiceURI: 'old' })
+      delete legacy.en_us_voice_uri
+      delete legacy.en_gb_voice_uri
+      expect(speechFromAccount(legacy)).toMatchObject({
+        enVoiceURI: 'old',
+        enUSVoiceURI: region === 'US' ? 'old' : null,
+        enGBVoiceURI: region === 'GB' ? 'old' : null,
+      })
+      expect(
+        speechFromAccount({ ...legacy, en_us_voice_uri: null, en_gb_voice_uri: null }),
+      ).toMatchObject({
+        enUSVoiceURI: null,
+        enGBVoiceURI: null,
+      })
+      expect(speechFromAccount({ ...legacy, en_gb_voice_uri: '' })).toBeNull()
+    },
+  )
 })

@@ -83,6 +83,49 @@ describe('серверная речь', () => {
     expect(result.current.preferences.serverEnGB).toBe('gb')
   })
 
+  it('явно выбирает серверный UK для текущей фразы при общем выборе US', async () => {
+    const synthesize = vi.spyOn(api, 'synthesizeSpeech').mockResolvedValue(new Blob(['wav']))
+    await owner()
+    act(() => updateSpeechPreferences({ serverEnUS: 'us', serverEnGB: 'gb' }))
+    await act(async () => speak('schedule', 'en', { locale: 'en-GB' }))
+    await act(async () => speak('schedule', 'en'))
+    expect(synthesize).toHaveBeenNthCalledWith(1, 'schedule', 'gb', 1, expect.any(AbortSignal))
+    expect(synthesize).toHaveBeenNthCalledWith(2, 'schedule', 'us', 1, expect.any(AbortSignal))
+    expect(renderHook(() => useSpeech()).result.current.preferences.enLocale).toBe('en-US')
+  })
+
+  it('при отсутствии серверного UK ищет браузерный UK, затем любой английский голос', async () => {
+    vi.mocked(api.listSpeechVoices).mockResolvedValue({
+      available: true,
+      voices: serverVoices.slice(0, 1),
+    })
+    const us = { lang: 'en-US', voiceURI: 'us', default: true } as SpeechSynthesisVoice
+    const gb = { lang: 'en-GB', voiceURI: 'gb' } as SpeechSynthesisVoice
+    const browser = {
+      getVoices: () => [us, gb],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      cancel: vi.fn(),
+      speak: vi.fn(),
+    }
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: browser })
+    vi.stubGlobal('SpeechSynthesisUtterance', class {})
+    try {
+      await owner()
+      act(() => updateSpeechPreferences({ enGBVoiceURI: 'saved-on-other-device' }))
+      act(() => speak('schedule', 'en', { locale: 'en-GB' }))
+      expect(browser.speak).toHaveBeenLastCalledWith(expect.objectContaining({ voice: gb }))
+      browser.getVoices = () => [us]
+      act(() => speak('schedule', 'en', { locale: 'en-GB' }))
+      expect(browser.speak).toHaveBeenLastCalledWith(expect.objectContaining({ voice: us }))
+      expect(renderHook(() => useSpeech()).result.current.preferences.enGBVoiceURI).toBe(
+        'saved-on-other-device',
+      )
+    } finally {
+      Reflect.deleteProperty(window, 'speechSynthesis')
+    }
+  })
+
   it('отменяет запрос и игнорирует опоздавший WAV', async () => {
     let resolve!: (blob: Blob) => void
     const synthesize = vi.spyOn(api, 'synthesizeSpeech').mockReturnValue(

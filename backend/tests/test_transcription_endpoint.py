@@ -27,8 +27,21 @@ async def stored_data(database: Database) -> dict[str, list[dict[str, Any]]]:
         }
 
 
+@pytest.mark.parametrize(
+    ("dialect", "field", "accent"),
+    [
+        ({}, "transcription_us", "General American"),
+        ({"dialect": "UK"}, "transcription_uk", "Standard British"),
+    ],
+)
 async def test_transcription_is_input_only_threaded_and_does_not_mutate_accounts(
-    app: FastAPI, alice: Client, bob: Client, monkeypatch: pytest.MonkeyPatch
+    app: FastAPI,
+    alice: Client,
+    bob: Client,
+    monkeypatch: pytest.MonkeyPatch,
+    dialect: dict[str, str],
+    field: str,
+    accent: str,
 ) -> None:
     await add_word(alice, "cut to the chase", "перевод владельца", transcription="/old/")
     await add_word(bob, "cut to the chase", "другой перевод", transcription="/different/")
@@ -42,24 +55,23 @@ async def test_transcription_is_input_only_threaded_and_does_not_mutate_accounts
     def provider(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> Any:
         assert threading.get_ident() != caller_thread
         assert payload["messages"][1]["content"] == "cut to the chase"
+        assert accent in payload["messages"][0]["content"]
         schema = payload["response_format"]["json_schema"]["schema"]
-        assert schema["required"] == ["transcription_us"]
-        assert set(schema["properties"]) == {"transcription_us"}
+        assert schema["required"] == [field]
+        assert set(schema["properties"]) == {field}
         calls.append(payload)
         return {
             "choices": [
                 {
                     "finish_reason": "stop",
-                    "message": {
-                        "content": json.dumps({"transcription_us": " /ˌkʌt tə ðə ˈtʃeɪs/ "})
-                    },
+                    "message": {"content": json.dumps({field: " /ˌkʌt tə ðə ˈtʃeɪs/ "})},
                 }
             ]
         }
 
     monkeypatch.setattr(translation, "_post", provider)
     for client in (alice, bob):
-        response = await client.post(URL, json={"headword": "  cut to the chase  "})
+        response = await client.post(URL, json={"headword": "  cut to the chase  ", **dialect})
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
         assert response.json() == {"transcription": "/ˌkʌt tə ðə ˈtʃeɪs/"}
@@ -157,6 +169,7 @@ async def test_provider_errors_are_classified_without_disclosure(
         {"headword": 1},
         {"headword": True},
         {"headword": []},
+        {"headword": "phone", "dialect": "AU"},
     ],
 )
 async def test_transcription_input_bounds_prevent_provider_calls(

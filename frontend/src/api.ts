@@ -53,6 +53,8 @@ export interface TrainingPreferences {
 export interface SpeechPreferencesDto {
   en_locale: string
   en_voice_uri: string | null
+  en_us_voice_uri?: string | null
+  en_gb_voice_uri?: string | null
   ru_voice_uri: string | null
   rate: 0.5 | 0.75 | 1 | 1.25 | 1.5
   auto_prompt: boolean
@@ -146,11 +148,13 @@ export interface DictionaryNotices {
   transformations: string[]
 }
 
+export type TranscriptionDialect = 'US' | 'UK'
+
 export interface WordInput {
   headword: string
   translations: string[]
   transcription: string | null
-  transcription_dialect?: 'US' | null
+  transcription_dialect?: TranscriptionDialect | null
   example_en: string | null
   example_ru: string | null
   note: string | null
@@ -453,11 +457,11 @@ export const api = {
     for (const id of tagIds) params.append('tag_id', id)
     return request<Word[]>('GET', `/words?${params}`)
   },
-  lookupDictionary: (headword: string) =>
+  lookupDictionary: (headword: string, dialect?: TranscriptionDialect) =>
     request<DictionaryLookup>(
       'POST',
       '/dictionary/lookup',
-      { headword },
+      { headword, dialect },
       undefined,
       undefined,
       false,
@@ -473,11 +477,11 @@ export const api = {
       false,
       70_000,
     ),
-  generateTranscription: (headword: string) =>
+  generateTranscription: (headword: string, dialect?: TranscriptionDialect) =>
     request<{ transcription: string }>(
       'POST',
       '/dictionary/transcription',
-      { headword },
+      { headword, dialect },
       undefined,
       undefined,
       false,

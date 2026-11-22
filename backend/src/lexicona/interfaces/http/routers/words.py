@@ -55,7 +55,7 @@ class WordIn(BaseModel):
     headword: Text200
     translations: list[Text200] = Field(min_length=1, max_length=10)
     transcription: Annotated[Text300 | None, Blank] = None
-    transcription_dialect: Literal["US"] | None = None
+    transcription_dialect: Literal["US", "UK"] | None = None
     example_en: Annotated[Text2000 | None, Blank] = None
     example_ru: Annotated[Text2000 | None, Blank] = None
     note: Annotated[Text4000 | None, Blank] = None
@@ -118,7 +118,7 @@ class WordOut(BaseModel):
     source_refs: list[SourceRef]
     translations: list[str]
     transcription: str | None
-    transcription_dialect: Literal["US"] | None
+    transcription_dialect: Literal["US", "UK"] | None
     example_en: str | None
     example_ru: str | None
     note: str | None

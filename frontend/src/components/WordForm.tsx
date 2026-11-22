@@ -6,10 +6,12 @@ import {
   type DictionaryLookup,
   type SourceRef,
   type Tag,
+  type TranscriptionDialect,
   type Word,
   type WordInput,
 } from '../api'
 import { forgetSession, getSessionRevision } from '../session'
+import { useSpeech } from '../speech'
 import { normalizeTagName, normalizedAnswer, parseTranslations, tagKey } from '../words'
 import css from '../pages/pages.module.css'
 import { SpeakButton } from './ui'
@@ -57,10 +59,16 @@ const partsOfSpeech: Record<string, string> = {
 const partOfSpeech = (value: string) => partsOfSpeech[value.toLowerCase()] ?? value
 const optional = (value: string) => value.trim() || null
 const americanScore = (value: string) => Number(/[ɹrɚɝ]/.test(value)) + Number(value.includes('oʊ'))
+const transcriptionLocales = { US: 'en-US', UK: 'en-GB' } as const
+const transcriptionActions = {
+  US: 'Получить американскую транскрипцию',
+  UK: 'Получить британскую транскрипцию',
+}
 const transcriptionDialectNames = {
   AU: 'австралийская транскрипция',
   'US/UK': 'американская и британская транскрипция',
   US: 'американская транскрипция',
+  UK: 'британская транскрипция',
   '≈ US': 'вероятно, американская транскрипция',
   '≈ UK': 'вероятно, британская транскрипция',
   '?': 'диалект транскрипции неизвестен',
@@ -79,7 +87,18 @@ const documentedTranscriptionDialects = new Map([
   ],
 ])
 
-function preferredTranscription(matches: DictionaryLookup['matches']) {
+function preferredTranscription(
+  matches: DictionaryLookup['matches'],
+  headword: string,
+  preferredDialect: TranscriptionDialect,
+) {
+  const { entries, dialect } = pronunciationOptions(headword, matches)
+  const options = [...entries]
+  const matching =
+    options.find(([value]) => dialect(value) === `≈ ${preferredDialect}`) ??
+    options.find(([value]) => dialect(value) === 'US/UK')
+  if (matching) return { value: matching[0], entryId: matching[1] }
+
   const match = matches.find((item) => item.transcriptions.length > 0)
   if (!match) return null
   const value = match.transcriptions.reduce((preferred, candidate) =>
@@ -115,6 +134,18 @@ function inferTranscriptionDialects(values: Iterable<string>) {
   return dialects
 }
 
+function pronunciationOptions(headword: string, matches: DictionaryLookup['matches']) {
+  const entries = new Map<string, number>()
+  for (const match of matches) {
+    for (const value of match.transcriptions) {
+      if (!entries.has(value)) entries.set(value, match.entry_id)
+    }
+  }
+  const documented = documentedTranscriptionDialects.get(headword.trim().toLowerCase())
+  const inferred = inferTranscriptionDialects(entries.keys())
+  return { entries, dialect: (value: string) => documented?.get(value) ?? inferred.get(value) }
+}
+
 interface Props {
   word?: Word
   pending: boolean
@@ -138,6 +169,8 @@ export function WordForm({
   tagsLoading,
   tagsError,
 }: Props) {
+  const { preferences } = useSpeech()
+  const defaultDialect = preferences.enLocale.toLowerCase() === 'en-gb' ? 'UK' : 'US'
   const [headword, setHeadword] = useState(word?.headword ?? '')
   const [translations, setTranslations] = useState(word?.translations.join('\n') ?? '')
   const translationsDraft = useRef(translations)
@@ -149,9 +182,12 @@ export function WordForm({
   const [translationsMessage, setTranslationsMessage] = useState('')
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
   const translationsHelpId = useId()
-  const [{ value: transcription, confirmedUs }, setTranscriptionDraft] = useState({
+  const [{ value: transcription, savedDialect }, setTranscriptionDraft] = useState<{
+    value: string
+    savedDialect: TranscriptionDialect | null
+  }>({
     value: word?.transcription ?? '',
-    confirmedUs: word?.transcription_dialect === 'US' && !!word.transcription?.trim(),
+    savedDialect: word?.transcription?.trim() ? (word.transcription_dialect ?? null) : null,
   })
   const [exampleEn, setExampleEn] = useState(word?.example_en ?? '')
   const [exampleRu, setExampleRu] = useState(word?.example_ru ?? '')
@@ -230,11 +266,11 @@ export function WordForm({
     setTranscriptionError('')
   }
 
-  function applyTranscription(value: string, source: 'generated' | number) {
-    setTranscriptionDraft({ value, confirmedUs: source === 'generated' })
+  function applyTranscription(value: string, source: TranscriptionDialect | number) {
+    setTranscriptionDraft({ value, savedDialect: typeof source === 'string' ? source : null })
     setRefs((current) => {
       const remaining = current.filter((ref) => ref.field !== 'transcription')
-      if (source === 'generated') return remaining
+      if (typeof source === 'string') return remaining
       return [
         ...remaining,
         { source_id: sourceId, entry_id: source, field: 'transcription' as const, value },
@@ -246,7 +282,7 @@ export function WordForm({
     invalidateTranslations()
     invalidateTranscription()
     setTranscriptionDraft((current) =>
-      current.confirmedUs ? { ...current, confirmedUs: false } : current,
+      current.savedDialect ? { ...current, savedDialect: null } : current,
     )
     lookupRequestId.current++
     lookupLocked.current = false
@@ -300,7 +336,10 @@ export function WordForm({
     setLookupState('loading')
     setLookupError(null)
     try {
-      const result = await api.lookupDictionary(value.trim())
+      const result =
+        defaultDialect === 'US'
+          ? await api.lookupDictionary(value.trim())
+          : await api.lookupDictionary(value.trim(), 'UK')
       if (id !== lookupRequestId.current || currentRevision !== getSessionRevision()) return
       const matches = result.matches.map((match) => ({
         ...match,
@@ -325,13 +364,13 @@ export function WordForm({
       }
       setLookup({ ...result, matches, machine_translation: machineTranslation })
       if (lookupTranscriptionRequestId === transcriptionRequestId.current) {
-        const preferred = preferredTranscription(matches)
+        const preferred = preferredTranscription(matches, value, defaultDialect)
         const generated =
           machineTranslation?.transcription?.trim() || result.machine_transcription?.trim() || ''
         if (preferred) {
           applyTranscription(preferred.value, preferred.entryId)
         } else if (generated) {
-          applyTranscription(generated, 'generated')
+          applyTranscription(generated, defaultDialect)
         }
       }
       setLookupState('idle')
@@ -366,9 +405,12 @@ export function WordForm({
     setTranscriptionState('loading')
     setTranscriptionError('')
     try {
-      const result = await api.generateTranscription(headword.trim())
+      const result =
+        defaultDialect === 'US'
+          ? await api.generateTranscription(headword.trim())
+          : await api.generateTranscription(headword.trim(), 'UK')
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
-      applyTranscription(result.transcription, 'generated')
+      applyTranscription(result.transcription, defaultDialect)
       setTranscriptionState('ready')
     } catch (error) {
       if (id !== transcriptionRequestId.current || currentRevision !== getSessionRevision()) return
@@ -642,8 +684,7 @@ export function WordForm({
       return
     }
     const ipa = optional(transcription)
-    const dialect =
-      ipa && confirmedUs ? 'US' : word?.transcription_dialect === 'US' ? null : undefined
+    const dialect = (ipa && savedDialect) || (word?.transcription_dialect ? null : undefined)
     onSubmit({
       headword: head,
       translations: parsed,
@@ -661,25 +702,23 @@ export function WordForm({
   }
 
   const selectedTranslations = new Set(parseTranslations(translations).map(normalizedAnswer))
-  const dictionaryTranscriptions = new Map<string, number>()
-  for (const match of lookup?.matches ?? []) {
-    for (const value of match.transcriptions) {
-      if (!dictionaryTranscriptions.has(value)) dictionaryTranscriptions.set(value, match.entry_id)
-    }
-  }
+  const { entries: dictionaryTranscriptions, dialect: dictionaryDialect } = pronunciationOptions(
+    headword,
+    lookup?.matches ?? [],
+  )
   const trimmedTranscription = transcription.trim()
-  const documentedDialects = documentedTranscriptionDialects.get(headword.trim().toLowerCase())
-  const inferredDialects = inferTranscriptionDialects(dictionaryTranscriptions.keys())
-  const dictionaryDialect = (value: string) =>
-    documentedDialects?.get(value) ?? inferredDialects.get(value)
   const manualDialect =
     trimmedTranscription && !dictionaryTranscriptions.has(trimmedTranscription)
       ? inferTranscriptionDialects([trimmedTranscription]).get(trimmedTranscription)
       : undefined
-  const currentDialect = confirmedUs
-    ? 'US'
-    : (dictionaryDialect(trimmedTranscription) ?? manualDialect ?? '?')
+  const currentDialect =
+    savedDialect ?? dictionaryDialect(trimmedTranscription) ?? manualDialect ?? '?'
   const currentDialectLabel = displayDialect(currentDialect)
+  const spokenDialect =
+    currentDialectLabel === 'US' || currentDialectLabel === 'UK'
+      ? currentDialectLabel
+      : defaultDialect
+  const transcriptionAction = transcriptionActions[defaultDialect]
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
   function translationChoice(value: string, entryId: number | null, generated = false) {
@@ -753,7 +792,7 @@ export function WordForm({
                 onChange={(event) => {
                   const value = event.currentTarget.value
                   invalidateTranscription()
-                  setTranscriptionDraft({ value, confirmedUs: false })
+                  setTranscriptionDraft({ value, savedDialect: null })
                   setRefs((current) =>
                     current.filter(
                       (ref) => ref.field !== 'transcription' || ref.value === value.trim(),
@@ -769,12 +808,12 @@ export function WordForm({
                 aria-label={
                   trimmedTranscription
                     ? `${currentDialectLabel} — ${transcriptionDialectNames[currentDialect]}`
-                    : 'Получить американскую транскрипцию (US)'
+                    : `${transcriptionAction} (${defaultDialect})`
                 }
                 title={
                   trimmedTranscription
                     ? 'Чтобы получить транскрипцию, сначала очистите поле.'
-                    : 'Получить американскую транскрипцию (IPA)'
+                    : transcriptionAction
                 }
                 disabled={
                   !headword.trim() ||
@@ -786,8 +825,16 @@ export function WordForm({
                 }
                 onClick={() => void generateTranscription()}
               >
-                {trimmedTranscription ? currentDialectLabel : 'US'}
+                {trimmedTranscription ? currentDialectLabel : defaultDialect}
               </button>
+              {trimmedTranscription && headword.trim() && (
+                <SpeakButton
+                  text={headword.trim()}
+                  lang="en-US"
+                  locale={transcriptionLocales[spokenDialect]}
+                  aria-label={`Произнести «${headword.trim()}» (${spokenDialect})`}
+                />
+              )}
             </div>
           </div>
           <button
@@ -920,10 +967,13 @@ export function WordForm({
           {lookup && lookup.matches.length > 0 && (
             <div>
               <p>Варианты из словаря в порядке источника.</p>
-              {confirmedUs &&
+              {savedDialect &&
                 lookup.machine_transcription?.trim() === trimmedTranscription &&
                 dictionaryTranscriptions.size === 0 && (
-                  <p className={ui.muted}>В словаре нет транскрипции — показана американская.</p>
+                  <p className={ui.muted}>
+                    В словаре нет транскрипции — показана{' '}
+                    {savedDialect === 'UK' ? 'британская' : 'американская'}.
+                  </p>
                 )}
               {lookup.matches.map((match) => (
                 <section

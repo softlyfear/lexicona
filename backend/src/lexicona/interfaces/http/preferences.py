@@ -104,6 +104,8 @@ class SpeechPreferences(BaseModel):
 
     en_locale: Annotated[str, Field(max_length=32, pattern=r"^en(?:-[A-Za-z0-9]{2,8}){0,3}$")]
     en_voice_uri: VoiceUri
+    en_us_voice_uri: VoiceUri = None
+    en_gb_voice_uri: VoiceUri = None
     ru_voice_uri: VoiceUri
     rate: SpeechRate
     auto_prompt: StrictBool
@@ -114,6 +116,18 @@ class SpeechPreferences(BaseModel):
     server_en_us: ServerVoiceId
     server_en_gb: ServerVoiceId
     server_ru: ServerVoiceId
+
+    @model_validator(mode="before")
+    @classmethod
+    def with_regional_voices(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        locale = value.get("en_locale")
+        if isinstance(locale, str) and locale.lower() in {"en-us", "en-gb"}:
+            field = f"{locale.lower().replace('-', '_')}_voice_uri"
+            if field not in value:
+                return {**value, field: value.get("en_voice_uri")}
+        return value
 
 
 class AccountPreferences(BaseModel):
