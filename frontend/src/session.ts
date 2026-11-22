@@ -1,6 +1,15 @@
 import { QueryCache, QueryClient, MutationCache, useQuery } from '@tanstack/react-query'
 import { cancelSpeech } from './speech'
 import { ApiError, api, isCurrentApiError, setCsrfToken, type Session } from './api'
+import {
+  clearOfflineSignedOut,
+  markOfflineSignedOut,
+  offlineOwner,
+  offlineSignedOut,
+  offlineStorageAvailable,
+  updateOffline,
+  setOfflineOwner,
+} from './offlineStorage'
 
 const SESSION_KEY = ['session']
 const EXPLICIT_LOGIN_KEY = 'require-explicit-login'
@@ -17,7 +26,7 @@ function requireExplicitLogin() {
 
 export function requiresExplicitLogin() {
   try {
-    return sessionStorage.getItem(EXPLICIT_LOGIN_KEY) === '1'
+    return sessionStorage.getItem(EXPLICIT_LOGIN_KEY) === '1' || offlineSignedOut()
   } catch {
     return true
   }
@@ -25,6 +34,38 @@ export function requiresExplicitLogin() {
 
 function clearExplicitLogin() {
   sessionStorage.removeItem(EXPLICIT_LOGIN_KEY)
+  clearOfflineSignedOut()
+}
+
+async function discardOtherOfflineAccount(ownerId: string, revision: number) {
+  if (!offlineStorageAvailable()) return
+  try {
+    await updateOffline((record) =>
+      revision === sessionRevision &&
+      offlineOwner() === ownerId &&
+      record &&
+      record.ownerId !== ownerId
+        ? null
+        : undefined,
+    )
+  } catch {
+    // The explicit account check still protects every use of offline storage.
+  }
+}
+
+function lockOfflineSession() {
+  try {
+    markOfflineSignedOut()
+  } catch {
+    // Offline access already fails closed when the browser blocks local storage.
+  }
+}
+
+export function revokeLocalSession() {
+  const session = queryClient.getQueryData<Session | null>(SESSION_KEY)
+  const owner = offlineOwner()
+  if (!owner || owner === session?.user.id) lockOfflineSession()
+  forgetSession()
 }
 
 function authChannel<T>(operation: () => Promise<T>): Promise<T> {
@@ -42,11 +83,18 @@ export function getSessionRevision() {
 
 export function isCurrentSession(revision: number, userId: string) {
   const current = queryClient.getQueryData<Session | null>(SESSION_KEY)
-  return revision === sessionRevision && current?.user.id === userId && !requiresExplicitLogin()
+  const owner = offlineOwner()
+  return (
+    revision === sessionRevision &&
+    current?.user.id === userId &&
+    (!owner || owner === userId) &&
+    !requiresExplicitLogin()
+  )
 }
 
 function onError(error: unknown) {
-  if (error instanceof ApiError && error.status === 401 && isCurrentApiError(error)) forgetSession()
+  if (error instanceof ApiError && error.status === 401 && isCurrentApiError(error))
+    revokeLocalSession()
 }
 
 export const queryClient = new QueryClient({
@@ -57,23 +105,59 @@ export const queryClient = new QueryClient({
 
 async function loadSession(): Promise<Session | null> {
   const revision = sessionRevision
+  const previousOwner = offlineOwner()
   if (requiresExplicitLogin()) return null
   try {
     const session = await api.me()
     if (revision !== sessionRevision || requiresExplicitLogin())
       return queryClient.getQueryData<Session | null>(SESSION_KEY) ?? null
+    const currentOwner = offlineOwner()
+    if (currentOwner !== previousOwner && currentOwner !== session.user.id) return null
+    setOfflineOwner(session.user.id)
+    await discardOtherOfflineAccount(session.user.id, revision)
+    if (revision !== sessionRevision || requiresExplicitLogin())
+      return queryClient.getQueryData<Session | null>(SESSION_KEY) ?? null
+    if (offlineOwner() && offlineOwner() !== session.user.id) return null
     setCsrfToken(session.csrf_token)
     return session
   } catch (error) {
     if (revision !== sessionRevision || requiresExplicitLogin())
       return queryClient.getQueryData<Session | null>(SESSION_KEY) ?? null
-    if (error instanceof ApiError && error.status === 401) return null
+    if (error instanceof ApiError && error.status === 401) {
+      if (offlineOwner() === previousOwner) lockOfflineSession()
+      return null
+    }
     throw error
   }
 }
 
 export function useSession() {
-  return useQuery({ queryKey: SESSION_KEY, queryFn: loadSession, staleTime: Infinity })
+  return useQuery({
+    queryKey: SESSION_KEY,
+    queryFn: loadSession,
+    staleTime: Infinity,
+    networkMode: 'always',
+  })
+}
+
+export async function verifyOfflineSession(revision: number, ownerId: string) {
+  try {
+    const session = await api.me()
+    if (!isCurrentSession(revision, ownerId)) return false
+    if (session.user.id !== ownerId) {
+      forgetSession()
+      return false
+    }
+    setCsrfToken(session.csrf_token)
+    return true
+  } catch (error) {
+    if (!isCurrentSession(revision, ownerId)) return false
+    if (error instanceof ApiError && [401, 403].includes(error.status)) {
+      revokeLocalSession()
+      return false
+    }
+    throw error
+  }
 }
 
 export function rememberSession(session: Session) {
@@ -130,6 +214,12 @@ export function loginSession(login: string, password: string): Promise<LoginResu
       return { kind: 'stale' }
     }
     try {
+      setOfflineOwner(session.user.id)
+      await discardOtherOfflineAccount(session.user.id, revision)
+      if (revision !== sessionRevision || (offlineOwner() && offlineOwner() !== session.user.id)) {
+        await cleanupSession(session)
+        return { kind: 'stale' }
+      }
       clearExplicitLogin()
     } catch (error) {
       await cleanupSession(session)

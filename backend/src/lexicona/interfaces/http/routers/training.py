@@ -1,5 +1,6 @@
 import random
-from datetime import datetime
+from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Annotated, Any, Literal, Self, cast
 
 from fastapi import APIRouter, HTTPException, status
@@ -13,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 from sqlalchemy import Select, case, func, or_, select, true, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.sql.selectable import Exists
 
 from lexicona.domain import distractors, progress, srs
@@ -35,6 +37,8 @@ from lexicona.interfaces.http.deps import CurrentAuth, Db
 router = APIRouter(prefix="/training", tags=["training"])
 
 OPTION_COUNT = 6
+OFFLINE_EXERCISE_LIMIT = 10
+OFFLINE_STUDY_LIMIT = 10
 _rng = random.SystemRandom()
 
 
@@ -99,6 +103,30 @@ class SessionOut(BaseModel):
     direction: str
     purpose: Literal["scheduled", "free"]
     items: list[ItemOut]
+
+
+class OfflinePackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$", strict=True)]
+
+
+class OfflineStudyWord(BaseModel):
+    headword: str
+    translations: list[str]
+
+
+class OfflineExercise(BaseModel):
+    id: str
+    prompt: str
+
+
+class OfflinePackOut(BaseModel):
+    owner_id: str
+    expires_at: datetime
+    id: str
+    study: list[OfflineStudyWord]
+    items: list[OfflineExercise]
 
 
 class CompletionCounts(BaseModel):
@@ -307,6 +335,23 @@ def _prompt_text(word: Word, direction: str) -> str:
     if direction == "en_ru":
         return word.headword
     return ", ".join(translation.text for translation in word.translations)
+
+
+def _input_item(word: Word, direction: str, position: int, schedule: WordProgress) -> TrainingItem:
+    return TrainingItem(
+        word_id=word.id,
+        word_content_version=word.content_version,
+        word_training_version=word.training_version,
+        word_progress_version=schedule.progress_version,
+        position=position,
+        prompt=_prompt_text(word, direction),
+        options=[],
+        expected_answers=(
+            [translation.text for translation in word.translations]
+            if direction == "en_ru"
+            else [word.headword]
+        ),
+    )
 
 
 def _prompt_transcription(word: Word | None, mode: str, direction: str) -> str | None:
@@ -534,16 +579,11 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                 if built is None:
                     continue
                 prompt, options, correct = built
-                expected_answers = None
             else:
-                prompt = _prompt_text(target, body.direction)
-                expected_answers = (
-                    [translation.text for translation in target.translations]
-                    if body.direction == "en_ru"
-                    else [target.headword]
+                session.items.append(
+                    _input_item(target, body.direction, len(session.items), schedules[target.id])
                 )
-                options = []
-                correct = None
+                continue
             session.items.append(
                 TrainingItem(
                     word_id=target.id,
@@ -554,7 +594,6 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
                     prompt=prompt,
                     options=options,
                     correct_option=correct,
-                    expected_answers=expected_answers,
                 )
             )
     if not session.items:
@@ -580,6 +619,93 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
             )
             for i in session.items
         ],
+    )
+
+
+@router.post("/offline-pack")
+async def prepare_offline_pack(
+    body: OfflinePackIn, auth: CurrentAuth, db: Db
+) -> OfflinePackOut | None:
+    owner_id = auth.user.id
+    session_id = sha256(f"offline-training/{owner_id}/{body.key}".encode()).hexdigest()[:32]
+    created_id = await db.scalar(
+        sqlite_insert(TrainingSession)
+        .values(
+            id=session_id,
+            owner_id=owner_id,
+            mode="input",
+            direction="en_ru",
+            purpose="free",
+            difficulty=auth.user.difficulty,
+            requested_size=str(OFFLINE_EXERCISE_LIMIT),
+            is_offline=True,
+        )
+        .on_conflict_do_nothing(index_elements=[TrainingSession.id])
+        .returning(TrainingSession.id)
+    )
+    # Inserting the parent first serializes requests for the same package key.
+    session = await db.scalar(
+        select(TrainingSession).where(
+            TrainingSession.id == session_id,
+            TrainingSession.owner_id == owner_id,
+            TrainingSession.is_offline.is_(True),
+        )
+    )
+    if session is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "offline_pack_key_conflict")
+
+    exercise_word_ids = [item.word_id for item in session.items if item.word_id is not None]
+    active_words = list(
+        await db.scalars(
+            select(Word)
+            .where(
+                Word.owner_id == owner_id,
+                Word.is_excluded.is_(False),
+                Word.is_learned.is_(False),
+                Word.id.not_in(exercise_word_ids),
+            )
+            .order_by(Word.progress, Word.created_at, Word.id)
+            .limit(
+                OFFLINE_EXERCISE_LIMIT + OFFLINE_STUDY_LIMIT if created_id else OFFLINE_STUDY_LIMIT
+            )
+        )
+    )
+    if created_id and not active_words:
+        await db.rollback()
+        return None
+
+    if created_id:
+        # Keep study translations separate from the words in exercises.
+        split = min(OFFLINE_EXERCISE_LIMIT, len(active_words) // 2)
+        exercises, active_words = active_words[:split], active_words[split:]
+        schedules = {
+            schedule.word_id: schedule
+            for schedule in await db.scalars(
+                select(WordProgress).where(
+                    WordProgress.owner_id == owner_id,
+                    WordProgress.word_id.in_(word.id for word in exercises),
+                )
+            )
+        }
+        for position, word in enumerate(exercises):
+            schedule = schedules.get(word.id)
+            if schedule is None:
+                schedule = WordProgress(owner_id=owner_id, word_id=word.id, progress_version=1)
+                db.add(schedule)
+            session.items.append(_input_item(word, session.direction, position, schedule))
+
+    await db.commit()
+    return OfflinePackOut(
+        owner_id=owner_id,
+        expires_at=auth.session.expires_at.replace(tzinfo=UTC),
+        id=session.id,
+        study=[
+            OfflineStudyWord(
+                headword=word.headword, translations=[t.text for t in word.translations]
+            )
+            for word in active_words
+        ],
+        items=[OfflineExercise(id=item.id, prompt=item.prompt) for item in session.items],
     )
 
 
@@ -629,8 +755,10 @@ async def _session_snapshot(
             state = "done"
             result = _answer_out(item, word.progress).model_dump()
         elif (
-            word.is_learned and not session.include_learned
-        ) or word.training_version != item.word_training_version:
+            (word.is_learned and not session.include_learned)
+            or word.training_version != item.word_training_version
+            or (session.is_offline and word.content_version != item.word_content_version)
+        ):
             state = "done"
             result = UnavailableOut(progress=word.progress).model_dump()
         elif item.answered_at is not None:
@@ -680,7 +808,7 @@ async def _session_snapshot(
 async def latest_session(auth: CurrentAuth, db: Db) -> dict[str, Any] | None:
     session = await db.scalar(
         select(TrainingSession)
-        .where(TrainingSession.owner_id == auth.user.id)
+        .where(TrainingSession.owner_id == auth.user.id, TrainingSession.is_offline.is_(False))
         .order_by(TrainingSession.created_at.desc(), TrainingSession.id.desc())
         .limit(1)
     )
@@ -864,7 +992,9 @@ def _owned_sessions(auth: CurrentAuth) -> Select[str]:
     )
 
 
-def _eligible(auth: CurrentAuth, *, include_learned: bool = False) -> Exists:
+def _eligible(
+    auth: CurrentAuth, *, include_learned: bool = False, current_content: bool = False
+) -> Exists:
     filters = [
         Word.id == TrainingItem.word_id,
         Word.owner_id == auth.user.id,
@@ -873,12 +1003,16 @@ def _eligible(auth: CurrentAuth, *, include_learned: bool = False) -> Exists:
     ]
     if not include_learned:
         filters.append(Word.is_learned.is_(False))
+    if current_content:
+        filters.append(Word.content_version == TrainingItem.word_content_version)
     return select(Word.id).where(*filters).exists()
 
 
 @router.post("/items/{item_id}/reveal")
 async def reveal_item(item_id: str, auth: CurrentAuth, db: Db) -> RevealOut | TerminalOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
+    if item.session.is_offline:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
 
     if word is None:
         if item.outcome is not None and item.outcome != "unavailable":
@@ -958,7 +1092,14 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
             )
             .values(
                 outcome=case(
-                    (_eligible(auth, include_learned=item.session.include_learned), "skipped"),
+                    (
+                        _eligible(
+                            auth,
+                            include_learned=item.session.include_learned,
+                            current_content=item.session.is_offline,
+                        ),
+                        "skipped",
+                    ),
                     else_="unavailable",
                 ),
                 delta=0,
@@ -982,7 +1123,11 @@ async def skip_item(item_id: str, auth: CurrentAuth, db: Db) -> TerminalOut:
 @router.post("/items/{item_id}/hint")
 async def hint_item(item_id: str, body: LetterHintIn, auth: CurrentAuth, db: Db) -> LetterHintOut:
     item, word = await _owned_item_and_word(item_id, auth, db)
-    if item.session.mode not in ("input", "cloze") or not item.expected_answers:
+    if (
+        item.session.is_offline
+        or item.session.mode not in ("input", "cloze")
+        or not item.expected_answers
+    ):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_answer_for_mode")
     if word is None or item.outcome is not None or item.session.status != "active":
         raise HTTPException(409, "item_closed")
@@ -1081,7 +1226,11 @@ async def answer_item(
         .where(Word.id == item.word_id, Word.owner_id == auth.user.id)
         .scalar_subquery()
     )
-    eligible = _eligible(auth, include_learned=item.session.include_learned)
+    eligible = _eligible(
+        auth,
+        include_learned=item.session.include_learned,
+        current_content=item.session.is_offline,
+    )
     card_ready = (
         or_(~eligible, TrainingItem.revealed_at.is_not(None))
         if item.session.mode == "cards"
@@ -1109,7 +1258,13 @@ async def answer_item(
             delta=case(
                 (eligible & (current_version == item.word_content_version), change), else_=0
             ),
-            outcome=case((eligible, None if correct is False else "answered"), else_="unavailable"),
+            outcome=case(
+                (
+                    eligible,
+                    None if correct is False and not item.session.is_offline else "answered",
+                ),
+                else_="unavailable",
+            ),
             answered_at=func.coalesce(TrainingItem.answered_at, now),
         )
     )

@@ -23,12 +23,14 @@ export function SpeakButton({
   text,
   lang,
   locale,
+  offline,
   className,
   ...props
 }: {
   text: string
   lang: 'en-US' | 'ru-RU'
   locale?: EnglishAccentLocale
+  offline?: boolean
 } & ComponentProps<'button'>) {
   const code = lang === 'en-US' ? 'en' : 'ru'
   const { preferences } = useSpeech()
@@ -39,7 +41,8 @@ export function SpeakButton({
       className={`${ui.ghost} ${ui.speak} ${className ?? ''}`}
       onClick={(event) => {
         event.stopPropagation()
-        if (locale) speak(text, code, { locale })
+        if (offline) speak(text, code, { locale, offline })
+        else if (locale) speak(text, code, { locale })
         else speak(text, code)
       }}
       aria-label={`Произнести ${lang === 'en-US' ? 'EN' : 'RU'} «${text}»`}

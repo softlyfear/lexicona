@@ -315,7 +315,10 @@ export function reportSpeechSyncError(failed: boolean) {
   notify({ syncError: failed })
 }
 
-export function setSpeechOwner(id: string | null, account?: { speech: SpeechPreferences | null }) {
+export function setSpeechOwner(
+  id: string | null,
+  account?: { speech: SpeechPreferences | null; offline?: boolean },
+) {
   cancelSpeech()
   metadataRequest?.abort()
   metadataRequest = null
@@ -358,7 +361,7 @@ export function setSpeechOwner(id: string | null, account?: { speech: SpeechPref
     voiceState: synthesis() ? 'loading' : 'unavailable',
   })
   if (seed && id) publisher?.(id, seed)
-  if (id) refreshServerVoices()
+  if (id && !account?.offline) refreshServerVoices()
   if (!id || !synthesis()) return
   synthesis()?.addEventListener('voiceschanged', refreshVoices)
   refreshVoices()
@@ -416,10 +419,10 @@ export function updateSpeechPreferences(patch: Partial<SpeechPreferences>) {
 export function speak(
   text: string,
   lang: 'en' | 'ru',
-  options?: { force?: boolean; locale?: EnglishAccentLocale },
+  options?: { force?: boolean; locale?: EnglishAccentLocale; offline?: boolean },
 ) {
   if (!options?.force && !speechEnabled(lang)) return
-  const choice = languageEngine(lang)
+  const choice = options?.offline ? 'browser' : languageEngine(lang)
   const locale = lang === 'ru' ? 'ru-RU' : (options?.locale ?? snapshot.preferences.enLocale)
   if (audio && readyFingerprint && choice !== 'browser') {
     const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences, locale)
@@ -467,9 +470,11 @@ export function speak(
       snapshot.serverState === 'ready' &&
       !englishAccentLocale(locale) &&
       !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences, locale)
-    const available = exactLocale
-      ? snapshot.voices.filter((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
-      : snapshot.voices
+    const available = snapshot.voices.filter(
+      (voice) =>
+        (!options?.offline || voice.localService) &&
+        (!exactLocale || voice.lang.toLowerCase() === locale.toLowerCase()),
+    )
     const voice = selectVoice(available, lang, snapshot.preferences, locale)
     if (!voice) {
       problem(`Подходящий ${lang.toUpperCase()} голос не найден. Попробуйте ещё раз.`)

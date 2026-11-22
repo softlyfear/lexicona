@@ -15,7 +15,15 @@ const LINKS = [
   { to: '/settings', label: 'Настройки', icon: 'settings' },
 ] as const
 
-export function Layout({ user }: { user: User }) {
+export function Layout({
+  user,
+  offlineMessage,
+  onLogout = logoutSession,
+}: {
+  user: User
+  offlineMessage?: ReactNode
+  onLogout?: () => Promise<void>
+}) {
   const location = useLocation()
   const { pathname } = location
   const mainRef = useRef<HTMLElement>(null)
@@ -85,7 +93,7 @@ export function Layout({ user }: { user: User }) {
               type="button"
               className={`${ui.ghost} ${css.logout}`}
               onClick={() => {
-                if (confirmDraftLeave()) void logoutSession()
+                if (confirmDraftLeave()) void onLogout()
               }}
             >
               <SectionIcon name="logout" />
@@ -96,6 +104,13 @@ export function Layout({ user }: { user: User }) {
         {notice && pathname !== '/settings' && (
           <div className={css.speechStatus}>
             <p role="status">{notice}</p>
+          </div>
+        )}
+        {offlineMessage && (
+          <div className={css.speechStatus}>
+            <p className={ui.muted} role="status">
+              {offlineMessage}
+            </p>
           </div>
         )}
       </header>

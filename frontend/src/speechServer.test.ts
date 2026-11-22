@@ -58,6 +58,32 @@ async function owner(id = 'a') {
 }
 
 describe('серверная речь', () => {
+  it('использует локальный голос в офлайне и снова выбирает серверный после подключения', async () => {
+    const synthesize = vi.spyOn(api, 'synthesizeSpeech').mockResolvedValue(new Blob(['wav']))
+    const remote = { lang: 'en-GB', voiceURI: 'remote', localService: false }
+    const local = { lang: 'en-GB', voiceURI: 'local', localService: true }
+    const browser = {
+      getVoices: () => [remote, local],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      cancel: vi.fn(),
+      speak: vi.fn(),
+    }
+    vi.stubGlobal('speechSynthesis', browser)
+    vi.stubGlobal('SpeechSynthesisUtterance', class {})
+    await owner()
+    act(() =>
+      updateSpeechPreferences({ engineEn: 'server', enLocale: 'en-GB', enGBVoiceURI: 'remote' }),
+    )
+
+    act(() => speak('hello', 'en', { offline: true }))
+    expect(browser.speak).toHaveBeenCalledWith(expect.objectContaining({ voice: local }))
+    expect(synthesize).not.toHaveBeenCalled()
+
+    await act(async () => speak('hello', 'en'))
+    expect(synthesize).toHaveBeenCalledWith('hello', 'gb', 1, expect.any(AbortSignal))
+  })
+
   it('выбирает голос акцента и пользователя и очищает WAV после завершения', async () => {
     const synthesize = vi.spyOn(api, 'synthesizeSpeech').mockResolvedValue(new Blob(['wav']))
     await owner()

@@ -193,6 +193,14 @@ export interface TrainingSession {
   items: TrainingItem[]
 }
 
+export interface OfflinePack {
+  id: string
+  owner_id: string
+  expires_at: string
+  study: { headword: string; translations: string[] }[]
+  items: { id: string; prompt: string }[]
+}
+
 export interface TrainingSummary {
   id: string
   total: number
@@ -559,6 +567,8 @@ export const api = {
       ...filters,
     }),
   latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
+  offlinePack: (key: string) =>
+    request<OfflinePack | null>('POST', '/training/offline-pack', { key }),
   getTraining: (id: string) => request<ResumedSession>('GET', `/training/sessions/${id}`),
   trainingSummary: (id: string) =>
     request<TrainingSummary>('GET', `/training/sessions/${id}/summary`),

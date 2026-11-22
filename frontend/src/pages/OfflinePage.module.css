@@ -1,0 +1,51 @@
+.page {
+  display: grid;
+  gap: 1rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.page h1,
+.page h2,
+.page p {
+  margin: 0;
+}
+
+.page h1 {
+  font-size: 1.25rem;
+}
+
+.page h2 {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.header,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header {
+  justify-content: space-between;
+}
+
+.form,
+.words {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.words li + li {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
