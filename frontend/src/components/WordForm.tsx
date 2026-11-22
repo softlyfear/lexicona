@@ -67,6 +67,33 @@ function preferredTranscription(matches: DictionaryLookup['matches']) {
   return { entryId: match.entry_id, value }
 }
 
+function inferTranscriptionDialects(values: Iterable<string>) {
+  const phonemic = new Set(
+    Array.from(values).filter((value) => /^\/[\p{L}\p{M} .]+\/$/u.test(value)),
+  )
+  const rhotic = new Set<string>()
+  const nonRhotic = new Set<string>()
+  for (const value of phonemic) {
+    // A prevocalic /r/ can occur in either dialect, including across words.
+    const counterpart = value.replace(
+      /([ɑɔɜ])ː?[rɹ](?=\/$| *[.ˈˌ]?[pbtdkɡgfvθðszʃʒhmnŋlɫwɹrjʧʤɾʔ])/gu,
+      '$1ː',
+    )
+    if (counterpart !== value && phonemic.has(counterpart)) {
+      rhotic.add(value)
+      nonRhotic.add(counterpart)
+    }
+  }
+
+  const dialects = new Map<string, 'US' | 'UK'>()
+  for (const value of phonemic) {
+    const us = /oʊ|[ɚɝ]/u.test(value) || rhotic.has(value)
+    const uk = /əʊ|ɒ/u.test(value) || nonRhotic.has(value)
+    if (us !== uk) dialects.set(value, us ? 'US' : 'UK')
+  }
+  return dialects
+}
+
 interface Props {
   word?: Word
   pending: boolean
@@ -608,6 +635,7 @@ export function WordForm({
       if (!dictionaryTranscriptions.has(value)) dictionaryTranscriptions.set(value, match.entry_id)
     }
   }
+  const transcriptionDialects = inferTranscriptionDialects(dictionaryTranscriptions.keys())
   const trimmedTranscription = transcription.trim()
   const machine = lookup?.machine_translation
   const machineChoices = machine ? [machine.text, ...(machine.alternatives ?? [])] : []
@@ -732,11 +760,14 @@ export function WordForm({
                   <option value="" disabled>
                     Выберите вариант
                   </option>
-                  {Array.from(dictionaryTranscriptions.keys(), (value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
+                  {Array.from(dictionaryTranscriptions.keys(), (value) => {
+                    const dialect = transcriptionDialects.get(value)
+                    return (
+                      <option key={value} value={value}>
+                        {dialect ? `≈ ${dialect} · ${value}` : value}
+                      </option>
+                    )
+                  })}
                 </select>
               </label>
             )}

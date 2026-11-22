@@ -693,29 +693,81 @@ it('автоматически подставляет fallback IPA и сохра
 })
 
 it.each([
-  { transcriptions: ['/həˈləʊ/', '/hæˈlaʊ/', '/həˈloʊ/'], expected: '/həˈloʊ/' },
-  { transcriptions: ['/ˌɡʊd ˈmɔːnɪŋ/', '/ˌɡʊd ˈmɔɹnɪŋ/'], expected: '/ˌɡʊd ˈmɔɹnɪŋ/' },
-])('автоматически предпочитает IPA с US-признаками', async ({ transcriptions, expected }) => {
+  {
+    headword: 'hello',
+    transcriptions: ['/həˈləʊ/', '/hæˈlaʊ/', '/həˈloʊ/'],
+    labels: ['≈ UK · /həˈləʊ/', '/hæˈlaʊ/', '≈ US · /həˈloʊ/'],
+    expected: '/həˈloʊ/',
+  },
+  {
+    headword: 'good morning',
+    transcriptions: ['/ˌɡʊd ˈmɔːnɪŋ/', '/ˌɡʊd ˈmɔɹnɪŋ/'],
+    labels: ['≈ UK · /ˌɡʊd ˈmɔːnɪŋ/', '≈ US · /ˌɡʊd ˈmɔɹnɪŋ/'],
+    expected: '/ˌɡʊd ˈmɔɹnɪŋ/',
+  },
+])(
+  'показывает вероятный диалект для $headword и сохраняет автоматическую подстановку',
+  async ({ headword, transcriptions, labels, expected }) => {
+    vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
+      ...result,
+      matches: [{ ...result.matches[0], headword, transcriptions }],
+    })
+    const user = userEvent.setup()
+    form({ ...word, headword })
+    await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
+    const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
+    const options = within(picker).getAllByRole('option')
+    expect(options.slice(1).map((option) => option.textContent)).toEqual(labels)
+    expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
+    expect(picker).toHaveValue(expected)
+  },
+)
+
+it('помечает различимые IPA и оставляет спорные варианты без догадки', async () => {
+  const options = [
+    ['/sɒk/', '≈ UK · /sɒk/'],
+    ['/bɝd/', '≈ US · /bɝd/'],
+    ['/ˈsɪstɚ/', '≈ US · /ˈsɪstɚ/'],
+    ['/kɑr/', '≈ US · /kɑr/'],
+    ['/kɑː/', '≈ UK · /kɑː/'],
+    ['/ɡoʊ kɑr/', '≈ US · /ɡoʊ kɑr/'],
+    ['/ɡoʊ kɑː/', '/ɡoʊ kɑː/'],
+    ['/ɒn kɑr/', '/ɒn kɑr/'],
+    ['/ɒn kɑː/', '≈ UK · /ɒn kɑː/'],
+    ['/oʊ sɒk/', '/oʊ sɒk/'],
+    ['/rʌn/', '/rʌn/'],
+    ['/kɑrd/', '/kɑrd/'],
+    ['/fɔːr ˈæp.əlz/', '/fɔːr ˈæp.əlz/'],
+    ['/fɔː ˈæp.əlz/', '/fɔː ˈæp.əlz/'],
+    ['[oʊ]', '[oʊ]'],
+    ['/əʊ/ (UK)', '/əʊ/ (UK)'],
+    ['/oʊ (US)/', '/oʊ (US)/'],
+    ['/əʊ/ /oʊ/', '/əʊ/ /oʊ/'],
+  ]
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
     ...result,
-    matches: [{ ...result.matches[0], transcriptions }],
+    matches: [{ ...result.matches[0], transcriptions: options.map(([value]) => value) }],
   })
   const user = userEvent.setup()
   form()
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
   const picker = await screen.findByRole('combobox', { name: 'Варианты транскрипции' })
-  expect(screen.getByLabelText('Транскрипция')).toHaveValue(expected)
-  expect(picker).toHaveValue(expected)
+  expect(
+    within(picker)
+      .getAllByRole<HTMLOptionElement>('option')
+      .slice(1)
+      .map((option) => [option.value, option.textContent]),
+  ).toEqual(options)
 })
 
 it('выбирает IPA из другого совпадения, сохраняя его источник и прежние переводы', async () => {
-  const match = { ...result.matches[0], headword: 'read', translations: ['читать'] }
+  const match = { ...result.matches[0], headword: 'hard', translations: ['трудный'] }
   vi.spyOn(api, 'lookupDictionary').mockResolvedValue({
     ...result,
     matches: [
-      { ...match, transcriptions: ['/riːd/'] },
-      { ...match, entry_id: 2, transcriptions: ['/rɛd/'] },
-      { ...match, entry_id: 3, transcriptions: ['/riːd/', '/rɛd/'] },
+      { ...match, transcriptions: ['/hɑːd/'] },
+      { ...match, entry_id: 2, transcriptions: ['/hɑɹd/'] },
+      { ...match, entry_id: 3, transcriptions: ['/hɑːd/', '/hɑɹd/'] },
     ],
   })
   const user = userEvent.setup()
@@ -724,10 +776,10 @@ it('выбирает IPA из другого совпадения, сохран�
     source_id: source.id,
     entry_id: 1,
     field: 'translation' as const,
-    value: 'читать',
+    value: 'трудный',
   }
   const { submit } = form(
-    { ...word, headword: 'read', translations: ['читать'], source_refs: [translationRef] },
+    { ...word, headword: 'hard', translations: ['трудный'], source_refs: [translationRef] },
     onDirtyChange,
   )
   await user.click(screen.getByRole('button', { name: /Подобрать перевод/ }))
@@ -736,12 +788,12 @@ it('выбирает IPA из другого совпадения, сохран�
     within(picker)
       .getAllByRole('option')
       .map((option) => option.textContent),
-  ).toEqual(['Выберите вариант', '/riːd/', '/rɛd/'])
-  expect(picker).toHaveValue('/riːd/')
-  await user.selectOptions(picker, '/rɛd/')
+  ).toEqual(['Выберите вариант', '≈ UK · /hɑːd/', '≈ US · /hɑɹd/'])
+  expect(picker).toHaveValue('/hɑːd/')
+  await user.selectOptions(picker, '/hɑɹd/')
   const ipa = screen.getByLabelText('Транскрипция')
-  expect(ipa).toHaveValue('/rɛd/')
-  expect(screen.getByLabelText(/Переводы/)).toHaveValue('читать')
+  expect(ipa).toHaveValue('/hɑɹd/')
+  expect(screen.getByLabelText(/Переводы/)).toHaveValue('трудный')
   expect(onDirtyChange).toHaveBeenCalledExactlyOnceWith(true)
   expect(submit).not.toHaveBeenCalled()
 
@@ -749,11 +801,11 @@ it('выбирает IPA из другого совпадения, сохран�
   await user.click(save)
   expect(submit).toHaveBeenLastCalledWith(
     expect.objectContaining({
-      transcription: '/rɛd/',
-      translations: ['читать'],
+      transcription: '/hɑɹd/',
+      translations: ['трудный'],
       source_refs: [
         translationRef,
-        { source_id: source.id, entry_id: 2, field: 'transcription', value: '/rɛd/' },
+        { source_id: source.id, entry_id: 2, field: 'transcription', value: '/hɑɹd/' },
       ],
     }),
   )
