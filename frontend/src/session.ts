@@ -107,6 +107,7 @@ async function loadSession(): Promise<Session | null> {
   const revision = sessionRevision
   const previousOwner = offlineOwner()
   if (requiresExplicitLogin()) return null
+  if (!navigator.onLine) throw new DOMException('No network connection', 'NetworkError')
   try {
     const session = await api.me()
     if (revision !== sessionRevision || requiresExplicitLogin())

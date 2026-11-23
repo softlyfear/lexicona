@@ -8,12 +8,14 @@ import css from './OfflinePage.module.css'
 
 export function OfflinePage({
   record,
+  loading,
   message,
   onLogout,
   onSave,
   ownsSpeech,
 }: {
   record?: OfflineRecord
+  loading: boolean
   message: ReactNode
   onLogout: () => Promise<void>
   onSave: (itemId: string, answer: string | null) => Promise<void>
@@ -54,7 +56,9 @@ export function OfflinePage({
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {!pack ? (
+      {loading ? (
+        <p role="status">Загружаем офлайн-упражнения…</p>
+      ) : !pack ? (
         <p>Подключитесь к интернету, чтобы подготовить слова и упражнения.</p>
       ) : (
         <>

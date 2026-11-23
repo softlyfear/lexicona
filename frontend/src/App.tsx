@@ -16,20 +16,24 @@ export function App() {
   const session = useSession()
   const offline = useOfflinePractice(session)
 
-  if (session.isPending) return null
-  const offlinePage = offline.offline &&
-    !requiresExplicitLogin() &&
-    (session.data || session.isError) && (
-      <OfflinePage
-        record={offline.readyPack}
-        message={offline.message}
-        onSave={offline.save}
-        onLogout={offline.signOut}
-        ownsSpeech={!session.data}
-      />
-    )
+  const offlinePage = offline.offline && !requiresExplicitLogin() && session.data !== null && (
+    <OfflinePage
+      record={offline.readyPack}
+      loading={offline.loadingPack}
+      message={offline.message}
+      onSave={offline.save}
+      onLogout={offline.signOut}
+      ownsSpeech={!session.data}
+    />
+  )
   if (!session.data && offlinePage) return offlinePage
-  if (session.isError)
+  if (session.isPending)
+    return (
+      <main style={{ padding: '1rem' }}>
+        <p role="status">Открываем Lexicona…</p>
+      </main>
+    )
+  if (session.isError && !offlinePage)
     return (
       <div style={{ padding: '1rem' }}>
         <p className={ui.error} role="alert">

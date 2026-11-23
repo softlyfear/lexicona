@@ -30,6 +30,8 @@
   и при включённом режиме обновляет пакет. Выключение закрывает доступ к
   упражнениям и очищает пакет после отправки накопленных ответов. В офлайне озвучка использует
   локальные браузерные голоса, сохранённый выбор применяется при подключении.
+  Без сети офлайн-экран открывается до ответа API. При проверке соединения после
+  сбоя экран остаётся доступным до получения результата проверки сессии.
 - Прогресс — целое 0..100, 100 — максимум; content_version защищает от устаревших
   вопросов, повторный ответ
   не должен повторно начислять прогресс. Правильный ответ решает сервер.
@@ -301,7 +303,7 @@ automatic US/GB defaults.
 
 speech.ts keeps fetch/audio/Blob URLs in memory with generation/owner cancellation.
 Blocked autoplay retains ready audio for synchronous manual replay without fetch;
-cancel clears it. Settings shows full status/Stop; other pages show actionable
+cancel clears it. Settings shows full speech status; other pages show actionable
 errors. Automatic unsupported locales use a browser voice of the same locale;
 explicit unavailable server voices are not silently substituted.
 

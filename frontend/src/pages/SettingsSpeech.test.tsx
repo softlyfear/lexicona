@@ -42,7 +42,7 @@ it('показывает установленные голоса по акцен
   expect(
     within(screen.getByLabelText('Источник RU')).queryByRole('option', { name: 'Сервер' }),
   ).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Остановить речь' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Остановить речь' })).not.toBeInTheDocument()
   expect(
     within(screen.getByLabelText('Голос US')).getByRole('option', {
       name: 'Lessac (en-US, женский)',

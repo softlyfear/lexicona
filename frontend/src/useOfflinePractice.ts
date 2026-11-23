@@ -62,8 +62,10 @@ function registerOfflineShell() {
 }
 
 export function useOfflinePractice(session: ReturnType<typeof useSession>) {
-  const [record, setRecord] = useState<OfflineRecord>()
-  const [status, setStatus] = useState<'ready' | 'offline' | 'problem'>('ready')
+  const [record, setRecord] = useState<OfflineRecord | null>()
+  const [status, setStatus] = useState<'ready' | 'offline' | 'problem'>(() =>
+    navigator.onLine ? 'ready' : 'offline',
+  )
   const [shellState, setShellState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const [settingError, setSettingError] = useState('')
   const [checkedAt, setCheckedAt] = useState(Date.now)
@@ -74,7 +76,9 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   }>()
   const [startupOwner] = useState(offlineOwner)
   const ownerId = session.data?.user.id
-  const coldOffline = session.isError && networkUnavailable(session.error)
+  const connectionFailed = session.isError && networkUnavailable(session.error)
+  const coldOffline =
+    session.data === undefined && (connectionFailed || (session.isPending && status === 'offline'))
   const { refetch } = session
   const revision = getSessionRevision()
   const storageAvailable = offlineStorageAvailable()
@@ -87,7 +91,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   const optedIn = useSyncExternalStore(subscribeOptIn, () => !!offlineOptIn(settingsOwner))
   const supported = storageAvailable && import.meta.env.PROD && !!navigator.serviceWorker
   const shellReady = shellState === 'ready'
-  const offline = optedIn && (status === 'offline' || coldOffline)
+  const offline = optedIn && (ownerId ? status === 'offline' : coldOffline)
 
   useEffect(() => {
     if (!storageAvailable) return
@@ -97,10 +101,10 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       const current = ++version
       void readOffline()
         .then((stored) => {
-          if (active && version === current) setRecord(stored)
+          if (active && version === current) setRecord(stored ?? null)
         })
         .catch(() => {
-          if (active && version === current) setRecord(undefined)
+          if (active && version === current) setRecord(null)
         })
     }
     const unsubscribe = listenOfflineStorage(refresh)
@@ -128,7 +132,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   }, [supported])
 
   useEffect(() => {
-    if (!storageAvailable || (!ownerId && !coldOffline)) return
+    if (!storageAvailable) return
     let active = true
     let running = false
     let refreshAgain = false
@@ -140,7 +144,14 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     }
 
     async function refresh() {
-      if (!active || running || document.hidden || requiresExplicitLogin()) return
+      if (
+        !active ||
+        running ||
+        document.hidden ||
+        requiresExplicitLogin() ||
+        (!ownerId && !coldOffline)
+      )
+        return
       running = true
       const allowed = () =>
         active &&
@@ -169,6 +180,8 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
           return
         }
         if (!ownerId) {
+          // Keep the offline page mounted while rechecking the session.
+          setStatus('offline')
           const result = await refetch()
           if (active && result.isSuccess) setStatus('ready')
           return
@@ -216,7 +229,8 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       requestRefresh()
     })
     const unlistenOptIn = ownerId ? listenOfflineOptIn(ownerId, requestRefresh) : undefined
-    pulse()
+    // A failed cold start waits for a reconnect, visibility change or the next retry tick.
+    if (ownerId) pulse()
     const timer = window.setInterval(pulse, 20_000)
     window.addEventListener('offline', disconnected)
     window.addEventListener('online', pulse)
@@ -349,6 +363,7 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   return {
     offline,
     readyPack,
+    loadingPack: record === undefined,
     message,
     signOut,
     save,

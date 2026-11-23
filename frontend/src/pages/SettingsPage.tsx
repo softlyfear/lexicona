@@ -2,7 +2,6 @@ import { useMutation } from '@tanstack/react-query'
 import { useRef, useState, type ReactNode } from 'react'
 import { ApiError, api, errorMessage, type Difficulty, type Session, type User } from '../api'
 import ui from '../components/ui.module.css'
-import { SpeechStatus } from '../components/ui'
 import {
   browserVoiceKey,
   englishAccentLocale,
@@ -96,32 +95,6 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
   return (
     <section className={css.stack}>
       <h1 className={css.title}>Настройки</h1>
-      {offline && (
-        <div className={`${ui.card} ${css.stack}`}>
-          <label className={css.choice}>
-            <input
-              type="checkbox"
-              checked={offline.optedIn}
-              disabled={!offline.supported}
-              onChange={(event) => offline.changeOptIn(event.target.checked)}
-            />
-            Офлайн-режим
-          </label>
-          {!offline.supported && (
-            <p className={ui.muted}>Офлайн-режим недоступен в этом браузере.</p>
-          )}
-          {offline.settingError && (
-            <p className={ui.error} role="alert">
-              {offline.settingError}
-            </p>
-          )}
-          {offline.message && (
-            <p className={ui.muted} role="status">
-              {offline.message}
-            </p>
-          )}
-        </div>
-      )}
       <div className={`${ui.card} ${css.difficultyPanel}`}>
         <div className={css.difficultyControl}>
           <label className={ui.field}>
@@ -187,6 +160,37 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
           </>
         }
       />
+      {offline && (
+        <div className={`${ui.card} ${css.stack}`}>
+          <label className={css.choice}>
+            <input
+              type="checkbox"
+              checked={offline.optedIn}
+              disabled={!offline.supported}
+              aria-describedby="offline-description"
+              onChange={(event) => offline.changeOptIn(event.target.checked)}
+            />
+            Офлайн-режим
+          </label>
+          <p id="offline-description" className={ui.muted}>
+            Без интернета доступны только подготовленные слова для повторения и письменные задания
+            EN→RU.
+          </p>
+          {!offline.supported && (
+            <p className={ui.muted}>Офлайн-режим недоступен в этом браузере.</p>
+          )}
+          {offline.settingError && (
+            <p className={ui.error} role="alert">
+              {offline.settingError}
+            </p>
+          )}
+          {offline.message && (
+            <p className={ui.muted} role="status">
+              {offline.message}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -245,8 +249,16 @@ function TrainingFlagControl({
 }
 
 function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
-  const { preferences, voices, voiceState, storageError, syncError, serverVoices, serverState } =
-    useSpeech()
+  const {
+    preferences,
+    voices,
+    voiceState,
+    storageError,
+    syncError,
+    serverVoices,
+    serverState,
+    status,
+  } = useSpeech()
   const serverReady = serverState === 'ready'
   const englishLocale = englishAccentLocale(preferences.enLocale) ?? preferences.enLocale
   const locales = [
@@ -507,7 +519,7 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
           Автоматически озвучивать задание
         </label>
         {trainingControls}
-        <SpeechStatus />
+        {status && <p role="status">{status}</p>}
       </div>
     </section>
   )

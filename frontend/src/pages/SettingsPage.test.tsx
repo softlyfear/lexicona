@@ -102,10 +102,6 @@ describe('профиль и смена пароля', () => {
     expect(
       promptToggle.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
-    expect(
-      toggle.compareDocumentPosition(screen.getByRole('button', { name: 'Остановить речь' })) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
     expect(toggle).not.toBeChecked()
     toggle.focus()
     await user.keyboard(' ')
@@ -123,6 +119,25 @@ describe('профиль и смена пароля', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Автоматически переходить после верного ответа' }),
     ).toBeChecked()
+  })
+
+  it('places the offline toggle below training controls and describes the available features', async () => {
+    const changeOptIn = vi.fn()
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <SettingsPage
+          user={initial.user}
+          offline={{ supported: true, optedIn: false, message: '', settingError: '', changeOptIn }}
+        />
+      </QueryClientProvider>,
+    )
+    const toggle = screen.getByRole('checkbox', { name: 'Офлайн-режим' })
+    expect(container.firstElementChild?.lastElementChild).toContainElement(toggle)
+    expect(toggle).toHaveAccessibleDescription(
+      'Без интернета доступны только подготовленные слова для повторения и письменные задания EN→RU.',
+    )
+    await userEvent.setup().click(toggle)
+    expect(changeOptIn).toHaveBeenCalledExactlyOnceWith(true)
   })
 
   it('defaults automatic input check off and saves it as an independent flag', async () => {

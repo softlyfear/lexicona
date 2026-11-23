@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cancelSpeech, speak, speechEnabled, useSpeech, type EnglishAccentLocale } from '../speech'
+import { speak, speechEnabled, useSpeech, type EnglishAccentLocale } from '../speech'
 import ui from './ui.module.css'
 
 export function ProgressBar({ value }: { value: number }) {
@@ -63,17 +63,5 @@ export function SpeakButton({
         <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12" />
       </svg>
     </button>
-  )
-}
-
-export function SpeechStatus() {
-  const { status } = useSpeech()
-  return (
-    <div>
-      <button type="button" className={ui.button} onClick={cancelSpeech}>
-        Остановить речь
-      </button>
-      {status && <p role="status">{status}</p>}
-    </div>
   )
 }
