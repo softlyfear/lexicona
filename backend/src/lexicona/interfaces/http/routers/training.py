@@ -42,8 +42,8 @@ DEFAULT_TRAINING_SIZE = 10
 _rng = random.SystemRandom()
 OfflineMode = Literal["input", "choice"]
 OfflineDirection = Literal["en_ru", "ru_en"]
-_OFFLINE_TRACKS: tuple[tuple[OfflineMode, OfflineDirection], ...] = (
-    ("input", "en_ru"),
+OfflineTrackVersion = Literal[2, 3]
+_OFFLINE_CHOICE_TRACKS: tuple[tuple[OfflineMode, OfflineDirection], ...] = (
     ("choice", "en_ru"),
     ("choice", "ru_en"),
 )
@@ -116,7 +116,7 @@ class OfflinePackIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$", strict=True)]
-    version: Literal[1, 2] = 1
+    version: Literal[1, 2, 3] = 1
 
 
 class OfflineStudyWord(BaseModel):
@@ -152,9 +152,16 @@ class OfflineTrack(BaseModel):
     items: list[OfflineTrackItem]
 
 
-class OfflinePackV2Out(OfflinePackInfo):
-    version: Literal[2] = 2
+class OfflineTracksPackOut(OfflinePackInfo):
     exercises: list[OfflineTrack]
+
+
+class OfflinePackV2Out(OfflineTracksPackOut):
+    version: Literal[2] = 2
+
+
+class OfflinePackV3Out(OfflineTracksPackOut):
+    version: Literal[3] = 3
 
 
 class CompletionCounts(BaseModel):
@@ -653,12 +660,12 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 @router.post("/offline-pack")
 async def prepare_offline_pack(
     body: OfflinePackIn, auth: CurrentAuth, db: Db
-) -> OfflinePackOut | OfflinePackV2Out | None:
+) -> OfflinePackOut | OfflinePackV2Out | OfflinePackV3Out | None:
     owner_id = auth.user.id
     preferences = public_preferences(auth.user.preferences).training
     configured_size = preferences.size if preferences else DEFAULT_TRAINING_SIZE
-    if body.version == 2:
-        return await _prepare_offline_tracks(body.key, configured_size, auth, db)
+    if body.version != 1:
+        return await _prepare_offline_tracks(body.key, body.version, configured_size, auth, db)
 
     session_id = sha256(f"offline-training/{owner_id}/{body.key}".encode()).hexdigest()[:32]
     created_id = await db.scalar(
@@ -747,12 +754,20 @@ def _offline_study(words: list[Word]) -> list[OfflineStudyWord]:
 
 
 async def _prepare_offline_tracks(
-    key: str, configured_size: int | Literal["all"], auth: CurrentAuth, db: Db
-) -> OfflinePackV2Out | None:
+    key: str,
+    version: OfflineTrackVersion,
+    configured_size: int | Literal["all"],
+    auth: CurrentAuth,
+    db: Db,
+) -> OfflinePackV2Out | OfflinePackV3Out | None:
     owner_id = auth.user.id
+    written_direction: OfflineDirection = "en_ru" if version == 2 else "ru_en"
+    track_types = (("input", written_direction), *_OFFLINE_CHOICE_TRACKS)
     track_ids = [
-        sha256(f"offline-training-v2/{owner_id}/{key}/{mode}/{direction}".encode()).hexdigest()[:32]
-        for mode, direction in _OFFLINE_TRACKS
+        sha256(
+            f"offline-training-v{version}/{owner_id}/{key}/{mode}/{direction}".encode()
+        ).hexdigest()[:32]
+        for mode, direction in track_types
     ]
     pack_id = track_ids[0]
     defaults = {
@@ -765,7 +780,7 @@ async def _prepare_offline_tracks(
     # Claim the written track before allocating any words. All tracks are in this transaction.
     created_id = await db.scalar(
         sqlite_insert(TrainingSession)
-        .values(id=pack_id, mode="input", direction="en_ru", **defaults)
+        .values(id=pack_id, mode="input", direction=written_direction, **defaults)
         .on_conflict_do_nothing(index_elements=[TrainingSession.id])
         .returning(TrainingSession.id)
     )
@@ -789,7 +804,7 @@ async def _prepare_offline_tracks(
     )
     if created_id:
         tracks = [written]
-        for track_id, (mode, direction) in zip(track_ids[1:], _OFFLINE_TRACKS[1:], strict=True):
+        for track_id, (mode, direction) in zip(track_ids[1:], track_types[1:], strict=True):
             tracks.append(TrainingSession(id=track_id, mode=mode, direction=direction, **defaults))
         study_words = await _populate_offline_tracks(tracks, size, owner_id, db)
         if not written.items:
@@ -810,7 +825,8 @@ async def _prepare_offline_tracks(
         )
         study_words = list(await db.scalars(_offline_words(owner_id).where(~exercise_exists)))
     await db.commit()
-    return OfflinePackV2Out(
+    response_type = OfflinePackV2Out if version == 2 else OfflinePackV3Out
+    return response_type(
         owner_id=owner_id,
         expires_at=auth.session.expires_at.replace(tzinfo=UTC),
         id=pack_id,
@@ -826,7 +842,7 @@ async def _prepare_offline_tracks(
                     for item in sessions[track_id].items
                 ],
             )
-            for track_id, (mode, direction) in zip(track_ids, _OFFLINE_TRACKS, strict=True)
+            for track_id, (mode, direction) in zip(track_ids, track_types, strict=True)
             if track_id in sessions
         ],
     )

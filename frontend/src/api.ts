@@ -210,8 +210,10 @@ export interface OfflineExercise {
   items: Pick<TrainingItem, 'id' | 'prompt' | 'options'>[]
 }
 
-export interface OfflinePackV2 extends Omit<OfflinePack, 'version' | 'items'> {
-  version: 2
+export type OfflinePackVersion = 2 | 3
+
+export interface VersionedOfflinePack extends Omit<OfflinePack, 'version' | 'items'> {
+  version: OfflinePackVersion
   exercises: OfflineExercise[]
 }
 
@@ -583,11 +585,11 @@ export const api = {
   latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
   offlinePack: (key: string, signal?: AbortSignal) =>
     request<OfflinePack | null>('POST', '/training/offline-pack', { key }, undefined, signal),
-  offlinePackV2: (key: string, signal?: AbortSignal) =>
-    request<OfflinePackV2 | null>(
+  offlineExercisePack: (key: string, version: OfflinePackVersion, signal?: AbortSignal) =>
+    request<VersionedOfflinePack | null>(
       'POST',
       '/training/offline-pack',
-      { key, version: 2 },
+      { key, version },
       undefined,
       signal,
     ),

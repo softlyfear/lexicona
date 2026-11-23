@@ -231,7 +231,7 @@ async def test_offline_tracks_cover_eligible_words_with_disjoint_review_and_stab
     del alice.headers["X-CSRF-Token"]
     assert (await alice.post(PACK, json=VERSIONED_KEY)).status_code == 403
     alice.headers["X-CSRF-Token"] = alice.csrf
-    assert (await alice.post(PACK, json={**VERSIONED_KEY, "version": 3})).status_code == 422
+    assert (await alice.post(PACK, json={**VERSIONED_KEY, "version": 4})).status_code == 422
     responses = await asyncio.gather(*[alice.post(PACK, json=VERSIONED_KEY) for _ in range(3)])
     pack = responses[0].json()
     assert all(response.status_code == 200 and response.json() == pack for response in responses)
@@ -329,3 +329,49 @@ async def test_offline_choice_checks_both_directions_and_only_credits_once(
         assert response.json()["progress"] == 24
     assert (await alice.get(f"/api/words/{dog['id']}")).json()["progress"] == 16
     assert (await alice.get(f"/api/words/{bird['id']}")).json()["progress"] == 24
+
+
+async def test_offline_v3_withholds_written_english_answer_and_keeps_v2_snapshots(
+    alice: Client,
+) -> None:
+    await add_word(alice, "cat", "кот", "кошка")
+    await add_word(alice, "dog", "собака")
+    await add_word(alice, "bird", "птица")
+    await add_word(alice, "fox", "лиса")
+    v2 = (await alice.post(PACK, json=VERSIONED_KEY)).json()
+    request = {**VERSIONED_KEY, "version": 3}
+    response = await alice.post(PACK, json=request)
+    assert response.status_code == 200
+    v3 = response.json()
+    assert v3["version"] == 3
+    assert [(track["mode"], track["direction"]) for track in v3["exercises"]] == [
+        ("input", "ru_en"),
+        ("choice", "en_ru"),
+        ("choice", "ru_en"),
+    ]
+    assert {track["id"] for track in v2["exercises"]}.isdisjoint(
+        track["id"] for track in v3["exercises"]
+    )
+    assert v2["exercises"][0]["direction"] == "en_ru"
+    assert v2["exercises"][0]["items"][0]["prompt"] == "cat"
+
+    item, second = v3["exercises"][0]["items"]
+    assert item == {"id": item["id"], "prompt": "кот, кошка", "options": []}
+    assert second == {"id": second["id"], "prompt": "лиса", "options": []}
+    item_url = f"/api/training/items/{item['id']}"
+    assert (await alice.post(f"{item_url}/reveal")).status_code == 422
+    correct = await alice.post(f"{item_url}/answer", json={"text": "CAT"})
+    assert correct.status_code == 200 and correct.json() == {
+        "outcome": "answered",
+        "correct": True,
+        "submitted_text": "CAT",
+        "expected_answers": ["cat"],
+        "delta": 8,
+        "progress": 8,
+    }
+    incorrect = await alice.post(
+        f"/api/training/items/{second['id']}/answer", json={"text": "лиса"}
+    )
+    assert incorrect.status_code == 200 and incorrect.json()["correct"] is False
+    assert (await alice.post(PACK, json=request)).json() == v3
+    assert (await alice.post(PACK, json=VERSIONED_KEY)).json() == v2

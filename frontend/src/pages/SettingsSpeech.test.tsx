@@ -35,6 +35,7 @@ it('shows the local EN and RU voice availability when offline practice is enable
         offline={{
           supported: true,
           optedIn: true,
+          ready: false,
           message: '',
           settingError: '',
           changeOptIn: vi.fn(),
@@ -42,7 +43,9 @@ it('shows the local EN and RU voice availability when offline practice is enable
       />
     </QueryClientProvider>,
   )
-  expect(screen.getByText('Локальные голоса EN · English, RU · не найден.')).toBeVisible()
+  const voices = screen.getByText('Локальные голоса').parentElement!
+  expect(within(voices).getByText('English')).toBeVisible()
+  expect(within(voices).getByText('не найден')).toBeVisible()
   expect(
     within(screen.getByLabelText('Голос US')).getByRole('option', {
       name: 'English (en_US, локальный)',

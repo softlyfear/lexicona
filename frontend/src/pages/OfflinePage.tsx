@@ -5,7 +5,7 @@ import ui from '../components/ui.module.css'
 import { confirmDraftLeave } from '../drafts'
 import { type OfflineRecord } from '../offlineStorage'
 import { offlineExercises } from '../offlineSync'
-import { cancelSpeech, setSpeechOwner, useSpeech } from '../speech'
+import { cancelSpeech, setSpeechOwner, speak, useSpeech } from '../speech'
 import css from './OfflinePage.module.css'
 
 type SaveAnswer = (
@@ -15,6 +15,7 @@ type SaveAnswer = (
 ) => Promise<void>
 
 const REVIEW = 'review'
+const FLASHCARDS = 'flashcards'
 const REVIEW_PAGE_SIZE = 50
 
 export function OfflinePage({
@@ -111,10 +112,13 @@ function OfflinePackage({
             </option>
           ))}
           {pack.study.length > 0 && <option value={REVIEW}>Слова для повторения</option>}
+          {pack.study.length > 0 && <option value={FLASHCARDS}>Карточки</option>}
         </select>
       </label>
       {selection === REVIEW ? (
         <OfflineReview words={pack.study} />
+      ) : selection === FLASHCARDS && pack.study.length > 0 ? (
+        <OfflineFlashcards words={pack.study} />
       ) : exercise && current ? (
         <OfflineExercise
           key={current.id}
@@ -131,6 +135,68 @@ function OfflinePackage({
         </section>
       )}
     </>
+  )
+}
+
+function OfflineFlashcards({ words }: { words: NonNullable<OfflineRecord['pack']>['study'] }) {
+  const [position, setPosition] = useState(0)
+  const [revealed, setRevealed] = useState(false)
+  const index = Math.min(position, words.length - 1)
+  const { headword, translations } = words[index]!
+  const translation = translations.join(', ')
+
+  function move(next: number) {
+    cancelSpeech()
+    setPosition(next)
+    setRevealed(false)
+  }
+
+  return (
+    <section className={`${ui.card} ${css.flashcard}`} aria-labelledby="offline-flashcards">
+      <h2 id="offline-flashcards">Карточки</h2>
+      <p className={ui.muted} role="status">
+        {index + 1} из {words.length}
+      </p>
+      <p className={css.prompt}>
+        <strong lang="en">{headword}</strong>
+        <SpeakButton lang="en-US" text={headword} offline />
+      </p>
+      <p id="offline-card-translation" className={css.prompt} hidden={!revealed}>
+        {revealed && (
+          <>
+            <span lang="ru">{translation}</span>
+            <SpeakButton lang="ru-RU" text={translation} offline />
+          </>
+        )}
+      </p>
+      <div className={css.cardActions}>
+        <button
+          type="button"
+          className={ui.button}
+          onClick={() => move(index - 1)}
+          disabled={index === 0}
+        >
+          Назад
+        </button>
+        <button
+          type="button"
+          className={ui.primary}
+          aria-expanded={revealed}
+          aria-controls="offline-card-translation"
+          onClick={() => setRevealed(!revealed)}
+        >
+          {revealed ? 'Скрыть перевод' : 'Показать перевод'}
+        </button>
+        <button
+          type="button"
+          className={ui.button}
+          onClick={() => move(index + 1)}
+          disabled={index === words.length - 1}
+        >
+          Дальше
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -191,6 +257,10 @@ function OfflineExercise({
     setSaving(true)
     setFailed(false)
     try {
+      if (typeof value === 'number') {
+        const option = item.options?.[value]
+        if (option !== undefined) speak(option, toRussian ? 'ru' : 'en', { offline: true })
+      }
       await onSave(exercise.id, item.id, value)
     } catch {
       setFailed(true)
@@ -210,7 +280,7 @@ function OfflineExercise({
       <h2 id="offline-exercise">
         Перевод на {toRussian ? 'русский' : 'английский'} {position + 1} из {total}
       </h2>
-      <p>
+      <p className={css.prompt}>
         <strong lang={toRussian ? 'en' : 'ru'}>{item.prompt}</strong>
         <SpeakButton lang={toRussian ? 'en-US' : 'ru-RU'} text={item.prompt} offline />
       </p>

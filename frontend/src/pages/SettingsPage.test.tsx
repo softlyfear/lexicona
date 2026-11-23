@@ -123,21 +123,32 @@ describe('профиль и смена пароля', () => {
 
   it('places the offline toggle below training controls and describes the available features', async () => {
     const changeOptIn = vi.fn()
-    const { container } = render(
+    const offline = {
+      supported: true,
+      optedIn: false,
+      ready: false,
+      message: '',
+      settingError: '',
+      changeOptIn,
+    }
+    const settings = (ready: boolean) => (
       <QueryClientProvider client={queryClient}>
-        <SettingsPage
-          user={initial.user}
-          offline={{ supported: true, optedIn: false, message: '', settingError: '', changeOptIn }}
-        />
-      </QueryClientProvider>,
+        <SettingsPage user={initial.user} offline={{ ...offline, optedIn: ready, ready }} />
+      </QueryClientProvider>
     )
+    const { container, rerender } = render(settings(false))
     const toggle = screen.getByRole('checkbox', { name: 'Офлайн-режим' })
     expect(container.firstElementChild?.lastElementChild).toContainElement(toggle)
     expect(toggle).toHaveAccessibleDescription(
-      'Оставайтесь в сети до сообщения «Готово к офлайну». Без сети доступны упражнения, слова для повторения и локальные голоса. Ответы проверяются после подключения.',
+      'Оставайтесь в сети до сообщения «Готово к офлайну». Без сети доступны упражнения, карточки, слова для повторения и локальные голоса. Ответы проверяются после подключения.',
     )
+    expect(screen.queryByText('✓')).not.toBeInTheDocument()
     await userEvent.setup().click(toggle)
     expect(changeOptIn).toHaveBeenCalledExactlyOnceWith(true)
+    rerender(settings(true))
+    const ready = screen.getByText('Готово к офлайну')
+    expect(ready.closest('[role="status"]')).toBeVisible()
+    expect(screen.getByText('✓')).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('defaults automatic input check off and saves it as an independent flag', async () => {

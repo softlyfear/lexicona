@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, type OfflinePack, type OfflinePackV2, type TrainingSize } from './api'
+import {
+  api,
+  type OfflinePack,
+  type OfflinePackVersion,
+  type TrainingSize,
+  type VersionedOfflinePack,
+} from './api'
 import { type OfflineRecord } from './offlineStorage'
 import { recordOfflineAnswer, syncOffline } from './offlineSync'
 
@@ -37,16 +43,20 @@ function legacyPack(id: string, requestedSize: TrainingSize): OfflinePack {
   }
 }
 
-function pack(id: string, requestedSize: TrainingSize): OfflinePackV2 {
+function pack(
+  id: string,
+  requestedSize: TrainingSize,
+  version: OfflinePackVersion = 3,
+): VersionedOfflinePack {
   const { items, version: _version, ...shared } = legacyPack(id, requestedSize)
   return {
     ...shared,
-    version: 2,
+    version,
     exercises: [
       {
         id: 'written',
         mode: 'input',
-        direction: 'en_ru',
+        direction: version === 2 ? 'en_ru' : 'ru_en',
         items: items.map((item) => ({ ...item, options: [] })),
       },
       {
@@ -87,7 +97,7 @@ describe('offline exercise size', () => {
   it('replaces an untouched legacy package immediately using the saved requested size', async () => {
     stored.pack = legacyPack('current-pack', 10)
     const replacement = pack('upgraded-pack', 10)
-    const prepare = vi.spyOn(api, 'offlinePackV2').mockResolvedValue(replacement)
+    const prepare = vi.spyOn(api, 'offlineExercisePack').mockResolvedValue(replacement)
 
     await sync(10)
 
@@ -98,23 +108,39 @@ describe('offline exercise size', () => {
     expect(prepare).toHaveBeenCalledOnce()
   })
 
+  it('upgrades an unstarted v2 package to v3 using a fresh key', async () => {
+    stored.pack = pack('old-pack', 10, 2)
+    stored.packVersion = 2
+    const replacement = pack('new-pack', 10)
+    const prepare = vi.spyOn(api, 'offlineExercisePack').mockResolvedValue(replacement)
+
+    await sync(10)
+
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/^[a-f0-9]{32}$/),
+      3,
+      expect.any(AbortSignal),
+    )
+    expect(stored).toMatchObject({ pack: replacement, packVersion: 3, attempts: [] })
+  })
+
   it('reserves a fresh key if an earlier preparation committed at a different size', async () => {
     stored.nextKey = 'older-request-key'
     const prepare = vi
-      .spyOn(api, 'offlinePackV2')
+      .spyOn(api, 'offlineExercisePack')
       .mockResolvedValueOnce(pack('older-pack', 5))
       .mockResolvedValueOnce(pack('new-pack', 'all'))
 
     await sync('all')
 
-    expect(prepare).toHaveBeenNthCalledWith(1, 'older-request-key', expect.any(AbortSignal))
+    expect(prepare).toHaveBeenNthCalledWith(1, 'older-request-key', 3, expect.any(AbortSignal))
     expect(stored).toMatchObject({ pack: { id: 'current-pack' }, key: 'current-key' })
     const reserved = stored.nextKey
     expect(reserved).toMatch(/^[a-f0-9]{32}$/)
 
     await sync('all')
 
-    expect(prepare).toHaveBeenNthCalledWith(2, reserved, expect.any(AbortSignal))
+    expect(prepare).toHaveBeenNthCalledWith(2, reserved, 3, expect.any(AbortSignal))
     expect(stored).toMatchObject({ pack: { id: 'new-pack' }, key: reserved, nextKey: null })
   })
 
@@ -131,7 +157,7 @@ describe('offline exercise size', () => {
       progress: 2,
     })
     const prepare = vi.spyOn(api, 'offlinePack').mockResolvedValue(legacyPack('current-pack', 10))
-    const upgrade = vi.spyOn(api, 'offlinePackV2')
+    const upgrade = vi.spyOn(api, 'offlineExercisePack')
 
     await sync('all')
 
@@ -145,8 +171,41 @@ describe('offline exercise size', () => {
     })
   })
 
+  it('renews started v2 with the same version and key after replaying a choice', async () => {
+    const previous = pack('current-pack', 10, 2)
+    stored.pack = { ...previous, expires_at: '2027-01-02T00:00:00Z' }
+    stored.packVersion = 2
+    stored.nextKey = 'interrupted-v3-replacement'
+    stored.attempts = [{ itemId: 'choice-1', text: null, option: 1, result: 'pending' }]
+    const answer = vi.spyOn(api, 'answer').mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      chosen_option: 1,
+      correct_option: 1,
+      delta: 2,
+      progress: 2,
+    })
+    vi.spyOn(api, 'finishTraining').mockResolvedValue({
+      id: 'choice',
+      status: 'finished',
+      finished_at: '',
+    })
+    const renew = vi.spyOn(api, 'offlineExercisePack').mockResolvedValue(previous)
+
+    await sync('all')
+
+    expect(answer).toHaveBeenCalledExactlyOnceWith('choice-1', 1)
+    expect(renew).toHaveBeenCalledExactlyOnceWith('current-key', 2, expect.any(AbortSignal))
+    expect(stored).toMatchObject({
+      pack: previous,
+      packVersion: 2,
+      attempts: [{ itemId: 'choice-1', text: null, result: 'correct' }],
+      nextKey: null,
+    })
+  })
+
   it('keeps an answer queued if another tab starts the old package during preparation', async () => {
-    vi.spyOn(api, 'offlinePackV2').mockImplementationOnce(async () => {
+    vi.spyOn(api, 'offlineExercisePack').mockImplementationOnce(async () => {
       stored.attempts.push({ itemId: 'item-1', text: 'бумага', result: 'pending' })
       return pack('new-pack', 'all')
     })
@@ -163,7 +222,7 @@ describe('offline exercise size', () => {
   it('clears a legacy package without preparing another one when the option is off', async () => {
     stored.pack = legacyPack('current-pack', 10)
     optIn = null
-    const prepare = vi.spyOn(api, 'offlinePackV2')
+    const prepare = vi.spyOn(api, 'offlineExercisePack')
 
     await sync('all')
 
@@ -173,7 +232,7 @@ describe('offline exercise size', () => {
 
   it('replays existing answers but waits for the public shell before preparing a package', async () => {
     stored.attempts = [{ itemId: 'item-1', text: null, result: 'pending' }]
-    const prepare = vi.spyOn(api, 'offlinePackV2')
+    const prepare = vi.spyOn(api, 'offlineExercisePack')
     const replay = vi.spyOn(api, 'skipItem').mockResolvedValue({
       outcome: 'skipped',
       delta: 0,
@@ -190,7 +249,7 @@ describe('offline exercise size', () => {
   it('keeps disabled offline answers until confirmed and retains the result after cleanup', async () => {
     optIn = null
     stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
-    const prepare = vi.spyOn(api, 'offlinePackV2')
+    const prepare = vi.spyOn(api, 'offlineExercisePack')
     const replay = vi
       .spyOn(api, 'answerText')
       .mockRejectedValueOnce(new TypeError('No connection'))
@@ -220,13 +279,15 @@ describe('offline exercise size', () => {
   })
 
   it('aborts preparation when the option is disabled and ignores the old response', async () => {
-    const prepare = vi.spyOn(api, 'offlinePackV2').mockImplementationOnce(async (_key, signal) => {
-      optIn = null
-      optionListeners.forEach((listener) => listener())
-      expect(signal?.aborted).toBe(true)
-      optIn = 'new-opt-in'
-      return pack('aborted-pack', 'all')
-    })
+    const prepare = vi
+      .spyOn(api, 'offlineExercisePack')
+      .mockImplementationOnce(async (_key, _version, signal) => {
+        optIn = null
+        optionListeners.forEach((listener) => listener())
+        expect(signal?.aborted).toBe(true)
+        optIn = 'new-opt-in'
+        return pack('aborted-pack', 'all')
+      })
 
     await sync('all')
 
@@ -282,7 +343,7 @@ describe('offline exercise size', () => {
       status: 'finished',
       finished_at: '',
     }))
-    const prepare = vi.spyOn(api, 'offlinePackV2').mockResolvedValue(pack('fresh', 10))
+    const prepare = vi.spyOn(api, 'offlineExercisePack').mockResolvedValue(pack('fresh', 10))
 
     await sync(10)
     await sync(10)
@@ -301,7 +362,7 @@ describe('offline exercise size', () => {
     expect(finish.mock.calls).toEqual([['choice'], ['written']])
     expect(prepare).toHaveBeenCalledOnce()
     expect(stored).toMatchObject({
-      pack: { id: 'fresh', version: 2 },
+      pack: { id: 'fresh', version: 3 },
       attempts: [],
       report: { correct: 1, incorrect: 1, skipped: 1, conflicts: 0 },
     })

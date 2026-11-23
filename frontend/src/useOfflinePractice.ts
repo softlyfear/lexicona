@@ -30,6 +30,7 @@ import {
 import {
   clearUnusedOffline,
   networkUnavailable,
+  OFFLINE_PACK_VERSION,
   offlineReport,
   packAvailable,
   pendingOffline,
@@ -268,7 +269,8 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     !!readyPack &&
     (offline ||
       readyPack.attempts.length > 0 ||
-      (readyPack.pack?.version === 2 && readyPack.pack.requested_size === desiredSize))
+      (readyPack.pack?.version === OFFLINE_PACK_VERSION &&
+        readyPack.pack.requested_size === desiredSize))
   const pending = pendingOffline(ownRecord)
   const report = offlineReport(ownRecord)
   const syncMessage =
@@ -279,15 +281,15 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
         : report
           ? `Верных — ${report.correct}, неверных — ${report.incorrect}, пропущенных — ${report.skipped}.${report.conflicts ? ` Не засчитано из-за изменений: ${report.conflicts}.` : ''}`
           : ''
-  const readiness =
+  const showReadiness =
     optedIn && !offline && !pending && status !== 'problem' && shellState !== 'unavailable'
-      ? shellAndPackReady
-        ? 'Готово к офлайну'
-        : ownRecord?.preparedAt && !ownRecord.pack
-          ? 'Добавьте слова для офлайн-тренировки.'
-          : 'Подготавливаем слова и упражнения…'
+  const ready = showReadiness && shellAndPackReady
+  const preparationMessage =
+    showReadiness && !ready
+      ? ownRecord?.preparedAt && !ownRecord.pack && ownRecord.packVersion === OFFLINE_PACK_VERSION
+        ? 'Добавьте слова для офлайн-тренировки.'
+        : 'Подготавливаем слова и упражнения…'
       : ''
-  const message = [syncMessage, readiness].filter(Boolean).join(' ')
 
   function changeOptIn(next: boolean) {
     if (!ownerId || !isCurrentSession(revision, ownerId)) return
@@ -372,13 +374,14 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     offline,
     readyPack,
     loadingPack: record === undefined,
-    message,
+    message: syncMessage,
     signOut,
     save,
     settings: {
       supported,
       optedIn,
-      message,
+      ready,
+      message: [syncMessage, preparationMessage].filter(Boolean).join(' '),
       settingError:
         settingError ||
         (optedIn && shellState === 'unavailable'

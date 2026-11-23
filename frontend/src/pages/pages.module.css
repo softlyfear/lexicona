@@ -39,6 +39,36 @@
   line-height: 1.35;
 }
 
+.offlineCopy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.offlineCopy:empty {
+  display: none;
+}
+
+.offlineCopy > p,
+.offlineVoices,
+.offlineVoices dd {
+  margin: 0;
+}
+
+.offlineReady {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.offlineVoices {
+  display: grid;
+}
+
+.offlineVoices > div {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
 .title {
   margin: 0;
   font-size: 1.35rem;

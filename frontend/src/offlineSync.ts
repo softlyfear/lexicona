@@ -12,6 +12,7 @@ import {
 } from './offlineStorage'
 
 const DAY = 86_400_000
+export const OFFLINE_PACK_VERSION = 3
 
 export function networkUnavailable(error: unknown) {
   return (
@@ -36,7 +37,7 @@ type StoredExercise = Omit<OfflineExercise, 'items'> & {
 
 export function offlineExercises(pack: OfflineRecord['pack']): StoredExercise[] {
   if (!pack) return []
-  if (pack.version === 2) return pack.exercises
+  if ('exercises' in pack) return pack.exercises
   return [{ id: pack.id, mode: 'input', direction: 'en_ru', items: pack.items }]
 }
 
@@ -255,7 +256,7 @@ export async function syncOffline(
     if (
       latest.nextKey ||
       !latest.preparedAt ||
-      ((latest.pack?.version === 2 || latest.packVersion === 2) &&
+      ((latest.pack ? latest.pack.version : latest.packVersion) === OFFLINE_PACK_VERSION &&
         Date.now() - latest.preparedAt < (latest.pack ? DAY : 60_000) &&
         (!latest.pack || latest.pack.requested_size === desiredSize))
     )
@@ -268,17 +269,16 @@ export async function syncOffline(
   const nextKey = record.attempts.length ? null : record.nextKey
   if (!nextKey && record.preparedAt && !renewing) return
   const requestKey = nextKey ?? record.key
-  const legacyRenewal = !nextKey && !!record.pack && record.pack.version !== 2
+  const version = !nextKey && record.pack ? record.pack.version : OFFLINE_PACK_VERSION
   const controller = new AbortController()
   const unlisten = listenOfflineOptIn(ownerId, () => {
     if (!canPrepare()) controller.abort()
   })
   let packResponse
   try {
-    packResponse = await (legacyRenewal ? api.offlinePack : api.offlinePackV2)(
-      requestKey,
-      controller.signal,
-    )
+    packResponse = version
+      ? await api.offlineExercisePack(requestKey, version, controller.signal)
+      : await api.offlinePack(requestKey, controller.signal)
   } catch (error) {
     if (!canPrepare()) return
     throw error
@@ -287,7 +287,9 @@ export async function syncOffline(
   }
   if (
     packResponse &&
-    (packResponse.owner_id !== ownerId || !Number.isFinite(Date.parse(packResponse.expires_at)))
+    (packResponse.owner_id !== ownerId ||
+      packResponse.version !== version ||
+      !Number.isFinite(Date.parse(packResponse.expires_at)))
   )
     throw new Error('invalid_offline_pack')
   await updateOffline((latest) => {
@@ -307,7 +309,7 @@ export async function syncOffline(
       key: requestKey,
       nextKey: preparing ? null : latest.nextKey,
       pack: packResponse,
-      packVersion: legacyRenewal ? undefined : 2,
+      packVersion: version,
       preparedAt: Date.now(),
       finishedExerciseIds: preparing ? [] : latest.finishedExerciseIds,
     }

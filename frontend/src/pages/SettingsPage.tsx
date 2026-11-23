@@ -43,6 +43,7 @@ type Result<T> = { data: T } | { error: unknown }
 interface OfflineSetting {
   supported: boolean
   optedIn: boolean
+  ready: boolean
   message: string
   settingError: string
   changeOptIn: (enabled: boolean) => void
@@ -173,10 +174,11 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
             />
             Офлайн-режим
           </label>
-          <p id="offline-description" className={ui.muted}>
-            Оставайтесь в сети до сообщения «Готово к офлайну». Без сети доступны упражнения, слова
-            для повторения и локальные голоса. Ответы проверяются после подключения.
-          </p>
+          <div id="offline-description" className={`${ui.muted} ${css.offlineCopy}`}>
+            <p>Оставайтесь в сети до сообщения «Готово к офлайну».</p>
+            <p>Без сети доступны упражнения, карточки, слова для повторения и локальные голоса.</p>
+            <p>Ответы проверяются после подключения.</p>
+          </div>
           {!offline.supported && (
             <p className={ui.muted}>Офлайн-режим недоступен в этом браузере.</p>
           )}
@@ -185,11 +187,14 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
               {offline.settingError}
             </p>
           )}
-          {offline.message && (
-            <p className={ui.muted} role="status">
-              {offline.message}
-            </p>
-          )}
+          <div className={css.offlineCopy} role="status">
+            {offline.ready && (
+              <p className={css.offlineReady}>
+                <span aria-hidden="true">✓</span> <span>Готово к офлайну</span>
+              </p>
+            )}
+            {offline.message && <p className={ui.muted}>{offline.message}</p>}
+          </div>
           {offline.supported && offline.optedIn && <OfflineVoiceStatus />}
         </div>
       )}
@@ -204,10 +209,19 @@ function OfflineVoiceStatus() {
   const english = selectVoice(local, 'en', preferences)
   const russian = selectVoice(local, 'ru', preferences)
   return (
-    <p className={ui.muted}>
-      Локальные голоса {english ? `EN · ${english.name}` : 'EN · не найден'},{' '}
-      {russian ? `RU · ${russian.name}` : 'RU · не найден'}.
-    </p>
+    <div className={`${ui.muted} ${css.offlineCopy}`}>
+      <p id="offline-voices">Локальные голоса</p>
+      <dl className={css.offlineVoices} aria-labelledby="offline-voices">
+        <div>
+          <dt>EN</dt>
+          <dd>{english?.name ?? 'не найден'}</dd>
+        </div>
+        <div>
+          <dt>RU</dt>
+          <dd>{russian?.name ?? 'не найден'}</dd>
+        </div>
+      </dl>
+    </div>
   )
 }
 
