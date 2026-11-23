@@ -134,7 +134,7 @@ describe('профиль и смена пароля', () => {
     const toggle = screen.getByRole('checkbox', { name: 'Офлайн-режим' })
     expect(container.firstElementChild?.lastElementChild).toContainElement(toggle)
     expect(toggle).toHaveAccessibleDescription(
-      'Без интернета доступны только подготовленные слова для повторения и письменные задания EN→RU.',
+      'Оставайтесь в сети до сообщения «Готово к офлайну». Без сети доступны упражнения, слова для повторения и локальные голоса. Ответы проверяются после подключения.',
     )
     await userEvent.setup().click(toggle)
     expect(changeOptIn).toHaveBeenCalledExactlyOnceWith(true)

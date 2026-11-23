@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ApiError, api, type Session } from './api'
 import { App } from './App'
@@ -68,6 +68,9 @@ it('opens the prepared pack on a cold offline start without calling the server',
 
   expect(screen.getByRole('heading', { name: 'Lexicona · Офлайн' })).toBeInTheDocument()
   expect(await screen.findByRole('heading', { name: 'Перевод на русский 1 из 1' })).toBeVisible()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Офлайн-раздел' }), {
+    target: { value: 'review' },
+  })
   expect(screen.getByText('чернила')).toBeVisible()
   expect(me).not.toHaveBeenCalled()
 })

@@ -6,6 +6,7 @@ import {
   browserVoiceKey,
   englishAccentLocale,
   languageEngine,
+  normalizeSpeechLocale,
   refreshServerVoices,
   selectServerVoice,
   selectVoice,
@@ -173,8 +174,8 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
             Офлайн-режим
           </label>
           <p id="offline-description" className={ui.muted}>
-            Без интернета доступны только подготовленные слова для повторения и письменные задания
-            EN→RU.
+            Оставайтесь в сети до сообщения «Готово к офлайну». Без сети доступны упражнения, слова
+            для повторения и локальные голоса. Ответы проверяются после подключения.
           </p>
           {!offline.supported && (
             <p className={ui.muted}>Офлайн-режим недоступен в этом браузере.</p>
@@ -189,9 +190,24 @@ export function SettingsPage({ user, offline }: { user: User; offline?: OfflineS
               {offline.message}
             </p>
           )}
+          {offline.supported && offline.optedIn && <OfflineVoiceStatus />}
         </div>
       )}
     </section>
+  )
+}
+
+function OfflineVoiceStatus() {
+  const { preferences, voices, voiceState } = useSpeech()
+  if (voiceState === 'loading') return <p className={ui.muted}>Ищем локальные голоса…</p>
+  const local = voices.filter((voice) => voice.localService)
+  const english = selectVoice(local, 'en', preferences)
+  const russian = selectVoice(local, 'ru', preferences)
+  return (
+    <p className={ui.muted}>
+      Локальные голоса {english ? `EN · ${english.name}` : 'EN · не найден'},{' '}
+      {russian ? `RU · ${russian.name}` : 'RU · не найден'}.
+    </p>
   )
 }
 
@@ -260,7 +276,8 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
     status,
   } = useSpeech()
   const serverReady = serverState === 'ready'
-  const englishLocale = englishAccentLocale(preferences.enLocale) ?? preferences.enLocale
+  const englishLocale =
+    englishAccentLocale(preferences.enLocale) ?? normalizeSpeechLocale(preferences.enLocale)
   const locales = [
     ...new Set([
       'en-US',
@@ -268,8 +285,8 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
       ...(preferences.engineEn === 'server'
         ? []
         : voices
-            .filter((v) => v.lang.toLowerCase().split('-')[0] === 'en')
-            .map((v) => englishAccentLocale(v.lang) ?? v.lang)),
+            .filter((v) => normalizeSpeechLocale(v.lang).toLowerCase().split('-')[0] === 'en')
+            .map((v) => englishAccentLocale(v.lang) ?? normalizeSpeechLocale(v.lang))),
     ]),
   ]
   const describe = (v: SpeechSynthesisVoice) =>
@@ -320,7 +337,9 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
   function voiceSettings(lang: 'en' | 'ru', locale: string, label: string) {
     const accent = englishAccentLocale(locale)
     const choice = languageEngine(lang, preferences)
-    const isLocale = (voiceLocale: string) => voiceLocale.toLowerCase() === locale.toLowerCase()
+    const isLocale = (voiceLocale: string) =>
+      normalizeSpeechLocale(voiceLocale).toLowerCase() ===
+      normalizeSpeechLocale(locale).toLowerCase()
     const serverOptions = serverVoices.filter((voice) => isLocale(voice.language))
     const check = (
       <div>
@@ -385,7 +404,7 @@ function SpeechSettings({ trainingControls }: { trainingControls: ReactNode }) {
     const options = voices.filter((voice) =>
       accent || serverAccentMissing
         ? isLocale(voice.lang)
-        : voice.lang.toLowerCase().split('-')[0] === lang,
+        : normalizeSpeechLocale(voice.lang).toLowerCase().split('-')[0] === lang,
     )
     const selected = selectVoice(
       serverAccentMissing && !accent ? options : voices,

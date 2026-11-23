@@ -90,10 +90,17 @@ const notify = (patch: Partial<Snapshot>) => {
 const problem = (message: string) => notify({ status: message, notice: message, busy: false })
 const synthesis = () =>
   typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null
-const primary = (lang: string) => lang.toLowerCase().split('-')[0]
+
+export function normalizeSpeechLocale(locale: string) {
+  // Chromium on Android can expose locale identifiers such as en_US.
+  return locale.replaceAll('_', '-')
+}
+
+const localeKey = (locale: string) => normalizeSpeechLocale(locale).toLowerCase()
+const primary = (lang: string) => localeKey(lang).split('-')[0]
 
 export function englishAccentLocale(locale: string): EnglishAccentLocale | undefined {
-  switch (locale.toLowerCase()) {
+  switch (localeKey(locale)) {
     case 'en-us':
       return 'en-US'
     case 'en-gb':
@@ -149,7 +156,7 @@ export function hasServerLocale(
   preferences: SpeechPreferences,
   locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale,
 ) {
-  return voices.some((voice) => voice.language.toLowerCase() === locale.toLowerCase())
+  return voices.some((voice) => localeKey(voice.language) === localeKey(locale))
 }
 
 export function selectServerVoice(
@@ -159,7 +166,7 @@ export function selectServerVoice(
   locale = lang === 'ru' ? 'ru-RU' : preferences.enLocale,
 ) {
   const requested = preferences[serverVoiceKey(lang, locale)]
-  const candidates = voices.filter((voice) => voice.language.toLowerCase() === locale.toLowerCase())
+  const candidates = voices.filter((voice) => localeKey(voice.language) === localeKey(locale))
   if (candidates.length === 0) return null
   if (requested && candidates.some((voice) => voice.id === requested)) {
     return candidates.find((voice) => voice.id === requested) ?? null
@@ -176,7 +183,7 @@ export function selectVoice(
   const candidates = voices.filter((voice) => primary(voice.lang) === lang)
   const key = browserVoiceKey(lang, locale)
   const uri = preferences[key]
-  const exact = candidates.filter((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
+  const exact = candidates.filter((voice) => localeKey(voice.lang) === localeKey(locale))
   const requested = key === 'enUSVoiceURI' || key === 'enGBVoiceURI' ? exact : candidates
   return (
     requested.find((voice) => uri && voice.voiceURI === uri) ??
@@ -197,11 +204,7 @@ function refreshVoices() {
           ? 'unavailable'
           : snapshot.voiceState,
     })
-    if (voices.length && pending) {
-      const resume = pending
-      pending = null
-      resume()
-    }
+    if (voices.length) pending?.()
   } catch {
     notify({ voices: [], voiceState: 'unavailable' })
   }
@@ -461,30 +464,38 @@ export function speak(
     problem('Озвучивание недоступно в этом браузере.')
     return
   }
-  const start = () => {
+  const exactLocale =
+    choice === 'auto' &&
+    snapshot.serverState === 'ready' &&
+    !englishAccentLocale(locale) &&
+    !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences, locale)
+  const findVoice = () =>
+    selectVoice(
+      snapshot.voices.filter(
+        (voice) =>
+          (!options?.offline || voice.localService) &&
+          (!exactLocale || localeKey(voice.lang) === localeKey(locale)),
+      ),
+      lang,
+      snapshot.preferences,
+      locale,
+    )
+  const reportMissing = () =>
+    problem(
+      options?.offline
+        ? `Браузер не предоставил локальный голос ${lang.toUpperCase()} для озвучки без сети.`
+        : `Подходящий ${lang.toUpperCase()} голос не найден. Попробуйте ещё раз.`,
+    )
+  const start = (voice: SpeechSynthesisVoice) => {
     if (token !== generation) return
+    pending = null
     if (timer) clearTimeout(timer)
     timer = null
-    const exactLocale =
-      choice === 'auto' &&
-      snapshot.serverState === 'ready' &&
-      !englishAccentLocale(locale) &&
-      !hasServerLocale(snapshot.serverVoices, lang, snapshot.preferences, locale)
-    const available = snapshot.voices.filter(
-      (voice) =>
-        (!options?.offline || voice.localService) &&
-        (!exactLocale || voice.lang.toLowerCase() === locale.toLowerCase()),
-    )
-    const voice = selectVoice(available, lang, snapshot.preferences, locale)
-    if (!voice) {
-      problem(`Подходящий ${lang.toUpperCase()} голос не найден. Попробуйте ещё раз.`)
-      return
-    }
     try {
       const current = new SpeechSynthesisUtterance(text)
       utterance = current
       current.voice = voice
-      current.lang = voice.lang
+      current.lang = normalizeSpeechLocale(voice.lang)
       current.rate = snapshot.preferences.rate
       current.volume = 1
       current.pitch = 1
@@ -528,19 +539,32 @@ export function speak(
     }
   }
   refreshVoices()
-  if (snapshot.voices.length || snapshot.voiceState === 'unavailable') start()
-  else {
-    notify({ status: 'Ожидание голосов…' })
-    pending = start
-    timer = setTimeout(() => {
-      if (token === generation) {
-        pending = null
-        timer = null
-        notify({ voiceState: 'unavailable' })
-        problem(`Подходящий ${lang.toUpperCase()} голос не найден. Попробуйте ещё раз.`)
-      }
-    }, 2000)
+  const voice = findVoice()
+  if (voice) {
+    start(voice)
+    return
   }
+  if (!options?.offline && (snapshot.voices.length || snapshot.voiceState === 'unavailable')) {
+    reportMissing()
+    return
+  }
+  notify({ status: 'Ожидание голосов…' })
+  pending = () => {
+    const available = findVoice()
+    if (available) start(available)
+  }
+  timer = setTimeout(() => {
+    if (token !== generation) return
+    pending = null
+    timer = null
+    refreshVoices()
+    const available = findVoice()
+    if (available) start(available)
+    else {
+      if (!snapshot.voices.length) notify({ voiceState: 'unavailable' })
+      reportMissing()
+    }
+  }, 2000)
 }
 
 function speakServer(text: string, lang: 'en' | 'ru', token: number, locale: string) {

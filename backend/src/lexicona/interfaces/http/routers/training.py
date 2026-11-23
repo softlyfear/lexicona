@@ -40,6 +40,13 @@ router = APIRouter(prefix="/training", tags=["training"])
 OPTION_COUNT = 6
 DEFAULT_TRAINING_SIZE = 10
 _rng = random.SystemRandom()
+OfflineMode = Literal["input", "choice"]
+OfflineDirection = Literal["en_ru", "ru_en"]
+_OFFLINE_TRACKS: tuple[tuple[OfflineMode, OfflineDirection], ...] = (
+    ("input", "en_ru"),
+    ("choice", "en_ru"),
+    ("choice", "ru_en"),
+)
 
 
 class SessionIn(BaseModel):
@@ -109,6 +116,7 @@ class OfflinePackIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$", strict=True)]
+    version: Literal[1, 2] = 1
 
 
 class OfflineStudyWord(BaseModel):
@@ -121,13 +129,32 @@ class OfflineExercise(BaseModel):
     prompt: str
 
 
-class OfflinePackOut(BaseModel):
+class OfflinePackInfo(BaseModel):
     owner_id: str
     expires_at: datetime
     id: str
     requested_size: int | Literal["all"]
     study: list[OfflineStudyWord]
+
+
+class OfflinePackOut(OfflinePackInfo):
     items: list[OfflineExercise]
+
+
+class OfflineTrackItem(OfflineExercise):
+    options: list[str]
+
+
+class OfflineTrack(BaseModel):
+    id: str
+    mode: OfflineMode
+    direction: OfflineDirection
+    items: list[OfflineTrackItem]
+
+
+class OfflinePackV2Out(OfflinePackInfo):
+    version: Literal[2] = 2
+    exercises: list[OfflineTrack]
 
 
 class CompletionCounts(BaseModel):
@@ -626,10 +653,13 @@ async def create_session(body: SessionIn, auth: CurrentAuth, db: Db) -> SessionO
 @router.post("/offline-pack")
 async def prepare_offline_pack(
     body: OfflinePackIn, auth: CurrentAuth, db: Db
-) -> OfflinePackOut | None:
+) -> OfflinePackOut | OfflinePackV2Out | None:
     owner_id = auth.user.id
     preferences = public_preferences(auth.user.preferences).training
     configured_size = preferences.size if preferences else DEFAULT_TRAINING_SIZE
+    if body.version == 2:
+        return await _prepare_offline_tracks(body.key, configured_size, auth, db)
+
     session_id = sha256(f"offline-training/{owner_id}/{body.key}".encode()).hexdigest()[:32]
     created_id = await db.scalar(
         sqlite_insert(TrainingSession)
@@ -662,12 +692,7 @@ async def prepare_offline_pack(
         if session.requested_size == "all"
         else int(session.requested_size or DEFAULT_TRAINING_SIZE)
     )
-    eligible_words = (
-        select(Word)
-        .where(Word.owner_id == owner_id, Word.is_excluded.is_(False), Word.is_learned.is_(False))
-        .order_by(Word.progress, Word.created_at, Word.id)
-        .limit(None if size == "all" else size)
-    )
+    eligible_words = _offline_words(owner_id).limit(None if size == "all" else size)
 
     if created_id:
         exercises = await db.execute(
@@ -701,14 +726,159 @@ async def prepare_offline_pack(
         expires_at=auth.session.expires_at.replace(tzinfo=UTC),
         id=session.id,
         requested_size=size,
-        study=[
-            OfflineStudyWord(
-                headword=word.headword, translations=[t.text for t in word.translations]
-            )
-            for word in study_words
-        ],
+        study=_offline_study(study_words),
         items=[OfflineExercise(id=item.id, prompt=item.prompt) for item in session.items],
     )
+
+
+def _offline_words(owner_id: str) -> Select[Word]:
+    return (
+        select(Word)
+        .where(Word.owner_id == owner_id, Word.is_excluded.is_(False), Word.is_learned.is_(False))
+        .order_by(Word.progress, Word.created_at, Word.id)
+    )
+
+
+def _offline_study(words: list[Word]) -> list[OfflineStudyWord]:
+    return [
+        OfflineStudyWord(headword=word.headword, translations=[t.text for t in word.translations])
+        for word in words
+    ]
+
+
+async def _prepare_offline_tracks(
+    key: str, configured_size: int | Literal["all"], auth: CurrentAuth, db: Db
+) -> OfflinePackV2Out | None:
+    owner_id = auth.user.id
+    track_ids = [
+        sha256(f"offline-training-v2/{owner_id}/{key}/{mode}/{direction}".encode()).hexdigest()[:32]
+        for mode, direction in _OFFLINE_TRACKS
+    ]
+    pack_id = track_ids[0]
+    defaults = {
+        "owner_id": owner_id,
+        "purpose": "free",
+        "difficulty": auth.user.difficulty,
+        "requested_size": str(configured_size),
+        "is_offline": True,
+    }
+    # Claim the written track before allocating any words. All tracks are in this transaction.
+    created_id = await db.scalar(
+        sqlite_insert(TrainingSession)
+        .values(id=pack_id, mode="input", direction="en_ru", **defaults)
+        .on_conflict_do_nothing(index_elements=[TrainingSession.id])
+        .returning(TrainingSession.id)
+    )
+    sessions = {
+        session.id: session
+        for session in await db.scalars(
+            select(TrainingSession).where(
+                TrainingSession.id.in_(track_ids),
+                TrainingSession.owner_id == owner_id,
+                TrainingSession.is_offline.is_(True),
+            )
+        )
+    }
+    written = sessions.get(pack_id)
+    if written is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "offline_pack_key_conflict")
+    size: int | Literal["all"] = (
+        "all"
+        if written.requested_size == "all"
+        else int(written.requested_size or DEFAULT_TRAINING_SIZE)
+    )
+    if created_id:
+        tracks = [written]
+        for track_id, (mode, direction) in zip(track_ids[1:], _OFFLINE_TRACKS[1:], strict=True):
+            tracks.append(TrainingSession(id=track_id, mode=mode, direction=direction, **defaults))
+        study_words = await _populate_offline_tracks(tracks, size, owner_id, db)
+        if not written.items:
+            await db.rollback()
+            return None
+        sessions.update((track.id, track) for track in tracks if track.items)
+
+    else:
+        exercise_exists = (
+            select(TrainingItem.id)
+            .join(TrainingSession)
+            .where(
+                TrainingItem.session_id.in_(track_ids),
+                TrainingSession.owner_id == owner_id,
+                TrainingItem.word_id == Word.id,
+            )
+            .exists()
+        )
+        study_words = list(await db.scalars(_offline_words(owner_id).where(~exercise_exists)))
+    await db.commit()
+    return OfflinePackV2Out(
+        owner_id=owner_id,
+        expires_at=auth.session.expires_at.replace(tzinfo=UTC),
+        id=pack_id,
+        requested_size=size,
+        study=_offline_study(study_words),
+        exercises=[
+            OfflineTrack(
+                id=track_id,
+                mode=mode,
+                direction=direction,
+                items=[
+                    OfflineTrackItem(id=item.id, prompt=item.prompt, options=item.options)
+                    for item in sessions[track_id].items
+                ],
+            )
+            for track_id, (mode, direction) in zip(track_ids, _OFFLINE_TRACKS, strict=True)
+            if track_id in sessions
+        ],
+    )
+
+
+async def _populate_offline_tracks(
+    tracks: list[TrainingSession], size: int | Literal["all"], owner_id: str, db: Db
+) -> list[Word]:
+    pool: list[ChoiceCandidate] = list(distractors.choice_candidates())
+    candidates = await db.execute(
+        _offline_words(owner_id)
+        .add_columns(WordProgress)
+        .outerjoin(
+            WordProgress,
+            (WordProgress.owner_id == Word.owner_id) & (WordProgress.word_id == Word.id),
+        )
+    )
+    study_words: list[Word] = []
+    track_index = 0
+    for word, schedule in candidates:
+        for offset in range(len(tracks)):
+            index = (track_index + offset) % len(tracks)
+            track = tracks[index]
+            if size != "all" and len(track.items) >= size:
+                continue
+            choice = _build_item(word, pool, track.direction) if track.mode == "choice" else None
+            if track.mode == "choice" and choice is None:
+                continue
+            if schedule is None:
+                schedule = WordProgress(owner_id=owner_id, word_id=word.id, progress_version=1)
+                db.add(schedule)
+            if choice is None:
+                item = _input_item(word, track.direction, len(track.items), schedule)
+            else:
+                prompt, options, correct = choice
+                item = TrainingItem(
+                    word_id=word.id,
+                    word_content_version=word.content_version,
+                    word_training_version=word.training_version,
+                    word_progress_version=schedule.progress_version,
+                    position=len(track.items),
+                    prompt=prompt,
+                    options=options,
+                    correct_option=correct,
+                )
+            track.items.append(item)
+            track_index = (index + 1) % len(tracks)
+            break
+        else:
+            study_words.append(word)
+    db.add_all(track for track in tracks[1:] if track.items)
+    return study_words
 
 
 async def _session_snapshot(

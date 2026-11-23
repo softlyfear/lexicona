@@ -194,12 +194,25 @@ export interface TrainingSession {
 }
 
 export interface OfflinePack {
+  version?: never
   id: string
   owner_id: string
   expires_at: string
   requested_size: TrainingSize
   study: { headword: string; translations: string[] }[]
   items: { id: string; prompt: string }[]
+}
+
+export interface OfflineExercise {
+  id: string
+  mode: 'input' | 'choice'
+  direction: 'en_ru' | 'ru_en'
+  items: Pick<TrainingItem, 'id' | 'prompt' | 'options'>[]
+}
+
+export interface OfflinePackV2 extends Omit<OfflinePack, 'version' | 'items'> {
+  version: 2
+  exercises: OfflineExercise[]
 }
 
 export interface TrainingSummary {
@@ -570,6 +583,14 @@ export const api = {
   latestTraining: () => request<ResumedSession | null>('GET', '/training/sessions/latest'),
   offlinePack: (key: string, signal?: AbortSignal) =>
     request<OfflinePack | null>('POST', '/training/offline-pack', { key }, undefined, signal),
+  offlinePackV2: (key: string, signal?: AbortSignal) =>
+    request<OfflinePackV2 | null>(
+      'POST',
+      '/training/offline-pack',
+      { key, version: 2 },
+      undefined,
+      signal,
+    ),
   getTraining: (id: string) => request<ResumedSession>('GET', `/training/sessions/${id}`),
   trainingSummary: (id: string) =>
     request<TrainingSummary>('GET', `/training/sessions/${id}/summary`),

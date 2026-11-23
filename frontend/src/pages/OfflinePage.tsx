@@ -1,10 +1,21 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { type OfflineExercise as Exercise } from '../api'
 import { SpeakButton } from '../components/ui'
 import ui from '../components/ui.module.css'
 import { confirmDraftLeave } from '../drafts'
 import { type OfflineRecord } from '../offlineStorage'
+import { offlineExercises } from '../offlineSync'
 import { cancelSpeech, setSpeechOwner, useSpeech } from '../speech'
 import css from './OfflinePage.module.css'
+
+type SaveAnswer = (
+  exerciseId: string,
+  itemId: string,
+  answer: string | number | null,
+) => Promise<void>
+
+const REVIEW = 'review'
+const REVIEW_PAGE_SIZE = 50
 
 export function OfflinePage({
   record,
@@ -18,13 +29,11 @@ export function OfflinePage({
   loading: boolean
   message: ReactNode
   onLogout: () => Promise<void>
-  onSave: (itemId: string, answer: string | null) => Promise<void>
+  onSave: SaveAnswer
   ownsSpeech: boolean
 }) {
   const ownerId = record?.ownerId
   const pack = record?.pack
-  const position = record?.attempts.length ?? 0
-  const current = pack?.items[position]
   const { notice } = useSpeech()
 
   useEffect(() => {
@@ -61,106 +70,185 @@ export function OfflinePage({
       ) : !pack ? (
         <p>Подключитесь к интернету, чтобы подготовить слова и упражнения.</p>
       ) : (
-        <>
-          {current ? (
-            <OfflineExercise
-              key={current.id}
-              item={current}
-              position={position}
-              total={pack.items.length}
-              onSave={onSave}
-            />
-          ) : (
-            pack.items.length > 0 && (
-              <section className={ui.card}>
-                <h2>Упражнения закончены</h2>
-                <p>Результаты появятся после подключения.</p>
-              </section>
-            )
-          )}
-          {pack.study.length > 0 && (
-            <section className={ui.card}>
-              <h2>Слова для повторения</h2>
-              <ul className={css.words}>
-                {pack.study.map(({ headword, translations }) => (
-                  <li key={headword}>
-                    <strong lang="en">{headword}</strong>
-                    <SpeakButton lang="en-US" text={headword} offline />
-                    <div lang="ru">
-                      {translations.join(', ')}
-                      <SpeakButton lang="ru-RU" text={translations.join(', ')} offline />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
+        <OfflinePackage key={pack.id} pack={pack} attempts={record.attempts} onSave={onSave} />
       )}
     </main>
   )
 }
 
+function OfflinePackage({
+  pack,
+  attempts,
+  onSave,
+}: {
+  pack: NonNullable<OfflineRecord['pack']>
+  attempts: OfflineRecord['attempts']
+  onSave: SaveAnswer
+}) {
+  const exercises = offlineExercises(pack).filter(({ items }) => items.length > 0)
+  const [selection, setSelection] = useState(() => exercises[0]?.id ?? REVIEW)
+  const exercise = exercises.find(({ id }) => id === selection)
+  const attempted = new Set(attempts.map(({ itemId }) => itemId))
+  const position = exercise?.items.findIndex(({ id }) => !attempted.has(id)) ?? -1
+  const current = exercise?.items[position]
+
+  return (
+    <>
+      <label className={ui.field}>
+        <span className={ui.label}>Офлайн-раздел</span>
+        <select
+          className={ui.input}
+          value={selection}
+          onChange={(event) => {
+            cancelSpeech()
+            setSelection(event.target.value)
+          }}
+        >
+          {exercises.map(({ id, mode, direction }) => (
+            <option key={id} value={id}>
+              {mode === 'input' ? 'Письменно' : 'Выбор'}{' '}
+              {direction === 'en_ru' ? 'EN → RU' : 'RU → EN'}
+            </option>
+          ))}
+          {pack.study.length > 0 && <option value={REVIEW}>Слова для повторения</option>}
+        </select>
+      </label>
+      {selection === REVIEW ? (
+        <OfflineReview words={pack.study} />
+      ) : exercise && current ? (
+        <OfflineExercise
+          key={current.id}
+          exercise={exercise}
+          item={current}
+          position={position}
+          total={exercise.items.length}
+          onSave={onSave}
+        />
+      ) : (
+        <section className={ui.card}>
+          <h2>Упражнение закончено</h2>
+          <p>Ответы проверяются после подключения.</p>
+        </section>
+      )}
+    </>
+  )
+}
+
+function OfflineReview({ words }: { words: NonNullable<OfflineRecord['pack']>['study'] }) {
+  const [visible, setVisible] = useState(REVIEW_PAGE_SIZE)
+  return (
+    <section className={ui.card} aria-labelledby="offline-review">
+      <h2 id="offline-review">Слова для повторения</h2>
+      <ul className={css.words}>
+        {words.slice(0, visible).map(({ headword, translations }) => (
+          <li key={headword}>
+            <strong lang="en">{headword}</strong>
+            <SpeakButton lang="en-US" text={headword} offline />
+            <div lang="ru">
+              {translations.join(', ')}
+              <SpeakButton lang="ru-RU" text={translations.join(', ')} offline />
+            </div>
+          </li>
+        ))}
+      </ul>
+      {visible < words.length && (
+        <button
+          type="button"
+          className={`${ui.button} ${css.more}`}
+          onClick={() => setVisible((count) => count + REVIEW_PAGE_SIZE)}
+        >
+          Показать ещё
+        </button>
+      )}
+    </section>
+  )
+}
+
 function OfflineExercise({
+  exercise,
   item,
   position,
   total,
   onSave,
 }: {
-  item: { id: string; prompt: string }
+  exercise: Omit<Exercise, 'items'>
+  item: { id: string; prompt: string; options?: string[] }
   position: number
   total: number
-  onSave: (itemId: string, answer: string | null) => Promise<void>
+  onSave: SaveAnswer
 }) {
   const [answer, setAnswer] = useState('')
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
+  const savingRef = useRef(false)
   const text = answer.trim()
   const valid = text !== '' && text !== '.'
+  const toRussian = exercise.direction === 'en_ru'
 
-  async function save(text: string | null) {
-    if (saving) return
+  async function save(value: string | number | null) {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     setFailed(false)
     try {
-      await onSave(item.id, text)
+      await onSave(exercise.id, item.id, value)
     } catch {
       setFailed(true)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (valid) void save(text)
+    if (exercise.mode === 'input' && valid) void save(text)
   }
 
   return (
     <section className={ui.card} aria-labelledby="offline-exercise">
       <h2 id="offline-exercise">
-        Перевод на русский {position + 1} из {total}
+        Перевод на {toRussian ? 'русский' : 'английский'} {position + 1} из {total}
       </h2>
       <p>
-        <strong lang="en">{item.prompt}</strong>
-        <SpeakButton lang="en-US" text={item.prompt} offline />
+        <strong lang={toRussian ? 'en' : 'ru'}>{item.prompt}</strong>
+        <SpeakButton lang={toRussian ? 'en-US' : 'ru-RU'} text={item.prompt} offline />
       </p>
       <form className={css.form} onSubmit={submit}>
-        <label className={ui.field}>
-          <span className={ui.label}>Ответ</span>
-          <input
-            className={ui.input}
-            value={answer}
-            onChange={(event) => setAnswer(event.target.value)}
-            maxLength={200}
-            autoComplete="off"
-            disabled={saving}
-          />
-        </label>
+        {exercise.mode === 'input' ? (
+          <label className={ui.field}>
+            <span className={ui.label}>Ответ</span>
+            <input
+              className={ui.input}
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              maxLength={200}
+              autoComplete="off"
+              disabled={saving}
+            />
+          </label>
+        ) : (
+          <div className={css.options}>
+            {item.options?.map((option, index) => (
+              <button
+                key={option}
+                type="button"
+                className={ui.button}
+                disabled={saving}
+                lang={toRussian ? 'ru' : 'en'}
+                onClick={() => void save(index)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
         <div className={css.actions}>
-          <button type="submit" className={ui.primary} disabled={saving || !valid}>
-            Сохранить ответ
-          </button>
+          {exercise.mode === 'input' && (
+            <button type="submit" className={ui.primary} disabled={saving || !valid}>
+              Сохранить ответ
+            </button>
+          )}
           <button
             type="button"
             className={ui.button}

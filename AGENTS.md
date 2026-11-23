@@ -69,9 +69,11 @@ either way.
 - Approved scope as of 2026-11-03: resume training, statistics, PWA installation,
   DeepSeek/OpenRouter, and additional local voices. New modes, collections,
   import/export, themes, signup/account deletion, and server backups are deferred.
-- Approved offline scope: automatically prepared study words and written EN→RU
-  exercises. Keep the package sized by saved training settings and pending attempts in IndexedDB.
-  The server verifies and applies queued attempts. Offline dictionary editing is deferred.
+- Approved offline scope: automatically prepared study words, written EN→RU,
+  and choice EN→RU and RU→EN. Use the saved training size for each exercise type
+  and include the remaining eligible words for review. Store the package and
+  pending attempts in IndexedDB. The server verifies and applies queued attempts.
+  Offline dictionary editing is deferred.
 
 ## Engineering invariants
 

@@ -266,7 +266,9 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   const shellAndPackReady =
     shellReady &&
     !!readyPack &&
-    (offline || readyPack.attempts.length > 0 || readyPack.pack?.requested_size === desiredSize)
+    (offline ||
+      readyPack.attempts.length > 0 ||
+      (readyPack.pack?.version === 2 && readyPack.pack.requested_size === desiredSize))
   const pending = pendingOffline(ownRecord)
   const report = offlineReport(ownRecord)
   const syncMessage =
@@ -345,15 +347,21 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
     else if (accepted) await logoutSession()
   }
 
-  async function save(itemId: string, answer: string | null) {
+  async function save(exerciseId: string, itemId: string, answer: string | number | null) {
     if (!readyPack?.pack) throw new Error('offline_pack_not_ready')
     const revision = getSessionRevision()
-    await recordOfflineAnswer(readyPack.ownerId, readyPack.pack.id, itemId, answer, () =>
-      ownerId
-        ? isCurrentSession(revision, ownerId)
-        : revision === getSessionRevision() &&
-          offlineOwner() === startupOwner &&
-          !requiresExplicitLogin(),
+    await recordOfflineAnswer(
+      readyPack.ownerId,
+      readyPack.pack.id,
+      exerciseId,
+      itemId,
+      answer,
+      () =>
+        ownerId
+          ? isCurrentSession(revision, ownerId)
+          : revision === getSessionRevision() &&
+            offlineOwner() === startupOwner &&
+            !requiresExplicitLogin(),
     )
     const stored = await readOffline()
     if (revision === getSessionRevision() && stored?.ownerId === readyPack.ownerId)

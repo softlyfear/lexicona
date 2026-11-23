@@ -1,4 +1,4 @@
-import { ApiError, api, type TrainingSize } from './api'
+import { ApiError, api, type OfflineExercise, type TrainingSize } from './api'
 import {
   clearOfflineDiscard,
   listenOfflineOptIn,
@@ -30,6 +30,16 @@ export function pendingOffline(record: OfflineRecord | undefined) {
   return record?.attempts.filter((attempt) => attempt.result === 'pending').length ?? 0
 }
 
+type StoredExercise = Omit<OfflineExercise, 'items'> & {
+  items: { id: string; prompt: string; options?: string[] }[]
+}
+
+export function offlineExercises(pack: OfflineRecord['pack']): StoredExercise[] {
+  if (!pack) return []
+  if (pack.version === 2) return pack.exercises
+  return [{ id: pack.id, mode: 'input', direction: 'en_ru', items: pack.items }]
+}
+
 export function offlineReport(record: OfflineRecord | undefined): OfflineReport | null {
   if (!record?.attempts.some((attempt) => attempt.result !== 'pending'))
     return record?.report ?? null
@@ -58,6 +68,7 @@ function clearPackage(record: OfflineRecord): OfflineRecord {
     pack: null,
     preparedAt: 0,
     attempts: [],
+    finishedExerciseIds: [],
     report: offlineReport(record),
   }
 }
@@ -79,8 +90,9 @@ export async function clearUnusedOffline(ownerId: string, allowed: () => boolean
 export async function recordOfflineAnswer(
   ownerId: string,
   packId: string,
+  exerciseId: string,
   itemId: string,
-  answer: string | null,
+  answer: string | number | null,
   allowed: () => boolean,
 ) {
   await updateOffline((record) => {
@@ -94,11 +106,30 @@ export async function recordOfflineAnswer(
       !packAvailable(record)
     )
       throw new Error('offline_pack_changed')
-    const next = record.pack.items[record.attempts.length]
-    if (next?.id !== itemId) return
+    const exercise = offlineExercises(record.pack).find(({ id }) => id === exerciseId)
+    const attempted = new Set(record.attempts.map((attempt) => attempt.itemId))
+    if (attempted.has(itemId) && exercise?.items.some(({ id }) => id === itemId)) return
+    const next = exercise?.items.find(({ id }) => !attempted.has(id))
+    if (next?.id !== itemId) throw new Error('offline_item_changed')
+    if (
+      answer !== null &&
+      (exercise?.mode === 'choice'
+        ? typeof answer !== 'number' ||
+          !Number.isInteger(answer) ||
+          answer < 0 ||
+          answer >= (next.options?.length ?? 0)
+        : typeof answer !== 'string')
+    )
+      throw new Error('invalid_offline_answer')
+    const attempt = {
+      itemId,
+      text: typeof answer === 'string' ? answer : null,
+      ...(typeof answer === 'number' ? { option: answer } : {}),
+      result: 'pending' as const,
+    }
     return {
       ...record,
-      attempts: [...record.attempts, { itemId, text: answer, result: 'pending' }],
+      attempts: [...record.attempts, attempt],
     }
   })
 }
@@ -143,9 +174,11 @@ export async function syncOffline(
       let result: 'correct' | 'incorrect' | 'skipped' | 'conflict'
       try {
         const response =
-          attempt.text === null
-            ? await api.skipItem(attempt.itemId)
-            : await api.answerText(attempt.itemId, attempt.text)
+          attempt.option !== undefined
+            ? await api.answer(attempt.itemId, attempt.option)
+            : attempt.text === null
+              ? await api.skipItem(attempt.itemId)
+              : await api.answerText(attempt.itemId, attempt.text)
         result =
           response.outcome === 'answered' && 'correct' in response
             ? response.correct
@@ -164,7 +197,7 @@ export async function syncOffline(
           ...latest,
           attempts: latest.attempts.map((saved) =>
             saved.itemId === attempt.itemId && saved.result === 'pending'
-              ? { ...saved, result, text: null }
+              ? { itemId: saved.itemId, result, text: null }
               : saved,
           ),
         }
@@ -174,18 +207,39 @@ export async function syncOffline(
 
     record = await readOffline()
     if (!current() || record?.ownerId !== ownerId || record.key !== key) return
-    if (
-      pack.items.length > 0 &&
-      record.attempts.length === pack.items.length &&
-      pendingOffline(record) === 0
-    ) {
+    const exercises = offlineExercises(pack).filter(({ items }) => items.length)
+    const sentItems = new Set(
+      record.attempts.filter(({ result }) => result !== 'pending').map(({ itemId }) => itemId),
+    )
+    for (const { id, items } of exercises) {
+      if (
+        record.finishedExerciseIds?.includes(id) ||
+        !items.every((item) => sentItems.has(item.id))
+      )
+        continue
+      if (!current()) return
       try {
-        await api.finishTraining(pack.id)
+        await api.finishTraining(id)
       } catch (error) {
         if (!permanentFailure(error)) throw error
       }
       await updateOffline((latest) => {
         if (!current() || latest?.ownerId !== ownerId || latest.key !== key) return
+        const finished = latest.finishedExerciseIds ?? []
+        if (finished.includes(id)) return
+        return { ...latest, finishedExerciseIds: [...finished, id] }
+      })
+    }
+    if (sentItems.size && exercises.length) {
+      await updateOffline((latest) => {
+        if (
+          !current() ||
+          latest?.ownerId !== ownerId ||
+          latest.key !== key ||
+          pendingOffline(latest) ||
+          !exercises.every(({ id }) => latest.finishedExerciseIds?.includes(id))
+        )
+          return
         return clearPackage(latest)
       })
     }
@@ -201,7 +255,8 @@ export async function syncOffline(
     if (
       latest.nextKey ||
       !latest.preparedAt ||
-      (Date.now() - latest.preparedAt < (latest.pack?.items.length ? DAY : 60_000) &&
+      ((latest.pack?.version === 2 || latest.packVersion === 2) &&
+        Date.now() - latest.preparedAt < (latest.pack ? DAY : 60_000) &&
         (!latest.pack || latest.pack.requested_size === desiredSize))
     )
       return
@@ -213,13 +268,17 @@ export async function syncOffline(
   const nextKey = record.attempts.length ? null : record.nextKey
   if (!nextKey && record.preparedAt && !renewing) return
   const requestKey = nextKey ?? record.key
+  const legacyRenewal = !nextKey && !!record.pack && record.pack.version !== 2
   const controller = new AbortController()
   const unlisten = listenOfflineOptIn(ownerId, () => {
     if (!canPrepare()) controller.abort()
   })
   let packResponse
   try {
-    packResponse = await api.offlinePack(requestKey, controller.signal)
+    packResponse = await (legacyRenewal ? api.offlinePack : api.offlinePackV2)(
+      requestKey,
+      controller.signal,
+    )
   } catch (error) {
     if (!canPrepare()) return
     throw error
@@ -248,7 +307,9 @@ export async function syncOffline(
       key: requestKey,
       nextKey: preparing ? null : latest.nextKey,
       pack: packResponse,
+      packVersion: legacyRenewal ? undefined : 2,
       preparedAt: Date.now(),
+      finishedExerciseIds: preparing ? [] : latest.finishedExerciseIds,
     }
   })
 }

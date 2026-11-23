@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, type OfflinePack, type TrainingSize } from './api'
+import { api, type OfflinePack, type OfflinePackV2, type TrainingSize } from './api'
 import { type OfflineRecord } from './offlineStorage'
 import { recordOfflineAnswer, syncOffline } from './offlineSync'
 
@@ -23,7 +23,7 @@ vi.mock('./offlineStorage', () => ({
   },
 }))
 
-function pack(id: string, requestedSize: TrainingSize): OfflinePack {
+function legacyPack(id: string, requestedSize: TrainingSize): OfflinePack {
   return {
     id,
     owner_id: 'alice',
@@ -34,6 +34,28 @@ function pack(id: string, requestedSize: TrainingSize): OfflinePack {
       { id: 'item-2', prompt: 'ink' },
     ],
     study: [],
+  }
+}
+
+function pack(id: string, requestedSize: TrainingSize): OfflinePackV2 {
+  const { items, version: _version, ...shared } = legacyPack(id, requestedSize)
+  return {
+    ...shared,
+    version: 2,
+    exercises: [
+      {
+        id: 'written',
+        mode: 'input',
+        direction: 'en_ru',
+        items: items.map((item) => ({ ...item, options: [] })),
+      },
+      {
+        id: 'choice',
+        mode: 'choice',
+        direction: 'ru_en',
+        items: [{ id: 'choice-1', prompt: 'кот', options: ['dog', 'cat'] }],
+      },
+    ],
   }
 }
 
@@ -63,23 +85,23 @@ describe('offline exercise size', () => {
   })
 
   it('replaces an untouched legacy package immediately using the saved requested size', async () => {
-    delete stored.pack?.requested_size
-    const replacement = pack('all-pack', 'all')
-    const prepare = vi.spyOn(api, 'offlinePack').mockResolvedValue(replacement)
+    stored.pack = legacyPack('current-pack', 10)
+    const replacement = pack('upgraded-pack', 10)
+    const prepare = vi.spyOn(api, 'offlinePackV2').mockResolvedValue(replacement)
 
-    await sync('all')
+    await sync(10)
 
     expect(prepare).toHaveBeenCalledOnce()
     expect(prepare.mock.calls[0]?.[0]).toMatch(/^[a-f0-9]{32}$/)
     expect(stored).toMatchObject({ pack: replacement, nextKey: null, attempts: [] })
-    await sync('all')
+    await sync(10)
     expect(prepare).toHaveBeenCalledOnce()
   })
 
   it('reserves a fresh key if an earlier preparation committed at a different size', async () => {
     stored.nextKey = 'older-request-key'
     const prepare = vi
-      .spyOn(api, 'offlinePack')
+      .spyOn(api, 'offlinePackV2')
       .mockResolvedValueOnce(pack('older-pack', 5))
       .mockResolvedValueOnce(pack('new-pack', 'all'))
 
@@ -97,8 +119,7 @@ describe('offline exercise size', () => {
   })
 
   it('renews an expired package using its existing key after replaying pending answers', async () => {
-    if (!stored.pack) throw new Error('missing fixture')
-    stored.pack.expires_at = '2027-01-02T00:00:00Z'
+    stored.pack = { ...legacyPack('current-pack', 10), expires_at: '2027-01-02T00:00:00Z' }
     stored.nextKey = 'interrupted-replacement'
     stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
     const replay = vi.spyOn(api, 'answerText').mockResolvedValue({
@@ -109,12 +130,14 @@ describe('offline exercise size', () => {
       delta: 2,
       progress: 2,
     })
-    const prepare = vi.spyOn(api, 'offlinePack').mockResolvedValue(pack('current-pack', 10))
+    const prepare = vi.spyOn(api, 'offlinePack').mockResolvedValue(legacyPack('current-pack', 10))
+    const upgrade = vi.spyOn(api, 'offlinePackV2')
 
     await sync('all')
 
     expect(replay).toHaveBeenCalledWith('item-1', 'бумага')
     expect(prepare).toHaveBeenCalledWith('current-key', expect.any(AbortSignal))
+    expect(upgrade).not.toHaveBeenCalled()
     expect(stored).toMatchObject({
       pack: { id: 'current-pack', requested_size: 10, expires_at: '2027-08-02T00:00:00Z' },
       nextKey: null,
@@ -123,7 +146,7 @@ describe('offline exercise size', () => {
   })
 
   it('keeps an answer queued if another tab starts the old package during preparation', async () => {
-    vi.spyOn(api, 'offlinePack').mockImplementationOnce(async () => {
+    vi.spyOn(api, 'offlinePackV2').mockImplementationOnce(async () => {
       stored.attempts.push({ itemId: 'item-1', text: 'бумага', result: 'pending' })
       return pack('new-pack', 'all')
     })
@@ -138,8 +161,9 @@ describe('offline exercise size', () => {
   })
 
   it('clears a legacy package without preparing another one when the option is off', async () => {
+    stored.pack = legacyPack('current-pack', 10)
     optIn = null
-    const prepare = vi.spyOn(api, 'offlinePack')
+    const prepare = vi.spyOn(api, 'offlinePackV2')
 
     await sync('all')
 
@@ -149,7 +173,7 @@ describe('offline exercise size', () => {
 
   it('replays existing answers but waits for the public shell before preparing a package', async () => {
     stored.attempts = [{ itemId: 'item-1', text: null, result: 'pending' }]
-    const prepare = vi.spyOn(api, 'offlinePack')
+    const prepare = vi.spyOn(api, 'offlinePackV2')
     const replay = vi.spyOn(api, 'skipItem').mockResolvedValue({
       outcome: 'skipped',
       delta: 0,
@@ -166,7 +190,7 @@ describe('offline exercise size', () => {
   it('keeps disabled offline answers until confirmed and retains the result after cleanup', async () => {
     optIn = null
     stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
-    const prepare = vi.spyOn(api, 'offlinePack')
+    const prepare = vi.spyOn(api, 'offlinePackV2')
     const replay = vi
       .spyOn(api, 'answerText')
       .mockRejectedValueOnce(new TypeError('No connection'))
@@ -196,7 +220,7 @@ describe('offline exercise size', () => {
   })
 
   it('aborts preparation when the option is disabled and ignores the old response', async () => {
-    const prepare = vi.spyOn(api, 'offlinePack').mockImplementationOnce(async (_key, signal) => {
+    const prepare = vi.spyOn(api, 'offlinePackV2').mockImplementationOnce(async (_key, signal) => {
       optIn = null
       optionListeners.forEach((listener) => listener())
       expect(signal?.aborted).toBe(true)
@@ -214,8 +238,72 @@ describe('offline exercise size', () => {
     optIn = null
 
     await expect(
-      recordOfflineAnswer('alice', 'current-pack', 'item-1', 'бумага', () => true),
+      recordOfflineAnswer('alice', 'current-pack', 'written', 'item-1', 'бумага', () => true),
     ).rejects.toThrow('offline_pack_changed')
     expect(stored.attempts).toEqual([])
+  })
+
+  it('validates each exercise position and replays a zero-based choice independently of input', async () => {
+    const save = (exerciseId: string, itemId: string, answer: string | number | null) =>
+      recordOfflineAnswer('alice', 'current-pack', exerciseId, itemId, answer, () => true)
+    await expect(save('written', 'item-2', 'чернила')).rejects.toThrow('offline_item_changed')
+    await expect(save('choice', 'choice-1', 2)).rejects.toThrow('invalid_offline_answer')
+    await expect(save('written', 'choice-1', 0)).rejects.toThrow('offline_item_changed')
+    await save('choice', 'choice-1', 0)
+    await save('choice', 'choice-1', 1)
+    await save('written', 'item-1', 'бумага')
+    expect(stored.attempts).toEqual([
+      { itemId: 'choice-1', option: 0, text: null, result: 'pending' },
+      { itemId: 'item-1', text: 'бумага', result: 'pending' },
+    ])
+    const choice = vi.spyOn(api, 'answer').mockResolvedValue({
+      outcome: 'answered',
+      correct: false,
+      correct_option: 1,
+      chosen_option: 0,
+      delta: -2,
+      progress: 0,
+    })
+    const written = vi.spyOn(api, 'answerText').mockResolvedValue({
+      outcome: 'answered',
+      correct: true,
+      submitted_text: 'бумага',
+      expected_answers: ['бумага'],
+      delta: 2,
+      progress: 2,
+    })
+    const skip = vi.spyOn(api, 'skipItem').mockResolvedValue({
+      outcome: 'skipped',
+      delta: 0,
+      progress: 0,
+    })
+    const finish = vi.spyOn(api, 'finishTraining').mockImplementation(async (id) => ({
+      id,
+      status: 'finished',
+      finished_at: '',
+    }))
+    const prepare = vi.spyOn(api, 'offlinePackV2').mockResolvedValue(pack('fresh', 10))
+
+    await sync(10)
+    await sync(10)
+
+    expect(choice).toHaveBeenCalledExactlyOnceWith('choice-1', 0)
+    expect(written).toHaveBeenCalledExactlyOnceWith('item-1', 'бумага')
+    expect(finish).toHaveBeenCalledExactlyOnceWith('choice')
+    expect(skip).not.toHaveBeenCalled()
+    expect(prepare).not.toHaveBeenCalled()
+    expect(stored.attempts[0]).toEqual({ itemId: 'choice-1', text: null, result: 'incorrect' })
+
+    await save('written', 'item-2', null)
+    await sync(10)
+
+    expect(skip).toHaveBeenCalledExactlyOnceWith('item-2')
+    expect(finish.mock.calls).toEqual([['choice'], ['written']])
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(stored).toMatchObject({
+      pack: { id: 'fresh', version: 2 },
+      attempts: [],
+      report: { correct: 1, incorrect: 1, skipped: 1, conflicts: 0 },
+    })
   })
 })

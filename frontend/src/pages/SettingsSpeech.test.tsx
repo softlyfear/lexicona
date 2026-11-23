@@ -12,6 +12,44 @@ afterEach(() => {
   localStorage.clear()
   Reflect.deleteProperty(window, 'speechSynthesis')
 })
+
+it('shows the local EN and RU voice availability when offline practice is enabled', async () => {
+  vi.spyOn(api, 'listSpeechVoices').mockResolvedValue({ available: false, voices: [] })
+  Object.defineProperty(window, 'speechSynthesis', {
+    configurable: true,
+    value: {
+      getVoices: () => [
+        { lang: 'en_US', voiceURI: 'local', name: 'English', localService: true },
+        { lang: 'ru_RU', voiceURI: 'remote', name: 'Russian', localService: false },
+      ],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      cancel: vi.fn(),
+    },
+  })
+  await act(async () => setSpeechOwner('a'))
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SettingsPage
+        user={{ id: 'a', login: 'a', is_admin: false, difficulty: 'medium' }}
+        offline={{
+          supported: true,
+          optedIn: true,
+          message: '',
+          settingError: '',
+          changeOptIn: vi.fn(),
+        }}
+      />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText('Локальные голоса EN · English, RU · не найден.')).toBeVisible()
+  expect(
+    within(screen.getByLabelText('Голос US')).getByRole('option', {
+      name: 'English (en_US, локальный)',
+    }),
+  ).toBeInTheDocument()
+})
+
 it('показывает установленные голоса по акценту и позволяет явно выбрать браузер', async () => {
   vi.spyOn(api, 'listSpeechVoices').mockResolvedValue({
     available: true,

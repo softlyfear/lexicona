@@ -66,6 +66,49 @@ function browserSpeak(text: string, lang: 'en' | 'ru') {
 }
 
 describe('браузерная речь', () => {
+  it('различает локальные голоса US и UK с обозначениями Android', () => {
+    const us = voice('en_US', 'android-us')
+    const uk = voice('en_GB', 'android-uk')
+    voices = [uk, us]
+    setSpeechOwner('a', { speech: null, offline: true })
+
+    speak('hello', 'en', { offline: true, locale: 'en-US' })
+    expect(current.voice).toBe(us)
+    expect(current.lang).toBe('en-US')
+
+    speak('hello', 'en', { offline: true, locale: 'en-GB' })
+    expect(current.voice).toBe(uk)
+    expect(current.lang).toBe('en-GB')
+  })
+
+  it('ждёт локальный английский голос в офлайне, даже если другие голоса уже доступны', () => {
+    voices = [voice('ru-RU', 'ru'), { ...voice('en-US', 'remote-us'), localService: false }]
+    setSpeechOwner('a', { speech: null, offline: true })
+    const { result } = renderHook(() => useSpeech())
+    act(() => speak('hello', 'en', { offline: true, locale: 'en-US' }))
+    expect(result.current.busy).toBe(true)
+    expect(engine.speak).not.toHaveBeenCalled()
+
+    act(() => changed())
+    expect(engine.speak).not.toHaveBeenCalled()
+    const local = voice('en-GB', 'local-gb')
+    voices.push(local)
+    act(() => changed())
+    expect(engine.speak).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ voice: local }))
+    expect(api.listSpeechVoices).not.toHaveBeenCalled()
+  })
+
+  it('показывает причину, если браузер так и не предоставил локальный голос', () => {
+    voices = [{ ...voice('en-US', 'remote-us'), localService: false }]
+    setSpeechOwner('a', { speech: null, offline: true })
+    const { result } = renderHook(() => useSpeech())
+    act(() => speak('hello', 'en', { offline: true }))
+    act(() => vi.advanceTimersByTime(2000))
+    expect(result.current.notice).toContain('не предоставил локальный голос EN')
+    expect(result.current.busy).toBe(false)
+    expect(engine.speak).not.toHaveBeenCalled()
+  })
+
   it('ожидает голоса ограниченно и не запускает просроченную речь', () => {
     setSpeechOwner('a')
     const { result } = renderHook(() => useSpeech())

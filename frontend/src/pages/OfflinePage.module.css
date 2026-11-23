@@ -34,9 +34,19 @@
 }
 
 .form,
+.options,
 .words {
   display: grid;
   gap: 0.6rem;
+}
+
+.options button {
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.more {
+  margin-top: 0.75rem;
 }
 
 .words {
