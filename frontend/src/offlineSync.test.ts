@@ -6,8 +6,8 @@ import {
   type TrainingSize,
   type VersionedOfflinePack,
 } from './api'
-import { type OfflineRecord } from './offlineStorage'
-import { recordOfflineAnswer, syncOffline } from './offlineSync'
+import { updateOffline, type OfflineRecord } from './offlineStorage'
+import { discardOfflineForSignOut, recordOfflineAnswer, syncOffline } from './offlineSync'
 
 let stored: OfflineRecord
 let optIn: string | null
@@ -23,10 +23,12 @@ vi.mock('./offlineStorage', () => ({
   },
   clearOfflineDiscard: vi.fn(),
   readOffline: async () => structuredClone(stored),
-  updateOffline: async (update: (value: OfflineRecord) => OfflineRecord | undefined) => {
-    const next = update(structuredClone(stored))
-    if (next) stored = next
-  },
+  updateOffline: vi.fn(
+    async (update: (value: OfflineRecord) => OfflineRecord | null | undefined) => {
+      const next = update(structuredClone(stored))
+      if (next) stored = next
+    },
+  ),
 }))
 
 function legacyPack(id: string, requestedSize: TrainingSize): OfflinePack {
@@ -92,6 +94,64 @@ describe('offline exercise size', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.useRealTimers()
+  })
+
+  it('asks to delete queued answers before opening the IndexedDB transaction', async () => {
+    stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
+    const order: string[] = []
+    const original = vi.mocked(updateOffline).getMockImplementation()
+    vi.mocked(updateOffline).mockImplementation(async (update) => {
+      order.push('update')
+      const next = update(structuredClone(stored))
+      expect(order).toContain('confirm')
+      if (next === null) stored = { ...stored, attempts: [] }
+      else if (next) stored = next
+    })
+    const confirm = vi.fn((count: number) => {
+      order.push('confirm')
+      expect(count).toBe(1)
+      return true
+    })
+
+    try {
+      await expect(discardOfflineForSignOut('alice', () => true, confirm)).resolves.toBe('removed')
+      expect(order).toEqual(['confirm', 'update'])
+      expect(stored.attempts).toEqual([])
+    } finally {
+      vi.mocked(updateOffline).mockImplementation(original!)
+    }
+  })
+
+  it('does not mark queued answers discarded when the store delete fails', async () => {
+    stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
+    vi.mocked(updateOffline).mockRejectedValueOnce(
+      new DOMException('inactive', 'TransactionInactiveError'),
+    )
+
+    await expect(
+      discardOfflineForSignOut(
+        'alice',
+        () => true,
+        () => true,
+      ),
+    ).resolves.toBe('failed')
+    expect(stored.attempts).toHaveLength(1)
+  })
+
+  it('does not delete queued answers when sign-out is declined', async () => {
+    stored.attempts = [{ itemId: 'item-1', text: 'бумага', result: 'pending' }]
+    vi.mocked(updateOffline).mockClear()
+
+    await expect(
+      discardOfflineForSignOut(
+        'alice',
+        () => true,
+        () => false,
+      ),
+    ).resolves.toBe('declined')
+
+    expect(updateOffline).not.toHaveBeenCalled()
+    expect(stored.attempts).toHaveLength(1)
   })
 
   it('replaces an untouched legacy package immediately using the saved requested size', async () => {

@@ -113,8 +113,17 @@ export function WordsPage({ userId }: { userId: string }) {
     query === search.trim()
 
   const save = useMutation({
-    mutationFn: ({ input }: { input: WordInput; generation: number }) =>
-      editing?.kind === 'edit' ? api.updateWord(editing.word.id, input) : api.createWord(input),
+    // The id is captured with the request. A paused offline mutation must not
+    // read `editing` later: cancel closes the editor and would turn the save
+    // into a create.
+    mutationFn: ({
+      input,
+      wordId,
+    }: {
+      input: WordInput
+      generation: number
+      wordId: string | null
+    }) => (wordId ? api.updateWord(wordId, input) : api.createWord(input)),
     onSuccess: (_data, { generation }) => {
       if (generation === editGeneration.current) setEditing(null)
       return Promise.all([
@@ -210,7 +219,13 @@ export function WordsPage({ userId }: { userId: string }) {
           word={editing.kind === 'edit' ? editing.word : undefined}
           pending={save.isPending}
           error={save.isError ? errorMessage(save.error) : null}
-          onSubmit={(input) => save.mutate({ input, generation: editGeneration.current })}
+          onSubmit={(input) =>
+            save.mutate({
+              input,
+              generation: editGeneration.current,
+              wordId: editing.kind === 'edit' ? editing.word.id : null,
+            })
+          }
           onCancel={() => setEditing(null)}
           onDirtyChange={setDraftDirtyState}
         />

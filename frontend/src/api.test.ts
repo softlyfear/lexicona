@@ -413,4 +413,33 @@ describe('api', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(errorMessage(new DOMException('late', 'TimeoutError'))).toContain('время ожидания')
   })
+
+  it('keeps the timeout when a caller signal is passed and AbortSignal.any is missing', async () => {
+    const originalAny = AbortSignal.any
+    Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined })
+    const timeout = new AbortController()
+    const originalTimeout = AbortSignal.timeout
+    AbortSignal.timeout = () => timeout.signal
+    try {
+      const fetchMock = mockFetch(200, { voices: [], available: false })
+      const caller = new AbortController()
+      await api.listSpeechVoices(caller.signal)
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      expect(init.signal).not.toBe(caller.signal)
+      expect(init.signal?.aborted).toBe(false)
+      caller.abort()
+      expect(init.signal?.aborted).toBe(true)
+
+      const second = mockFetch(200, { voices: [], available: false })
+      const hanging = new AbortController()
+      await api.listSpeechVoices(hanging.signal)
+      const [, limited] = second.mock.calls[0] as unknown as [string, RequestInit]
+      timeout.abort()
+      expect(limited.signal?.aborted).toBe(true)
+    } finally {
+      AbortSignal.timeout = originalTimeout
+      Object.defineProperty(AbortSignal, 'any', { configurable: true, value: originalAny })
+    }
+  })
 })

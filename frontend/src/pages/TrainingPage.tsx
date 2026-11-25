@@ -93,9 +93,13 @@ export function TrainingPage({
     session: TrainingSession
     requestedSize: TrainingSize
   } | null>(null)
+  const finishRevision = useRef<number | null>(null)
   const finish = useMutation({
     mutationFn: (id: string) => api.finishTraining(id),
     onSuccess: () => {
+      // A finish started by the previous account must not clear the next
+      // account's resume after this page has unmounted.
+      if (!active.current || finishRevision.current !== getSessionRevision()) return
       setStarted(null)
       setSetup(true)
       queryClient.setQueryData(['training', 'latest'], null)
@@ -109,6 +113,7 @@ export function TrainingPage({
       requestedSize: started.requestedSize,
       onFinish: () => {
         cancelSpeech()
+        finishRevision.current = getSessionRevision()
         finish.mutate(started.session.id)
       },
       finishing: finish.isPending,
@@ -177,7 +182,10 @@ export function TrainingPage({
           <button
             className={ui.button}
             disabled={finish.isPending}
-            onClick={() => finish.mutate(latest.data!.id)}
+            onClick={() => {
+              finishRevision.current = getSessionRevision()
+              finish.mutate(latest.data!.id)
+            }}
           >
             Завершить и начать новое
           </button>

@@ -372,7 +372,18 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortS
   if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') return signal
   const timeout = AbortSignal.timeout(timeoutMs)
   if (!signal) return timeout
-  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout])
+  // Older browsers have a timeout signal but cannot combine it. Dropping the
+  // timeout lets a caller-supplied signal hang for as long as the server does.
+  const controller = new AbortController()
+  const abortFrom = (source: AbortSignal) => {
+    if (!controller.signal.aborted) controller.abort(source.reason)
+  }
+  if (signal.aborted) abortFrom(signal)
+  else signal.addEventListener('abort', () => abortFrom(signal), { once: true })
+  if (timeout.aborted) abortFrom(timeout)
+  else timeout.addEventListener('abort', () => abortFrom(timeout), { once: true })
+  return controller.signal
 }
 
 async function request<T>(

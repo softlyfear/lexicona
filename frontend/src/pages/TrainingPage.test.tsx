@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api, type Word } from '../api'
@@ -88,6 +88,48 @@ describe('TrainingPage', () => {
         { id: 'i2', prompt: 'dog', options: ['собака', 'кот', 'лиса', 'сова'] },
       ],
     })
+  })
+
+  it('does not clear a later resume after this page unmounts', async () => {
+    let resolveFinish: (value: {
+      id: string
+      status: 'finished'
+      finished_at: string
+    }) => void = () => {}
+    const finish = vi.spyOn(api, 'finishTraining').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFinish = resolve
+        }),
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(['training', 'latest'], null)
+    const user = userEvent.setup()
+    const view = render(
+      <QueryClientProvider client={client}>
+        <TrainingPage />
+      </QueryClientProvider>,
+    )
+    try {
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Начать' })).toBeEnabled())
+      await user.click(screen.getByRole('button', { name: 'Начать' }))
+      await user.click(await screen.findByRole('button', { name: 'Завершить' }))
+      view.unmount()
+      const other = {
+        id: 'other',
+        status: 'active',
+        mode: 'input',
+        direction: 'en_ru',
+        purpose: 'free',
+        items: [],
+      }
+      client.setQueryData(['training', 'latest'], other)
+      resolveFinish({ id: 's', status: 'finished', finished_at: '' })
+      await act(async () => {})
+      expect(client.getQueryData(['training', 'latest'])).toEqual(other)
+    } finally {
+      finish.mockRestore()
+    }
   })
 
   it('показывает транскрипцию английского слова и озвучивает нажатый ответ', async () => {

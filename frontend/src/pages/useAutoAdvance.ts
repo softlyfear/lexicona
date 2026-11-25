@@ -1,8 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { isSpeechBusy, useSpeech } from '../speech'
 
-const SPEECH_WAIT_LIMIT_MS = 30_000
-
 export function useAutoAdvance(
   target: string | null,
   enabled: boolean,
@@ -23,9 +21,6 @@ export function useAutoAdvance(
   const advance = useEffectEvent(() => {
     if (target && enabled && !suspended && cancelled !== target && !isSpeechBusy()) next()
   })
-  const forceAdvance = useEffectEvent(() => {
-    if (target && enabled && !suspended && cancelled !== target) next()
-  })
 
   useEffect(() => {
     if (!enabled || suspended || !target || cancelled === target) return
@@ -34,14 +29,10 @@ export function useAutoAdvance(
   }, [target, enabled, suspended, cancelled])
 
   useEffect(() => {
-    if (!target || elapsed !== target || cancelled === target) return
-    if (!busy) {
-      advance()
-      return
-    }
-    // Speech that never reports its end must not hide Next forever.
-    const timer = setTimeout(() => forceAdvance(), SPEECH_WAIT_LIMIT_MS)
-    return () => clearTimeout(timer)
+    // Speech keeps its own end/failure watchdog and clears busy. Advancing on a
+    // fixed timer cuts off a long utterance that is still playing.
+    if (!target || elapsed !== target || cancelled === target || busy) return
+    advance()
   }, [target, elapsed, busy, cancelled, enabled, suspended])
 
   return {

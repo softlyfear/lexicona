@@ -31,6 +31,48 @@ export function pendingOffline(record: OfflineRecord | undefined) {
   return record?.attempts.filter((attempt) => attempt.result === 'pending').length ?? 0
 }
 
+export async function discardOfflineForSignOut(
+  ownerId: string | null | undefined,
+  allowed: () => boolean,
+  confirmRemoval: (count: number) => boolean,
+): Promise<'removed' | 'declined' | 'stale' | 'failed' | 'logout'> {
+  if (!allowed()) return 'stale'
+  let stored: OfflineRecord | undefined
+  try {
+    stored = await readOffline()
+  } catch {
+    // A broken store must not trap the user. Do not set the discard flag:
+    // the next sign-in still has to sync whatever attempts remain.
+    return 'logout'
+  }
+  if (!allowed() || (stored != null && stored.ownerId !== ownerId)) return 'stale'
+  const pendingCount = pendingOffline(stored)
+  // confirm() runs a nested event loop and makes an open IndexedDB transaction
+  // inactive, so the deletion must happen only after the dialog returns.
+  if (pendingCount > 0 && !confirmRemoval(pendingCount)) return 'declined'
+  if (!allowed()) return 'stale'
+  let removed = false
+  let stale = false
+  try {
+    await updateOffline((latest) => {
+      if (!allowed() || (latest != null && latest.ownerId !== ownerId)) {
+        stale = true
+        return
+      }
+      if (pendingOffline(latest) > pendingCount) return
+      removed = true
+      return null
+    })
+  } catch {
+    // A failed delete must not mark the record discarded: the next sync would
+    // drop answers added after the user signs in again. With nothing queued,
+    // signing out is still safe.
+    return pendingCount > 0 ? 'failed' : 'logout'
+  }
+  if (!allowed() || stale) return 'stale'
+  return removed ? 'removed' : 'failed'
+}
+
 type StoredExercise = Omit<OfflineExercise, 'items'> & {
   items: { id: string; prompt: string; options?: string[] }[]
 }

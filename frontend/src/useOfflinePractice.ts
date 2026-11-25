@@ -24,11 +24,11 @@ import {
   readOffline,
   requestOfflineDiscard,
   setOfflineOptIn,
-  updateOffline,
   type OfflineRecord,
 } from './offlineStorage'
 import {
   clearUnusedOffline,
+  discardOfflineForSignOut,
   networkUnavailable,
   OFFLINE_PACK_VERSION,
   offlineReport,
@@ -306,47 +306,30 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
       await logoutSession()
       return
     }
-    let accepted = false
-    let stale = false
     const revision = getSessionRevision()
     const expectedOwner = ownerId ?? startupOwner
     const couldBeCurrent = () => {
       const currentOwner = offlineOwner()
       return !currentOwner || currentOwner === expectedOwner
     }
-    const discard = () => {
-      if (expectedOwner) requestOfflineDiscard(expectedOwner)
-      markOfflineSignedOut()
+    const result = await discardOfflineForSignOut(
+      expectedOwner,
+      () => revision === getSessionRevision() && couldBeCurrent(),
+      (count) =>
+        window.confirm(`Неотправленных действий: ${count}. При выходе они будут удалены. Выйти?`),
+    )
+    if (result === 'stale') {
+      forgetSession()
+      return
     }
-    const confirmPending = (count: number) =>
-      count === 0 ||
-      window.confirm(`Неотправленных действий: ${count}. При выходе они будут удалены. Выйти?`)
+    if (result !== 'removed' && result !== 'logout') return
     try {
-      await updateOffline((stored) => {
-        if (revision !== getSessionRevision()) return
-        if (!couldBeCurrent() || (stored && stored.ownerId !== expectedOwner)) {
-          stale = true
-          return
-        }
-        if (!confirmPending(pendingOffline(stored))) return
-        accepted = true
-        discard()
-        return null
-      })
+      if (result === 'removed' && expectedOwner) requestOfflineDiscard(expectedOwner)
+      markOfflineSignedOut()
     } catch {
-      if (revision !== getSessionRevision()) return
-      if (!couldBeCurrent()) stale = true
-      else if (accepted || confirmPending(pending)) {
-        try {
-          discard()
-        } catch {
-          // The per-tab login guard and the server logout still apply.
-        }
-        accepted = true
-      }
+      // The per-tab login guard and the server logout still apply.
     }
-    if (stale) forgetSession()
-    else if (accepted) await logoutSession()
+    await logoutSession()
   }
 
   async function save(exerciseId: string, itemId: string, answer: string | number | null) {

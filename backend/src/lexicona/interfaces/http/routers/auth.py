@@ -102,6 +102,18 @@ def _set_session_cookie(response: Response, token: str, settings: AppSettings) -
     )
 
 
+def _clear_session_cookie(response: Response, settings: AppSettings) -> None:
+    # Browsers ignore a deletion whose Secure/HttpOnly/SameSite/Path do not match
+    # the cookie that login set. A leftover Secure cookie would keep being sent.
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+    )
+
+
 @router.post("/login")
 async def login(body: LoginIn, response: Response, db: Db, settings: AppSettings) -> SessionOut:
     key = body.login
@@ -199,10 +211,10 @@ async def change_password(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(auth: CurrentAuth, response: Response, db: Db) -> None:
+async def logout(auth: CurrentAuth, response: Response, db: Db, settings: AppSettings) -> None:
     await db.execute(delete(AuthSession).where(AuthSession.id == auth.session.id))
     await db.commit()
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    _clear_session_cookie(response, settings)
 
 
 @router.get("/me")

@@ -308,6 +308,20 @@ it('does not auto-advance card self-assessment', async () => {
   expect(screen.getByText('1 / 3')).toBeInTheDocument()
 })
 
+it('does not advance over speech that is still playing after half a minute', async () => {
+  browser()
+  vi.mocked(api.answerText).mockResolvedValue({
+    ...right,
+    expected_answers: ['a'.repeat(200)],
+  })
+  run()
+  await submit()
+  await tick(1500)
+  await tick(30_000)
+  expect(screen.getByText('1 / 3')).toBeInTheDocument()
+  expect(isSpeechBusy()).toBe(true)
+})
+
 it('manual double activation advances only one item when automatic next is disabled', async () => {
   run(session, false)
   await submit()

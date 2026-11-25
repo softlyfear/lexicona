@@ -362,6 +362,28 @@ describe('сортировка словаря', () => {
     },
   )
 
+  it('keeps a paused offline edit from becoming a new word after cancel', async () => {
+    vi.mocked(api.listWords).mockResolvedValue([word('1', 'cat')])
+    vi.mocked(api.updateWord).mockResolvedValue(word('1', 'cat'))
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByLabelText('Действия со словом «cat»'))
+    await user.click(screen.getByRole('button', { name: 'Изменить «cat»' }))
+    try {
+      act(() => onlineManager.setOnline(false))
+      await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+      await user.click(screen.getByRole('button', { name: 'Отмена' }))
+      expect(screen.getByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
+      await act(async () => {
+        onlineManager.setOnline(true)
+      })
+      await waitFor(() => expect(api.updateWord).toHaveBeenCalledWith('1', expect.any(Object)))
+      expect(api.createWord).not.toHaveBeenCalled()
+    } finally {
+      act(() => onlineManager.setOnline(true))
+    }
+  })
+
   it('does not present a cached count as current while an offline refetch is paused', async () => {
     const { client } = renderPage()
     await waitFor(() =>

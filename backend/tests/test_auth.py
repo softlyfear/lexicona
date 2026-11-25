@@ -2,6 +2,7 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import select
 
 from lexicona.infrastructure.db import utcnow
@@ -154,8 +155,37 @@ async def test_non_ascii_csrf_header_is_rejected(alice: Client) -> None:
 
 
 async def test_logout_ends_session(alice: Client) -> None:
-    assert (await alice.post("/api/auth/logout")).status_code == 204
+    response = await alice.post("/api/auth/logout")
+    assert response.status_code == 204
+    cookie = response.headers["set-cookie"]
+    assert "lexicona_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie
+    assert "Secure" not in cookie
     assert (await alice.get("/api/auth/me")).status_code == 401
+
+
+async def test_logout_clears_a_secure_cookie_with_matching_attributes(
+    app: FastAPI, anon: Client, create_user: Callable[..., Awaitable[User]]
+) -> None:
+    await create_user("secure")
+    app.state.settings.cookie_secure = True
+    logged = await anon.post("/api/auth/login", json={"login": "secure", "password": PASSWORD})
+    assert logged.status_code == 200
+    assert "Secure" in logged.headers["set-cookie"]
+    # httpx does not store a Secure cookie for an http test origin, so send it explicitly.
+    session_cookie = logged.headers["set-cookie"].split(";", 1)[0]
+    logged_out = await anon.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": logged.json()["csrf_token"], "Cookie": session_cookie},
+    )
+    assert logged_out.status_code == 204
+    cleared = logged_out.headers["set-cookie"].lower()
+    assert "secure" in cleared
+    assert "httponly" in cleared
+    assert "samesite=lax" in cleared
+    assert "max-age=0" in cleared
+    assert (await anon.get("/api/auth/me", headers={"Cookie": session_cookie})).status_code == 401
 
 
 async def test_update_difficulty(alice: Client) -> None:
