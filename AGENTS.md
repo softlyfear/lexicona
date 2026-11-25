@@ -117,16 +117,19 @@ remain under `.local/`.
 2. Assign only needed `backend-agent`, `frontend-agent`, and `devops-agent`
    subagents from `.opencode/agents/` in dependency order; use `tests-agent`
    for an uncovered complex regression. Delegate with the ticket, AC, file
-   boundaries, and prior report.
+   boundaries, and prior report. One owner per path: implementation agents own
+   their layer's tests; `tests-agent` owns only the test files the ticket assigns
+   for a specific uncovered regression. Do not assign the same path to two agents.
 3. The designated gate owner, usually the final implementer, runs `make check`
    after code and tests are complete.
 4. Independent `code-reviewer` reads the whole diff and checks AC, security, and
    gate evidence; returns `Ship` or `No-Ship` with files and reproduction steps.
 5. The orchestrator accepts the ticket and removes its completed record, or
    increments the attempt and returns findings to owners before another review.
-   Keep only active tickets in TASKS.md; completed history stays in Git, not an
-   archive file. Preserve current technical contracts in PROJECT.md without
-   copying ticket reports or verification logs.
+   The architect clarifies contracts but does not accept or close tickets; the
+   orchestrator owns acceptance. Keep only active tickets in TASKS.md; completed
+   history stays in Git, not an archive file. Preserve current technical contracts
+   in PROJECT.md without copying ticket reports or verification logs.
 
 Use the same gate evidence for the same code. Repeat the gate after relevant
 code/test/check-configuration changes or failure; a protocol/status-only edit
