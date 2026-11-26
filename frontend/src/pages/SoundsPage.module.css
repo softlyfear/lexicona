@@ -1,0 +1,243 @@
+@font-face {
+  font-family: 'Lexicona Phonetic';
+  src: url('../assets/fonts/phonetic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  width: 100%;
+  padding-bottom: 0.4rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 550;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.accent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.22rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.accent label {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.accent input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.accent span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.accent input:checked + span {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.accent input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.groupTitle::before {
+  content: '';
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: none;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.6rem;
+  aspect-ratio: 1;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, white 5%, transparent), transparent 42%),
+    var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 1px 0 color-mix(in srgb, white 4%, transparent);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.card:hover:not([data-playing]) {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  background: var(--surface-raised);
+}
+
+.card:focus,
+.card:focus-visible {
+  outline: none;
+}
+
+.card:active {
+  transform: none;
+}
+
+.card[data-playing] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+.phoneme {
+  font-family: 'Lexicona Phonetic', 'Gentium', 'Noto Sans', var(--font);
+  font-size: clamp(1.55rem, 6.4vw, 1.9rem);
+  font-weight: 400;
+  font-variant-ligatures: none;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (min-width: 720px) {
+  .header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .titleRow {
+    flex: 1;
+    justify-content: flex-start;
+    gap: 0.9rem;
+  }
+
+  .note {
+    font-size: 0.74rem;
+  }
+
+  .accent {
+    width: min(100%, 22rem);
+  }
+
+  .grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.7rem;
+  }
+
+  .card {
+    aspect-ratio: auto;
+    min-height: 5.1rem;
+    border-radius: 18px;
+  }
+
+  .phoneme {
+    font-size: 2.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+
+  .card:active {
+    transform: none;
+  }
+}

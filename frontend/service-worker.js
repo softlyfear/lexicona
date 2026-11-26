@@ -1,7 +1,7 @@
 /* global publicFiles, version */
 const cachePrefix = 'lexicona-shell-'
 const cacheName = cachePrefix + version
-const spaPaths = new Set(['/', '/training', '/statistics', '/account', '/settings'])
+const spaPaths = new Set(['/', '/training', '/statistics', '/sounds', '/account', '/settings'])
 const publicPaths = new Set(publicFiles)
 
 self.addEventListener('install', (event) => {

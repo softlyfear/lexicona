@@ -12,6 +12,7 @@ const LINKS = [
   { to: '/', label: 'Словарь', icon: 'book' },
   { to: '/training', label: 'Тренировка', icon: 'practice' },
   { to: '/statistics', label: 'Статистика', icon: 'chart' },
+  { to: '/sounds', label: 'Звуки', icon: 'sound' },
   { to: '/settings', label: 'Настройки', icon: 'settings' },
 ] as const
 
@@ -153,6 +154,13 @@ function paths(name: (typeof LINKS)[number]['icon'] | 'logout'): ReactNode {
         <path d="M8 16v-4" />
         <path d="M12 16V8" />
         <path d="M16 16v-6" />
+      </>
+    )
+  if (name === 'sound')
+    return (
+      <>
+        <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+        <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12" />
       </>
     )
   if (name === 'settings')

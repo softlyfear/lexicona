@@ -6,6 +6,7 @@ import { AccountPage } from './pages/AccountPage'
 import { LoginPage } from './pages/LoginPage'
 import { OfflinePage } from './pages/OfflinePage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SoundsPage } from './pages/SoundsPage'
 import { StatisticsPage } from './pages/StatisticsPage'
 import { TrainingPage } from './pages/TrainingPage'
 import { WordsPage } from './pages/WordsPage'
@@ -68,6 +69,7 @@ export function App() {
                 }
               />
               <Route path="statistics" element={<StatisticsPage />} />
+              <Route path="sounds" element={<SoundsPage />} />
               <Route path="account" element={<AccountPage user={user} />} />
               <Route
                 path="settings"
