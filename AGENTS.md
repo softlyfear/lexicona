@@ -143,8 +143,8 @@ as self-review where applicable.
 
 Project settings are `opencode.jsonc`. The session model is not pinned, and
 subagents inherit it. Do not copy retired harness model IDs into role files.
-Role prompts are subagents in `.opencode/agents/`; the primary session keeps
-the built-in system prompt and follows this file. Context7 is the only project
+Role prompts are in `.opencode/agents/`; the primary role for new sessions is
+`orchestrator` and follows this file. Context7 is the only project
 MCP server, at `https://mcp.context7.com/mcp`, with no secret in the repository.
 
 ## Repository synchronization
