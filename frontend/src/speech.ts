@@ -424,10 +424,10 @@ export function updateSpeechPreferences(patch: Partial<SpeechPreferences>) {
 export function speak(
   text: string,
   lang: 'en' | 'ru',
-  options?: { force?: boolean; locale?: EnglishAccentLocale; offline?: boolean },
+  options?: { force?: boolean; locale?: EnglishAccentLocale; offline?: boolean; browser?: boolean },
 ) {
   if (!options?.force && !speechEnabled(lang)) return
-  const choice = options?.offline ? 'browser' : languageEngine(lang)
+  const choice = options?.offline || options?.browser ? 'browser' : languageEngine(lang)
   const locale = lang === 'ru' ? 'ru-RU' : (options?.locale ?? snapshot.preferences.enLocale)
   if (audio && readyFingerprint && choice !== 'browser') {
     const voice = selectServerVoice(snapshot.serverVoices, lang, snapshot.preferences, locale)

@@ -76,7 +76,11 @@ it('открывает /sounds из основной навигации и ос�
   expect(window.location.pathname).toBe('/sounds')
 
   await user.click(screen.getByRole('button', { name: 'Прослушать /iː/, британский акцент' }))
-  expect(speechControls.speak).toHaveBeenCalledWith('see', 'en', { force: true, locale: 'en-GB' })
+  expect(speechControls.speak).toHaveBeenCalledWith('see', 'en', {
+    force: true,
+    locale: 'en-GB',
+    browser: true,
+  })
   await user.click(screen.getByRole('link', { name: 'Словарь' }))
   expect(await screen.findByRole('heading', { name: 'Словарь' })).toBeInTheDocument()
   expect(speechControls.cancelSpeech).toHaveBeenCalled()

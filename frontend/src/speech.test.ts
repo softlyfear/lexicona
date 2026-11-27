@@ -71,7 +71,9 @@ describe('браузерная речь', () => {
     const local = voice('en_GB', 'android-uk')
     voices = [voice('en_US', 'android-us', true), remote, local]
     setSpeechOwner('a')
-    act(() => updateSpeechPreferences({ enLocale: 'en-US', enGBVoiceURI: null }))
+    act(() =>
+      updateSpeechPreferences({ enLocale: 'en-US', enGBVoiceURI: null, engineEn: 'browser' }),
+    )
     speak('see', 'en', { locale: 'en-GB' })
     expect(current.voice).toBe(local)
     expect(current.lang).toBe('en-GB')

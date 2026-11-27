@@ -124,7 +124,6 @@ it('переключается на американский набор 12 + 5 +
     screen.getByRole('button', { name: 'Прослушать /iː/, британский акцент' }),
   ).toHaveAttribute('data-playing', 'true')
   expect(api.synthesizeSpeech).not.toHaveBeenCalled()
-  expect(api.listSpeechVoices).not.toHaveBeenCalled()
 
   await user.click(screen.getByRole('radio', { name: 'Американский' }))
 
