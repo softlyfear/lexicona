@@ -66,6 +66,17 @@ function browserSpeak(text: string, lang: 'en' | 'ru') {
 }
 
 describe('браузерная речь', () => {
+  it('для автоматического UK берёт локальный en_GB, а не первый сетевой', () => {
+    const remote = { ...voice('en_GB', 'cloud-gb'), localService: false }
+    const local = voice('en_GB', 'android-uk')
+    voices = [voice('en_US', 'android-us', true), remote, local]
+    setSpeechOwner('a')
+    act(() => updateSpeechPreferences({ enLocale: 'en-US', enGBVoiceURI: null }))
+    speak('see', 'en', { locale: 'en-GB' })
+    expect(current.voice).toBe(local)
+    expect(current.lang).toBe('en-GB')
+  })
+
   it('различает локальные голоса US и UK с обозначениями Android', () => {
     const us = voice('en_US', 'android-us')
     const uk = voice('en_GB', 'android-uk')

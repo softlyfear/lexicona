@@ -187,6 +187,7 @@ export function selectVoice(
   const requested = key === 'enUSVoiceURI' || key === 'enGBVoiceURI' ? exact : candidates
   return (
     requested.find((voice) => uri && voice.voiceURI === uri) ??
+    exact.find((voice) => voice.localService) ??
     exact[0] ??
     candidates.find((voice) => voice.default) ??
     candidates[0] ??
@@ -369,6 +370,7 @@ export function setSpeechOwner(
   synthesis()?.addEventListener('voiceschanged', refreshVoices)
   refreshVoices()
   voiceTimer = setTimeout(() => {
+    refreshVoices()
     if (!snapshot.voices.length) notify({ voiceState: 'unavailable' })
   }, 2000)
 }

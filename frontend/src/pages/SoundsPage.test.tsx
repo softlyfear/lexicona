@@ -133,8 +133,44 @@ it('переключается на американский набор 12 + 5 +
   expect(isSpeechBusy()).toBe(false)
 
   await user.click(screen.getByRole('button', { name: 'Прослушать /i/, американский акцент' }))
-  expect(FakeUtterance.instances[1]).toMatchObject({ text: 'see', voice: { voiceURI: 'gb' } })
+  expect(FakeUtterance.instances[1]).toMatchObject({ text: 'see', voice: { voiceURI: 'us' } })
   expect(api.synthesizeSpeech).not.toHaveBeenCalled()
+})
+
+it('берёт локальный британский голос устройства без явного URI, даже если в настройках американский', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('speechSynthesis', {
+    getVoices: () => [
+      { lang: 'en-US', voiceURI: 'us', name: 'American', localService: true, default: true },
+      {
+        lang: 'en_GB',
+        voiceURI: 'cloud-gb',
+        name: 'Cloud British',
+        localService: false,
+        default: false,
+      },
+      {
+        lang: 'en_GB',
+        voiceURI: 'android-uk',
+        name: 'English United Kingdom',
+        localService: true,
+        default: false,
+      },
+    ],
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    cancel: vi.fn(),
+    speak: vi.fn(),
+  })
+  act(() => updateSpeechPreferences({ enLocale: 'en-US', enUSVoiceURI: null, enGBVoiceURI: null }))
+  render(<SoundsPage />)
+  await user.click(screen.getByRole('radio', { name: 'Британский' }))
+  await user.click(screen.getByRole('button', { name: 'Прослушать /iː/, британский акцент' }))
+  expect(FakeUtterance.instances.at(-1)).toMatchObject({
+    text: 'see',
+    voice: { voiceURI: 'android-uk' },
+    lang: 'en-GB',
+  })
 })
 
 it('читает слово сохранённым в настройках голосом акцента, а не первым голосом устройства', async () => {

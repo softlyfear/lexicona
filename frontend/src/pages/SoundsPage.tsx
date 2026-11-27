@@ -38,9 +38,7 @@ export function SoundsPage() {
 
   const play = (phoneme: Phoneme) => {
     setPlayingId(phoneme.id)
-    const savedForChart = locale === 'en-GB' ? preferences.enGBVoiceURI : preferences.enUSVoiceURI
-    const settingsAccent = englishAccentLocale(preferences.enLocale) ?? locale
-    speak(phoneme.speech, 'en', { force: true, locale: savedForChart ? locale : settingsAccent })
+    speak(phoneme.speech, 'en', { force: true, locale })
   }
 
   const accentName = locale === 'en-GB' ? 'британский' : 'американский'
