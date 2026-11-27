@@ -87,8 +87,8 @@ it('показывает британские группы 12 + 8 + 24 и тол
   const fleece = screen.getByRole('button', { name: 'Прослушать /iː/, британский акцент' })
   expect(fleece.querySelector('[class*="hit"]')).toHaveTextContent('iː')
   expect(fleece).toHaveTextContent('siː')
-  const cat = screen.getByRole('button', { name: 'Прослушать /k/, британский акцент' })
-  expect(cat).toHaveTextContent('kat')
+  const key = screen.getByRole('button', { name: 'Прослушать /k/, британский акцент' })
+  expect(key).toHaveTextContent('key')
 
   for (const button of screen.getAllByRole('button', { name: /^Прослушать / })) {
     const card = button.closest('li')!
@@ -111,6 +111,7 @@ it.each(['en-GB', 'en-US'] as const)('даёт каждому звуку кор�
     expect(sound.speech.endsWith(sound.after)).toBe(true)
     expect(sound.before.length + sound.after.length).toBeLessThan(sound.speech.length)
   }
+  expect(new Set(sounds.map((sound) => sound.speech)).size).toBe(sounds.length)
 })
 
 it('переключается на американский набор 12 + 5 + 24 и останавливает прежнюю речь', async () => {

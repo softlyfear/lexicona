@@ -19,11 +19,11 @@ export type PhonemeGroup = {
 
 const consonants = [
   { id: 'p', symbol: 'p', speech: 'pen', before: '', after: 'en' },
-  { id: 'b', symbol: 'b', speech: 'bed', before: '', after: 'ed' },
+  { id: 'b', symbol: 'b', speech: 'big', before: '', after: 'ig' },
   { id: 't', symbol: 't', speech: 'ten', before: '', after: 'en' },
   { id: 'd', symbol: 'd', speech: 'dog', before: '', after: 'og' },
-  { id: 'k', symbol: 'k', speech: 'cat', before: '', after: 'at' },
-  { id: 'g', symbol: 'g', speech: 'go', before: '', after: 'o' },
+  { id: 'k', symbol: 'k', speech: 'key', before: '', after: 'ey' },
+  { id: 'g', symbol: 'g', speech: 'get', before: '', after: 'et' },
   { id: 'f', symbol: 'f', speech: 'fan', before: '', after: 'an' },
   { id: 'v', symbol: 'v', speech: 'van', before: '', after: 'an' },
   { id: 'voiceless-th', symbol: 'θ', speech: 'thin', before: '', after: 'in' },
