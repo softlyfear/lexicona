@@ -162,7 +162,7 @@
 
 .phoneme {
   font-family: 'Lexicona Phonetic', 'Gentium', 'Noto Sans', var(--font);
-  font-size: clamp(1.35rem, 5.6vw, 1.7rem);
+  font-size: clamp(1.55rem, 6.2vw, 1.9rem);
   font-weight: 400;
   font-variant-ligatures: none;
   line-height: 1;
@@ -223,7 +223,7 @@
   }
 
   .phoneme {
-    font-size: 1.9rem;
+    font-size: 2.15rem;
   }
 
   .word {
