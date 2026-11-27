@@ -45,10 +45,7 @@ export function SoundsPage() {
   return (
     <div className={css.page}>
       <header className={css.header}>
-        <div className={css.titleRow}>
-          <h1 className={css.title}>Звуки</h1>
-          <p className={css.note}>Слышно в слове</p>
-        </div>
+        <h1 className={css.title}>Звуки</h1>
         <fieldset className={css.accent}>
           <legend className={css.visuallyHidden}>Акцент</legend>
           {ACCENTS.map(([value, label]) => (
@@ -109,6 +106,11 @@ function SoundCard({
       >
         <span className={css.phoneme} lang="en">
           {phoneme.symbol}
+        </span>
+        <span className={css.word} lang="en">
+          {phoneme.before}
+          <span className={css.hit}>{phoneme.symbol}</span>
+          {phoneme.after}
         </span>
       </button>
     </li>

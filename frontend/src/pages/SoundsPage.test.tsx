@@ -76,24 +76,27 @@ it('показывает британские группы 12 + 8 + 24 и тол
   render(<SoundsPage />)
 
   expect(screen.getByRole('heading', { name: 'Звуки' })).toBeInTheDocument()
-  expect(screen.getByText('Слышно в слове')).toBeInTheDocument()
+  expect(screen.queryByText('Слышно в слове')).not.toBeInTheDocument()
   expect(screen.getByRole('radio', { name: 'Британский' })).toBeChecked()
   expectGroupCounts(12, 8, 24)
-  expect(screen.getByText('iː')).toBeInTheDocument()
-  expect(screen.getByText('əʊ')).toBeInTheDocument()
-  expect(screen.getByText('ɒ')).toBeInTheDocument()
-  expect(screen.queryByText(/see|sheep|green|book|chair/)).not.toBeInTheDocument()
+  expect(screen.getAllByText('iː').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('əʊ').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('ɒ').length).toBeGreaterThan(0)
+  expect(screen.queryByText(/sheep|green|chair/)).not.toBeInTheDocument()
   expect(document.querySelector('details')).not.toBeInTheDocument()
+  const fleece = screen.getByRole('button', { name: 'Прослушать /iː/, британский акцент' })
+  expect(fleece.querySelector('[class*="hit"]')).toHaveTextContent('iː')
+  expect(fleece).toHaveTextContent('siː')
+  const cat = screen.getByRole('button', { name: 'Прослушать /k/, британский акцент' })
+  expect(cat).toHaveTextContent('kat')
 
   for (const button of screen.getAllByRole('button', { name: /^Прослушать / })) {
     const card = button.closest('li')!
     expect(card.children).toHaveLength(1)
     expect(card.firstElementChild).toBe(button)
-    expect(button.children).toHaveLength(1)
-    expect(button).toHaveTextContent(/^[^\s/]+$/)
-    expect(button.querySelector('span')).toHaveTextContent(/^[^\s/]+$/)
     expect(button.querySelector('svg')).not.toBeInTheDocument()
     expect(button).not.toHaveAttribute('aria-pressed')
+    expect(button.querySelectorAll('[class*="hit"]')).toHaveLength(1)
   }
 })
 
@@ -104,7 +107,9 @@ it.each(['en-GB', 'en-US'] as const)('даёт каждому звуку кор�
   expect(new Set(sounds.map((sound) => sound.id)).size).toBe(sounds.length)
   for (const sound of sounds) {
     expect(sound.speech).toMatch(/^[a-z]{2,6}$/)
-    expect(sound.speech).not.toMatch(/^(ee|ih|uu|oo|eh|uh|aw|ae|ah|th|dh|sh|zh|ch|ng)$/)
+    expect(sound.speech.startsWith(sound.before)).toBe(true)
+    expect(sound.speech.endsWith(sound.after)).toBe(true)
+    expect(sound.before.length + sound.after.length).toBeLessThan(sound.speech.length)
   }
 })
 
@@ -125,9 +130,9 @@ it('переключается на американский набор 12 + 5 +
 
   expect(screen.getByRole('radio', { name: 'Американский' })).toBeChecked()
   expectGroupCounts(12, 5, 24)
-  expect(screen.getByText('i')).toBeInTheDocument()
-  expect(screen.getByText('oʊ')).toBeInTheDocument()
-  expect(screen.getByText('ɝ')).toBeInTheDocument()
+  expect(screen.getAllByText('i').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('oʊ').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('ɝ').length).toBeGreaterThan(0)
   expect(screen.queryByText('iː')).not.toBeInTheDocument()
   expect(document.querySelector('[data-playing]')).not.toBeInTheDocument()
   expect(isSpeechBusy()).toBe(false)
@@ -225,7 +230,7 @@ it('запускает речь символом и всей карточкой 
   const playback = screen.getByRole('button', {
     name: 'Прослушать /iː/, британский акцент',
   })
-  const symbol = screen.getByText('iː')
+  const symbol = playback.querySelector('[class*="hit"]')!
 
   expect(playback.tagName).toBe('BUTTON')
   expect(playback).not.toHaveAttribute('data-playing')

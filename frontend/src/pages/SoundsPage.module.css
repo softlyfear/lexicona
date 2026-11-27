@@ -20,30 +20,12 @@
   gap: 0.7rem;
 }
 
-.titleRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.85rem;
-  min-width: 0;
-}
-
 .title {
   margin: 0;
   font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.15;
-}
-
-.note {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 550;
-  letter-spacing: 0.04em;
-  line-height: 1.2;
-  text-align: right;
 }
 
 .accent {
@@ -133,13 +115,14 @@
 
 .card {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.28rem;
   width: 100%;
   min-width: 0;
-  min-height: 4.6rem;
-  aspect-ratio: 1;
-  padding: 0.35rem;
+  min-height: 5.6rem;
+  padding: 0.55rem 0.25rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 16px;
   background:
@@ -179,11 +162,34 @@
 
 .phoneme {
   font-family: 'Lexicona Phonetic', 'Gentium', 'Noto Sans', var(--font);
-  font-size: clamp(1.55rem, 6.4vw, 1.9rem);
+  font-size: clamp(1.35rem, 5.6vw, 1.7rem);
   font-weight: 400;
   font-variant-ligatures: none;
   line-height: 1;
   letter-spacing: -0.03em;
+}
+
+.word {
+  max-width: 100%;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.92rem;
+  font-weight: 650;
+  font-variant-ligatures: none;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.hit {
+  color: var(--accent-strong);
+  font-family: 'Lexicona Phonetic', 'Gentium', 'Noto Sans', var(--font);
+  font-weight: 650;
+}
+
+.card[data-playing] .word,
+.card[data-playing] .hit {
+  color: var(--on-accent);
 }
 
 .visuallyHidden {
@@ -202,16 +208,6 @@
     justify-content: space-between;
   }
 
-  .titleRow {
-    flex: 1;
-    justify-content: flex-start;
-    gap: 0.9rem;
-  }
-
-  .note {
-    font-size: 0.74rem;
-  }
-
   .accent {
     width: min(100%, 22rem);
   }
@@ -222,13 +218,16 @@
   }
 
   .card {
-    aspect-ratio: auto;
-    min-height: 5.1rem;
+    min-height: 5.8rem;
     border-radius: 18px;
   }
 
   .phoneme {
-    font-size: 2.15rem;
+    font-size: 1.9rem;
+  }
+
+  .word {
+    font-size: 1rem;
   }
 }
 
