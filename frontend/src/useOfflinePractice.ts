@@ -42,27 +42,38 @@ import { refreshServerVoices } from './speech'
 let shellRegistration: Promise<boolean> | undefined
 
 function registerOfflineShell() {
-  shellRegistration ??= navigator.serviceWorker.register('/service-worker.js').then(
-    (registration) => {
-      if (registration.active) return true
-      const worker = registration.installing ?? registration.waiting
-      if (!worker) return false
-      return new Promise<boolean>((resolve) => {
-        const changed = () => {
-          if (worker.state !== 'activated' && worker.state !== 'redundant') return
-          worker.removeEventListener('statechange', changed)
-          resolve(worker.state === 'activated')
-        }
-        worker.addEventListener('statechange', changed)
-        changed()
-      })
-    },
-    () => false,
-  )
+  shellRegistration ??= navigator.serviceWorker
+    .register('/service-worker.js')
+    .then(
+      (registration) => {
+        if (registration.active) return true
+        const worker = registration.installing ?? registration.waiting
+        if (!worker) return false
+        return new Promise<boolean>((resolve) => {
+          const changed = () => {
+            if (worker.state !== 'activated' && worker.state !== 'redundant') return
+            worker.removeEventListener('statechange', changed)
+            resolve(worker.state === 'activated')
+          }
+          worker.addEventListener('statechange', changed)
+          changed()
+        })
+      },
+      () => false,
+    )
+    .then((ready) => {
+      if (!ready) shellRegistration = undefined
+      return ready
+    })
   return shellRegistration
 }
 
-export function useOfflinePractice(session: ReturnType<typeof useSession>) {
+export function useOfflinePractice(
+  session: Pick<
+    ReturnType<typeof useSession>,
+    'data' | 'error' | 'isError' | 'isPending' | 'refetch'
+  >,
+) {
   const [record, setRecord] = useState<OfflineRecord | null>()
   const [status, setStatus] = useState<'ready' | 'offline' | 'problem'>(() =>
     navigator.onLine ? 'ready' : 'offline',
@@ -124,11 +135,27 @@ export function useOfflinePractice(session: ReturnType<typeof useSession>) {
   useEffect(() => {
     if (!supported) return
     let active = true
-    void registerOfflineShell().then((ready) => {
+    let running = false
+    let retryRequested = false
+    const refresh = async () => {
+      running = true
+      let ready: boolean
+      do {
+        retryRequested = false
+        ready = await registerOfflineShell()
+      } while (active && !ready && retryRequested)
+      running = false
       if (active) setShellState(ready ? 'ready' : 'unavailable')
-    })
+    }
+    const register = () => {
+      if (running) retryRequested = true
+      else void refresh()
+    }
+    register()
+    window.addEventListener('online', register)
     return () => {
       active = false
+      window.removeEventListener('online', register)
     }
   }, [supported])
 
